@@ -823,6 +823,18 @@ function buildWorkspaceCommandEnv(input: {
   env.PAPERCLIP_ISSUE_IDENTIFIER = input.issue?.identifier ?? "";
   env.PAPERCLIP_ISSUE_TITLE = input.issue?.title ?? "";
   env.PAPERCLIP_ISSUE_WORK_MODE = input.issue?.workMode ?? "";
+
+  // Spec 0 Phase 5: set distinct git identity per agent so commits are attributed correctly
+  // Derives slug from first token of agent name (e.g., "Librarian Agent" → "librarian")
+  const agentSlug = input.agent.name.split(/\s+/)[0]?.toLowerCase();
+  const knownAgents = ["ceo", "cto", "coo", "librarian"];
+  if (agentSlug && knownAgents.includes(agentSlug)) {
+    env.GIT_AUTHOR_NAME = input.agent.name;
+    env.GIT_AUTHOR_EMAIL = `${agentSlug}@lycaon.bot`;
+    env.GIT_COMMITTER_NAME = input.agent.name;
+    env.GIT_COMMITTER_EMAIL = `${agentSlug}@lycaon.bot`;
+  }
+
   return env;
 }
 
