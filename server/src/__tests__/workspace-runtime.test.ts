@@ -22,6 +22,7 @@ import {
   cleanupExecutionWorkspaceArtifacts,
   ensureServerWorkspaceLinksCurrent,
   ensureRuntimeServicesForRun,
+  evaluateHeartbeatWorktreeReap,
   normalizeAdapterManagedRuntimeServices,
   reconcilePersistedRuntimeServicesOnStartup,
   realizeExecutionWorkspace,
@@ -2510,5 +2511,132 @@ describe("normalizeAdapterManagedRuntimeServices", () => {
       scopeId: "execution-workspace-1",
       executionWorkspaceId: "execution-workspace-1",
     });
+  });
+});
+
+describe("evaluateHeartbeatWorktreeReap + reap teardown", () => {
+  /**
+   * Build a repo with a bare `origin` remote and a heartbeat-style isolated
+   * worktree provisioned off it (issue: null, mirroring the cwd-pinned
+   * heartbeat case). Returns the realized worktree.
+   */
+  async function createRepoWithIsolatedHeartbeatWorktree(defaultBranch = "main") {
+    const repoRoot = await createTempRepo(defaultBranch);
+    const bareRemote = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-reap-bare-"));
+    await runGit(bareRemote, ["init", "--bare"]);
+    await runGit(repoRoot, ["remote", "add", "origin", bareRemote]);
+    await runGit(repoRoot, ["push", "-u", "origin", defaultBranch]);
+    await runGit(repoRoot, ["fetch", "origin"]);
+
+    const workspace = await realizeExecutionWorkspace({
+      base: {
+        baseCwd: repoRoot,
+        source: "agent_home",
+        // Cross-project / project-less heartbeat agent: no project workspace.
+        projectId: null,
+        workspaceId: null,
+        repoUrl: null,
+        repoRef: defaultBranch,
+      },
+      config: {
+        workspaceStrategy: {
+          type: "git_worktree",
+          branchTemplate: "heartbeat/librarian/2026-05-30",
+        },
+      },
+      issue: null,
+      agent: {
+        id: "agent-librarian",
+        name: "Librarian",
+        companyId: "company-1",
+      },
+    });
+
+    expect(workspace.strategy).toBe("git_worktree");
+    expect(workspace.created).toBe(true);
+    return { repoRoot, bareRemote, workspace };
+  }
+
+  it("reaps a clean, fully-pushed isolated heartbeat worktree", async () => {
+    const { workspace } = await createRepoWithIsolatedHeartbeatWorktree();
+
+    const guard = await evaluateHeartbeatWorktreeReap({
+      worktreeCwd: workspace.cwd,
+      repoRef: workspace.repoRef,
+    });
+    expect(guard.decision).toBe("reap");
+    expect(guard.clean).toBe(true);
+    expect(guard.aheadCount).toBe(0);
+
+    const { recorder } = createWorkspaceOperationRecorderDouble();
+    const result = await cleanupExecutionWorkspaceArtifacts({
+      workspace: {
+        id: "heartbeat-reap-run-1",
+        cwd: workspace.cwd,
+        providerType: "git_worktree",
+        providerRef: workspace.worktreePath,
+        branchName: workspace.branchName,
+        repoUrl: workspace.repoUrl,
+        baseRef: workspace.repoRef,
+        // The cross-project case: null projectId still gets reaped.
+        projectId: null,
+        projectWorkspaceId: null,
+        sourceIssueId: null,
+        metadata: { createdByRuntime: true },
+      },
+      projectWorkspace: { cwd: workspace.baseCwd, cleanupCommand: null },
+      cleanupCommand: null,
+      teardownCommand: null,
+      recorder,
+    });
+
+    expect(result.cleaned).toBe(true);
+    await expect(fs.stat(workspace.cwd)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("preserves a dirty isolated heartbeat worktree (uncommitted changes)", async () => {
+    const { workspace } = await createRepoWithIsolatedHeartbeatWorktree();
+    await fs.writeFile(path.join(workspace.cwd, "scratch.txt"), "uncommitted work\n", "utf8");
+
+    const guard = await evaluateHeartbeatWorktreeReap({
+      worktreeCwd: workspace.cwd,
+      repoRef: workspace.repoRef,
+    });
+    expect(guard.decision).toBe("preserve");
+    expect(guard.clean).toBe(false);
+    // The worktree directory is untouched — work is recoverable.
+    await expect(fs.stat(workspace.cwd)).resolves.toBeTruthy();
+  });
+
+  it("preserves an isolated heartbeat worktree with unpushed local commits", async () => {
+    const { workspace } = await createRepoWithIsolatedHeartbeatWorktree();
+    await fs.writeFile(path.join(workspace.cwd, "doc.md"), "agent output\n", "utf8");
+    await runGit(workspace.cwd, ["add", "doc.md"]);
+    await runGit(workspace.cwd, ["commit", "-m", "agent output not yet pushed"]);
+
+    const guard = await evaluateHeartbeatWorktreeReap({
+      worktreeCwd: workspace.cwd,
+      repoRef: workspace.repoRef,
+    });
+    expect(guard.decision).toBe("preserve");
+    expect(guard.clean).toBe(true);
+    expect(guard.aheadCount).toBeGreaterThan(0);
+    await expect(fs.stat(workspace.cwd)).resolves.toBeTruthy();
+  });
+
+  it("reaps after the agent commits AND pushes its output to the base branch", async () => {
+    const { workspace } = await createRepoWithIsolatedHeartbeatWorktree();
+    // Agent-side behavior: commit + push docs to the base branch itself.
+    await fs.writeFile(path.join(workspace.cwd, "doc.md"), "agent output\n", "utf8");
+    await runGit(workspace.cwd, ["add", "doc.md"]);
+    await runGit(workspace.cwd, ["commit", "-m", "agent output"]);
+    await runGit(workspace.cwd, ["push", "origin", `HEAD:${workspace.repoRef}`]);
+
+    const guard = await evaluateHeartbeatWorktreeReap({
+      worktreeCwd: workspace.cwd,
+      repoRef: workspace.repoRef,
+    });
+    expect(guard.decision).toBe("reap");
+    expect(guard.aheadCount).toBe(0);
   });
 });

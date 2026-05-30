@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyRealizedWorkspaceCwd,
   buildExecutionWorkspaceAdapterConfig,
+  decideHeartbeatWorktreeReap,
   defaultIssueExecutionWorkspaceSettingsForProject,
   gateProjectExecutionWorkspacePolicy,
   HEARTBEAT_WORKTREE_BRANCH_TEMPLATE,
@@ -280,5 +281,23 @@ describe("execution workspace policy helpers", () => {
         true,
       ),
     ).toEqual({ enabled: true, defaultMode: "isolated_workspace" });
+  });
+});
+
+describe("decideHeartbeatWorktreeReap", () => {
+  it("reaps a clean, fully-pushed worktree", () => {
+    expect(decideHeartbeatWorktreeReap({ clean: true, aheadCount: 0 })).toBe("reap");
+  });
+
+  it("preserves a dirty worktree (uncommitted changes)", () => {
+    expect(decideHeartbeatWorktreeReap({ clean: false, aheadCount: 0 })).toBe("preserve");
+  });
+
+  it("preserves a clean worktree with unpushed local commits", () => {
+    expect(decideHeartbeatWorktreeReap({ clean: true, aheadCount: 1 })).toBe("preserve");
+  });
+
+  it("preserves when both dirty and ahead", () => {
+    expect(decideHeartbeatWorktreeReap({ clean: false, aheadCount: 3 })).toBe("preserve");
   });
 });
