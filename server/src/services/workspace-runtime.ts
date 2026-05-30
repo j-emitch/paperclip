@@ -358,6 +358,9 @@ function renderWorkspaceTemplate(template: string, input: {
 }) {
   const issueIdentifier = input.issue?.identifier ?? input.issue?.id ?? "issue";
   const slug = sanitizeSlugPart(input.issue?.title, sanitizeSlugPart(issueIdentifier, "issue"));
+  const agentSlug = sanitizeSlugPart(input.agent.name, sanitizeSlugPart(input.agent.id, "agent"));
+  // YYYY-MM-DD in UTC; gives heartbeat (issue-less) runs a stable, dated branch.
+  const date = new Date().toISOString().slice(0, 10);
   return renderTemplate(template, {
     issue: {
       id: input.issue?.id ?? "",
@@ -367,7 +370,9 @@ function renderWorkspaceTemplate(template: string, input: {
     agent: {
       id: input.agent.id ?? "",
       name: input.agent.name,
+      slug: agentSlug,
     },
+    date,
     project: {
       id: input.projectId ?? "",
     },
@@ -570,7 +575,7 @@ async function findRegisteredGitWorktreeByBranch(repoRoot: string, branchName: s
   return null;
 }
 
-async function isGitCheckout(cwd: string): Promise<boolean> {
+export async function isGitCheckout(cwd: string): Promise<boolean> {
   return Boolean(await runGit(["rev-parse", "--git-dir"], cwd).catch(() => null));
 }
 

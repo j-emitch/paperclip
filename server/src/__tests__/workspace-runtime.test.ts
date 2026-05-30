@@ -531,6 +531,42 @@ describe("realizeExecutionWorkspace", () => {
     expect(path.basename(realized.cwd)).toBe("PAP-992.hotfix-april-1");
   });
 
+  it("provisions an isolated worktree for an issue-less heartbeat run via agent + date tokens", async () => {
+    const repoRoot = await createTempRepo();
+
+    const realized = await realizeExecutionWorkspace({
+      base: {
+        baseCwd: repoRoot,
+        source: "agent_home",
+        projectId: null,
+        workspaceId: null,
+        repoUrl: null,
+        repoRef: "HEAD",
+      },
+      config: {
+        workspaceStrategy: {
+          type: "git_worktree",
+          branchTemplate: "heartbeat/{{agent.slug}}/{{date}}",
+        },
+      },
+      issue: null,
+      agent: {
+        id: "agent-librarian",
+        name: "The Librarian",
+        companyId: "company-1",
+      },
+    });
+
+    const today = new Date().toISOString().slice(0, 10);
+    expect(realized.strategy).toBe("git_worktree");
+    expect(realized.created).toBe(true);
+    expect(realized.branchName).toBe(`heartbeat/the-librarian/${today}`);
+    // The realized cwd is the worktree, NOT the shared base checkout.
+    expect(realized.cwd).not.toBe(repoRoot);
+    expect(realized.cwd).toContain(path.join(".paperclip", "worktrees"));
+    await expect(fs.stat(path.join(realized.cwd, ".git"))).resolves.toBeTruthy();
+  });
+
   it("runs a configured provision command inside the derived worktree", async () => {
     const repoRoot = await createTempRepo();
     await fs.mkdir(path.join(repoRoot, "scripts"), { recursive: true });

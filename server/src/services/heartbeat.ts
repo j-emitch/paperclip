@@ -41,6 +41,7 @@ import {
   buildWorkspaceReadyComment,
   cleanupExecutionWorkspaceArtifacts,
   ensureRuntimeServicesForRun,
+  isGitCheckout,
   persistAdapterManagedRuntimeServices,
   realizeExecutionWorkspace,
   releaseRuntimeServicesForRun,
@@ -53,12 +54,14 @@ import { executionWorkspaceService, mergeExecutionWorkspaceConfig } from "./exec
 import { workspaceOperationService } from "./workspace-operations.js";
 import { isProcessGroupAlive, terminateLocalService } from "./local-service-supervisor.js";
 import {
+  applyRealizedWorkspaceCwd,
   buildExecutionWorkspaceAdapterConfig,
   gateProjectExecutionWorkspacePolicy,
   issueExecutionWorkspaceModeForPersistedWorkspace,
   parseIssueExecutionWorkspaceSettings,
   parseProjectExecutionWorkspacePolicy,
   resolveExecutionWorkspaceMode,
+  resolveHeartbeatWorktreeIsolation,
 } from "./execution-workspace-policy.js";
 import { instanceSettingsService } from "./instance-settings.js";
 import { redactCurrentUserText, redactCurrentUserValue } from "../log-redaction.js";
@@ -2846,7 +2849,7 @@ export function heartbeatService(db: Db) {
       secretsSvc,
     });
     const runtimeSkillEntries = await companySkills.listRuntimeSkillEntries(agent.companyId);
-    const runtimeConfig = {
+    let runtimeConfig: Record<string, unknown> = {
       ...resolvedConfig,
       paperclipRuntimeSkills: runtimeSkillEntries,
     };
@@ -2855,7 +2858,7 @@ export function heartbeatService(db: Db) {
       heartbeatRunId: run.id,
       executionWorkspaceId: existingExecutionWorkspace?.id ?? null,
     });
-    const executionWorkspaceBase = {
+    let executionWorkspaceBase = {
       baseCwd: resolvedWorkspace.cwd,
       source: resolvedWorkspace.source,
       projectId: resolvedWorkspace.projectId,
@@ -2863,6 +2866,27 @@ export function heartbeatService(db: Db) {
       repoUrl: resolvedWorkspace.repoUrl,
       repoRef: resolvedWorkspace.repoRef,
     } satisfies ExecutionWorkspaceInput;
+    // Heartbeat (timer) runs with a hardwired `adapter_config.cwd` would
+    // otherwise execute directly in that — often shared — checkout, parking it
+    // on a branch and corrupting its git cache-tree across runs. Opt those runs
+    // into the existing git_worktree provisioning so each run lands in an
+    // isolated per-run worktree off the pinned checkout. Issue-scoped runs are
+    // untouched: they already route through project/issue workspace policy and
+    // their cwd comes from the resolved project workspace, not the pinned cwd.
+    if (!issueRef && !shouldReuseExisting) {
+      const isolation = resolveHeartbeatWorktreeIsolation({
+        adapterConfig: runtimeConfig,
+        resolvedWorkspaceSource: resolvedWorkspace.source,
+        hasProjectWorkspace: Boolean(resolvedWorkspace.workspaceId),
+      });
+      if (isolation && (await isGitCheckout(isolation.baseCwd))) {
+        runtimeConfig = isolation.config;
+        executionWorkspaceBase = {
+          ...executionWorkspaceBase,
+          baseCwd: isolation.baseCwd,
+        } satisfies ExecutionWorkspaceInput;
+      }
+    }
     const reusedExecutionWorkspace = shouldReuseExisting && existingExecutionWorkspace
       ? buildRealizedExecutionWorkspaceFromPersisted({
           base: executionWorkspaceBase,
@@ -2880,6 +2904,14 @@ export function heartbeatService(db: Db) {
           },
           recorder: workspaceOperationRecorder,
         });
+    // The adapter reads `config.cwd` verbatim; `realizeExecutionWorkspace` only
+    // returns the worktree path and never rewrites the config. Push the realized
+    // worktree cwd back so the adapter process actually starts inside it.
+    runtimeConfig = applyRealizedWorkspaceCwd({
+      config: runtimeConfig,
+      workspaceStrategy: executionWorkspace.strategy,
+      workspaceCwd: executionWorkspace.cwd,
+    });
     const resolvedProjectId = executionWorkspace.projectId ?? issueRef?.projectId ?? executionProjectId ?? null;
     const resolvedProjectWorkspaceId = issueRef?.projectWorkspaceId ?? resolvedWorkspace.workspaceId ?? null;
     let persistedExecutionWorkspace = null;
