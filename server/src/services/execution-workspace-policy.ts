@@ -253,6 +253,31 @@ export function applyRealizedWorkspaceCwd(input: {
   return { ...input.config, cwd };
 }
 
+/**
+ * Pure decision for whether an isolated per-run heartbeat worktree is safe to
+ * tear down after the run completes.
+ *
+ * Reaping a worktree runs `git worktree remove --force` + deletes its branch, so
+ * we only do it once the work is provably recoverable from `origin`. Removal is
+ * gated on BOTH:
+ *   - a clean working tree (no uncommitted changes), and
+ *   - zero local commits ahead of the resolved base branch on `origin`.
+ *
+ * If either fails (dirty tree OR unpushed commits) the worktree is preserved so
+ * the agent's output is not silently destroyed; the caller logs a warning with
+ * the path + branch so the work can be recovered by hand.
+ */
+export function decideHeartbeatWorktreeReap(input: {
+  /** True when `git status --porcelain` produced no output. */
+  clean: boolean;
+  /** Count from `git rev-list origin/<base>..HEAD --count` (local commits not on origin). */
+  aheadCount: number;
+}): "reap" | "preserve" {
+  if (!input.clean) return "preserve";
+  if (input.aheadCount > 0) return "preserve";
+  return "reap";
+}
+
 export function buildExecutionWorkspaceAdapterConfig(input: {
   agentConfig: Record<string, unknown>;
   projectPolicy: ProjectExecutionWorkspacePolicy | null;
