@@ -95,6 +95,8 @@ import {
   cleanupExecutionWorkspaceArtifacts,
   ensurePersistedExecutionWorkspaceAvailable,
   ensureRuntimeServicesForRun,
+  evaluateHeartbeatWorktreeReap,
+  isGitCheckout,
   persistAdapterManagedRuntimeServices,
   realizeExecutionWorkspace,
   releaseRuntimeServicesForRun,
@@ -121,8 +123,10 @@ import {
 } from "./issue-continuation-summary.js";
 import { executionWorkspaceService, mergeExecutionWorkspaceConfig } from "./execution-workspaces.js";
 import { workspaceOperationService } from "./workspace-operations.js";
+import type { WorkspaceOperationRecorder } from "./workspace-operations.js";
 import { isProcessGroupAlive, terminateLocalService } from "./local-service-supervisor.js";
 import {
+  applyRealizedWorkspaceCwd,
   buildExecutionWorkspaceAdapterConfig,
   gateProjectExecutionWorkspacePolicy,
   issueExecutionWorkspaceModeForPersistedWorkspace,
@@ -130,6 +134,7 @@ import {
   parseProjectExecutionWorkspacePolicy,
   resolveExecutionWorkspaceEnvironmentId,
   resolveExecutionWorkspaceMode,
+  resolveHeartbeatWorktreeIsolation,
 } from "./execution-workspace-policy.js";
 import { instanceSettingsService } from "./instance-settings.js";
 import {
@@ -7782,6 +7787,83 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     });
   }
 
+  /**
+   * Tear down an isolated per-run heartbeat worktree after the run completes
+   * (success OR failure). Applies the data-loss guard
+   * ({@link evaluateHeartbeatWorktreeReap}): only removes the worktree when its
+   * working tree is clean AND it has no local commits missing from `origin`. On
+   * a dirty or unpushed worktree it preserves the directory and logs a warning
+   * so the agent's output is recoverable by hand.
+   *
+   * Best-effort: never throws — the caller invokes this from the run-lifecycle
+   * `finally`, so it must not mask or change the recorded run outcome.
+   */
+  async function reapIsolatedHeartbeatWorktree(
+    runId: string,
+    descriptor: {
+      cwd: string;
+      worktreePath: string | null;
+      branchName: string | null;
+      repoRef: string | null;
+      repoUrl: string | null;
+      baseCwd: string;
+      recorder: WorkspaceOperationRecorder;
+    },
+  ): Promise<void> {
+    try {
+      const guard = await evaluateHeartbeatWorktreeReap({
+        worktreeCwd: descriptor.cwd,
+        repoRef: descriptor.repoRef,
+      });
+      if (guard.decision === "preserve") {
+        logger.warn(
+          {
+            runId,
+            worktreePath: descriptor.worktreePath ?? descriptor.cwd,
+            branchName: descriptor.branchName,
+            baseBranch: guard.baseBranch,
+            aheadCount: guard.aheadCount,
+            reason: guard.reason,
+          },
+          "Preserving isolated heartbeat worktree (unpushed or dirty) — work is recoverable at the logged path",
+        );
+        return;
+      }
+      await cleanupExecutionWorkspaceArtifacts({
+        workspace: {
+          id: `heartbeat-reap-${runId}`,
+          cwd: descriptor.cwd,
+          providerType: "git_worktree",
+          providerRef: descriptor.worktreePath,
+          branchName: descriptor.branchName,
+          repoUrl: descriptor.repoUrl,
+          baseRef: descriptor.repoRef,
+          projectId: null,
+          projectWorkspaceId: null,
+          sourceIssueId: null,
+          metadata: { createdByRuntime: true },
+        },
+        projectWorkspace: {
+          cwd: descriptor.baseCwd,
+          cleanupCommand: null,
+        },
+        cleanupCommand: null,
+        teardownCommand: null,
+        recorder: descriptor.recorder,
+      });
+    } catch (error) {
+      logger.warn(
+        {
+          runId,
+          worktreePath: descriptor.worktreePath ?? descriptor.cwd,
+          branchName: descriptor.branchName,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Failed to reap isolated heartbeat worktree after run (best-effort)",
+      );
+    }
+  }
+
   async function executeRun(runId: string) {
     let run = await getRun(runId);
     if (!run) return;
@@ -7797,6 +7879,21 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     }
 
     activeRunExecutions.add(run.id);
+
+    // Descriptor for an isolated per-run heartbeat worktree we provisioned this
+    // run (see the isolation block below). Captured here so it is visible in the
+    // run-lifecycle `finally`, which reaps the worktree on BOTH success and
+    // failure. Stays null for issue-scoped runs and reused workspaces — those
+    // must never be reaped here.
+    let heartbeatWorktreeToReap: {
+      cwd: string;
+      worktreePath: string | null;
+      branchName: string | null;
+      repoRef: string | null;
+      repoUrl: string | null;
+      baseCwd: string;
+      recorder: WorkspaceOperationRecorder;
+    } | null = null;
 
     try {
     const agent = await getAgent(run.agentId);
@@ -8346,7 +8443,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     const runtimeSkillEntries = await companySkills.listRuntimeSkillEntries(agent.companyId, {
       versionSelections: skillVersionSelectionMap(runtimeSkillPreference.desiredSkillEntries),
     });
-    let runtimeConfig = {
+    let runtimeConfig: Record<string, unknown> = {
       ...effectiveResolvedConfig,
       paperclipRuntimeSkills: runtimeSkillEntries,
     };
@@ -8360,7 +8457,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       heartbeatRunId: run.id,
       executionWorkspaceId: existingExecutionWorkspace?.id ?? null,
     });
-    const executionWorkspaceBase = {
+    let executionWorkspaceBase = {
       baseCwd: resolvedWorkspace.cwd,
       source: resolvedWorkspace.source,
       projectId: resolvedWorkspace.projectId,
@@ -8368,6 +8465,33 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       repoUrl: resolvedWorkspace.repoUrl,
       repoRef: resolvedWorkspace.repoRef,
     } satisfies ExecutionWorkspaceInput;
+    // Heartbeat (timer) runs with a hardwired `adapter_config.cwd` would
+    // otherwise execute directly in that — often shared — checkout, parking it
+    // on a branch and corrupting its git cache-tree across runs. Opt those runs
+    // into the existing git_worktree provisioning so each run lands in an
+    // isolated per-run worktree off the pinned checkout. Issue-scoped runs are
+    // untouched: they already route through project/issue workspace policy and
+    // their cwd comes from the resolved project workspace, not the pinned cwd.
+    // True only for the isolated-heartbeat case below; gates worktree reaping so
+    // issue-scoped and reused workspaces are never torn down here.
+    let heartbeatIsolationApplied = false;
+    let heartbeatIsolationBaseCwd: string | null = null;
+    if (!issueRef && !shouldReuseExisting) {
+      const isolation = resolveHeartbeatWorktreeIsolation({
+        adapterConfig: runtimeConfig,
+        resolvedWorkspaceSource: resolvedWorkspace.source,
+        hasProjectWorkspace: Boolean(resolvedWorkspace.workspaceId),
+      });
+      if (isolation && (await isGitCheckout(isolation.baseCwd))) {
+        runtimeConfig = isolation.config;
+        executionWorkspaceBase = {
+          ...executionWorkspaceBase,
+          baseCwd: isolation.baseCwd,
+        } satisfies ExecutionWorkspaceInput;
+        heartbeatIsolationApplied = true;
+        heartbeatIsolationBaseCwd = isolation.baseCwd;
+      }
+    }
     const reusedExecutionWorkspace = shouldReuseExisting && existingExecutionWorkspace
       ? await ensurePersistedExecutionWorkspaceAvailable({
           base: executionWorkspaceBase,
@@ -8412,6 +8536,33 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           },
           recorder: workspaceOperationRecorder,
         });
+    // The adapter reads `config.cwd` verbatim; `realizeExecutionWorkspace` only
+    // returns the worktree path and never rewrites the config. Push the realized
+    // worktree cwd back so the adapter process actually starts inside it.
+    runtimeConfig = applyRealizedWorkspaceCwd({
+      config: runtimeConfig,
+      workspaceStrategy: executionWorkspace.strategy,
+      workspaceCwd: executionWorkspace.cwd,
+    });
+    // Capture the isolated heartbeat worktree for post-run teardown — keyed on
+    // the worktree we created, NOT on a project_id or persisted DB record, so it
+    // also reaps project-less / cross-project agents (whose `resolvedProjectId`
+    // is null and therefore never get a persisted workspace row to track).
+    if (
+      heartbeatIsolationApplied &&
+      heartbeatIsolationBaseCwd &&
+      executionWorkspace.strategy === "git_worktree"
+    ) {
+      heartbeatWorktreeToReap = {
+        cwd: executionWorkspace.cwd,
+        worktreePath: executionWorkspace.worktreePath,
+        branchName: executionWorkspace.branchName,
+        repoRef: executionWorkspace.repoRef,
+        repoUrl: executionWorkspace.repoUrl,
+        baseCwd: heartbeatIsolationBaseCwd,
+        recorder: workspaceOperationRecorder,
+      };
+    }
     const resolvedProjectId = executionWorkspace.projectId ?? issueRef?.projectId ?? executionProjectId ?? null;
     const resolvedProjectWorkspaceId = issueRef?.projectWorkspaceId ?? resolvedWorkspace.workspaceId ?? null;
     let persistedExecutionWorkspace = null;
@@ -9588,6 +9739,12 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
             status: latestRun?.status,
             failureReason: latestRun?.error ?? undefined,
           });
+          // Reap the isolated per-run heartbeat worktree on BOTH success and
+          // failure. Guarded + best-effort (never throws), so it cannot mask
+          // the run outcome recorded above.
+          if (heartbeatWorktreeToReap) {
+            await reapIsolatedHeartbeatWorktree(run.id, heartbeatWorktreeToReap);
+          }
           await releaseRuntimeServicesForRun(run.id).catch(() => undefined);
           activeRunExecutions.delete(run.id);
           await startNextQueuedRunForAgent(run.agentId);

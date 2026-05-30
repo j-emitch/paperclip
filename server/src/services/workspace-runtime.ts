@@ -28,6 +28,7 @@ import {
 } from "./local-service-supervisor.js";
 import type { WorkspaceOperationRecorder } from "./workspace-operations.js";
 import { readExecutionWorkspaceConfig } from "./execution-workspaces.js";
+import { decideHeartbeatWorktreeReap } from "./execution-workspace-policy.js";
 import { readProjectWorkspaceRuntimeConfig } from "./project-workspace-runtime-config.js";
 
 export function resolveShell(): string {
@@ -374,6 +375,9 @@ function renderWorkspaceTemplate(template: string, input: {
 }) {
   const issueIdentifier = input.issue?.identifier ?? input.issue?.id ?? "issue";
   const slug = sanitizeSlugPart(input.issue?.title, sanitizeSlugPart(issueIdentifier, "issue"));
+  const agentSlug = sanitizeSlugPart(input.agent.name, sanitizeSlugPart(input.agent.id, "agent"));
+  // YYYY-MM-DD in UTC; gives heartbeat (issue-less) runs a stable, dated branch.
+  const date = new Date().toISOString().slice(0, 10);
   return renderTemplate(template, {
     issue: {
       id: input.issue?.id ?? "",
@@ -383,7 +387,9 @@ function renderWorkspaceTemplate(template: string, input: {
     agent: {
       id: input.agent.id ?? "",
       name: input.agent.name,
+      slug: agentSlug,
     },
+    date,
     project: {
       id: input.projectId ?? "",
     },
@@ -686,7 +692,7 @@ async function findRegisteredGitWorktreeByBranch(repoRoot: string, branchName: s
   return null;
 }
 
-async function isGitCheckout(cwd: string): Promise<boolean> {
+export async function isGitCheckout(cwd: string): Promise<boolean> {
   return Boolean(await runGit(["rev-parse", "--git-dir"], cwd).catch(() => null));
 }
 
@@ -1636,6 +1642,100 @@ export async function cleanupExecutionWorkspaceArtifacts(input: {
     cleanedPath: workspacePath,
     cleaned,
     warnings,
+  };
+}
+
+export type HeartbeatWorktreeReapGuard = {
+  /** Whether removal is safe given the working-tree + push state. */
+  decision: "reap" | "preserve";
+  /** True when `git status --porcelain` produced no output. */
+  clean: boolean;
+  /** Local commits not present on `origin/<base>` (0 when fully pushed). */
+  aheadCount: number;
+  /** Base branch the ahead-count was measured against, when resolved. */
+  baseBranch: string | null;
+  /** Human-readable reason when the worktree was preserved instead of reaped. */
+  reason: string | null;
+};
+
+/**
+ * Inspect an isolated per-run heartbeat worktree and decide whether it is safe
+ * to tear down. Reuses {@link decideHeartbeatWorktreeReap} for the policy and
+ * the shared `git` helpers for the IO. Best-effort: a missing worktree, a
+ * failed `git status`, or an unresolvable base branch all resolve to "preserve"
+ * (never destroy work we cannot prove is recoverable).
+ */
+export async function evaluateHeartbeatWorktreeReap(input: {
+  worktreeCwd: string;
+  /** Base ref from the realized workspace (`repoRef`); falls back to the repo default branch. */
+  repoRef: string | null;
+}): Promise<HeartbeatWorktreeReapGuard> {
+  const preserve = (reason: string, aheadCount = 0, baseBranch: string | null = null): HeartbeatWorktreeReapGuard => ({
+    decision: "preserve",
+    clean: false,
+    aheadCount,
+    baseBranch,
+    reason,
+  });
+
+  if (!(await directoryExists(input.worktreeCwd))) {
+    return preserve(`Worktree path "${input.worktreeCwd}" no longer exists.`);
+  }
+
+  let porcelain: string;
+  try {
+    porcelain = await runGit(["status", "--porcelain"], input.worktreeCwd);
+  } catch (err) {
+    return preserve(
+      `Could not read git status for "${input.worktreeCwd}": ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  const clean = porcelain.trim().length === 0;
+  if (!clean) {
+    return { decision: "preserve", clean: false, aheadCount: 0, baseBranch: null, reason: "Working tree has uncommitted changes." };
+  }
+
+  // Resolve the base branch: prefer the realized repoRef (when it names a real
+  // branch), otherwise fall back to the repo's default branch.
+  let baseBranch: string | null = null;
+  const candidateRef = (input.repoRef ?? "").trim();
+  if (candidateRef && candidateRef !== "HEAD") {
+    const verified = await runGit(["rev-parse", "--verify", "--quiet", `refs/heads/${candidateRef}`], input.worktreeCwd)
+      .then(() => candidateRef)
+      .catch(() => null);
+    baseBranch = verified;
+  }
+  if (!baseBranch) {
+    baseBranch = await detectDefaultBranch(input.worktreeCwd).catch(() => null);
+  }
+  if (!baseBranch) {
+    return preserve("Could not resolve a base branch to verify pushed state.");
+  }
+
+  // Best-effort fetch so the ahead-count reflects current origin; tolerate
+  // offline / no-remote environments.
+  await runGit(["fetch", "origin", baseBranch], input.worktreeCwd).catch(() => undefined);
+
+  let aheadCount: number;
+  try {
+    const raw = await runGit(["rev-list", `origin/${baseBranch}..HEAD`, "--count"], input.worktreeCwd);
+    const parsed = Number.parseInt(raw.trim(), 10);
+    aheadCount = Number.isFinite(parsed) ? parsed : 1;
+  } catch (err) {
+    return preserve(
+      `Could not compare against origin/${baseBranch}: ${err instanceof Error ? err.message : String(err)}`,
+      0,
+      baseBranch,
+    );
+  }
+
+  const decision = decideHeartbeatWorktreeReap({ clean, aheadCount });
+  return {
+    decision,
+    clean,
+    aheadCount,
+    baseBranch,
+    reason: decision === "preserve" ? `${aheadCount} local commit(s) not present on origin/${baseBranch}.` : null,
   };
 }
 
