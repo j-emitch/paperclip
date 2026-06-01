@@ -429,7 +429,7 @@ export function buildExecutionWorkspaceAdapterConfig(input: {
         input.projectPolicy?.workspaceStrategy ??
         parseExecutionWorkspaceStrategy(nextConfig.workspaceStrategy) ??
         ({ type: "git_worktree" } satisfies ExecutionWorkspaceStrategy);
-      nextConfig.workspaceStrategy = strategy as unknown as Record<string, unknown>;
+      nextConfig.workspaceStrategy = strategy;
     } else {
       delete nextConfig.workspaceStrategy;
     }

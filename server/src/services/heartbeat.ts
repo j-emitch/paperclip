@@ -9144,8 +9144,13 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           stream: "system",
           level: "info",
           message: "adapter invocation",
+          // AdapterInvocationMeta is a fixed-shape interface (no index
+          // signature), so it isn't directly a Record<string, unknown> for the
+          // jsonb payload column. Copy its own enumerable entries into a plain
+          // record — runtime-faithful, no cast — then layer upstream's
+          // modelProfile metadata on top.
           payload: {
-            ...(meta as unknown as Record<string, unknown>),
+            ...Object.fromEntries(Object.entries(meta)),
             ...(modelProfileMetadata ? { modelProfile: modelProfileMetadata } : {}),
           },
         });
