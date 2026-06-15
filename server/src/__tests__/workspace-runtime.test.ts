@@ -509,6 +509,49 @@ describe("realizeExecutionWorkspace", () => {
     ]);
   });
 
+  it("degrades a git_worktree strategy to project_primary when baseCwd is not a git checkout", async () => {
+    // Regression: a project-less heartbeat agent (COO/Librarian) can carry a persisted
+    // git_worktree strategy yet resolve baseCwd to a non-git agent_home dir when its prior
+    // session cwd no longer exists. Before the guard, resolveGitOwnerRepoRoot threw
+    // "fatal: not a git repository" → adapter_failed → the whole run died (the 2026-06-12
+    // heartbeat outage). It must degrade to project_primary, not throw.
+    const nonGitDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-nongit-"));
+
+    const realized = await realizeExecutionWorkspace({
+      base: {
+        baseCwd: nonGitDir,
+        source: "project_primary",
+        projectId: "project-1",
+        workspaceId: "workspace-1",
+        repoUrl: null,
+        repoRef: "HEAD",
+      },
+      config: {
+        workspaceStrategy: {
+          type: "git_worktree",
+          branchTemplate: "{{issue.identifier}}-{{slug}}",
+        },
+      },
+      issue: {
+        id: "issue-1",
+        identifier: "PAP-447",
+        title: "Add Worktree Support",
+      },
+      agent: {
+        id: "agent-1",
+        name: "COO",
+        companyId: "company-1",
+      },
+    });
+
+    expect(realized.strategy).toBe("project_primary");
+    expect(realized.created).toBe(false);
+    expect(realized.cwd).toBe(nonGitDir);
+    expect(realized.branchName).toBeNull();
+    expect(realized.worktreePath).toBeNull();
+    expect(realized.warnings.join(" ")).toContain("not a git checkout");
+  });
+
   it("rejects reusing an empty directory that only looks like a worktree because it sits inside the repo", async () => {
     const repoRoot = await createTempRepo();
     const branchName = "PAP-447-add-worktree-support";

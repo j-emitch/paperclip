@@ -1134,6 +1134,28 @@ export async function realizeExecutionWorkspace(input: {
     };
   }
 
+  // A git_worktree strategy can be pinned in persisted config (e.g. the heartbeat
+  // worktree-isolation migration) even when THIS run's resolved baseCwd is NOT a git
+  // checkout — a project-less heartbeat agent (COO/Librarian) falls back to a non-git
+  // agent_home dir when its prior session cwd no longer resolves. resolveGitOwnerRepoRoot
+  // below runs `git rev-parse` with no catch and throws "fatal: not a git repository",
+  // which the caller records as adapter_failed and the whole run dies (the COO/Librarian
+  // heartbeat outage that began 2026-06-12). Probe first and degrade to project_primary
+  // instead of hard-failing — a run beats no run, matching the project_primary agents.
+  if (!(await isGitCheckout(input.base.baseCwd))) {
+    return {
+      ...input.base,
+      strategy: "project_primary",
+      cwd: input.base.baseCwd,
+      branchName: null,
+      worktreePath: null,
+      warnings: [
+        `Configured git_worktree strategy ignored: "${input.base.baseCwd}" is not a git checkout. Running in project_primary mode.`,
+      ],
+      created: false,
+    };
+  }
+
   const repoRoot = await resolveGitOwnerRepoRoot(input.base.baseCwd);
   const branchTemplate = asString(rawStrategy.branchTemplate, "{{issue.identifier}}-{{slug}}");
   const renderedBranch = renderWorkspaceTemplate(branchTemplate, {
