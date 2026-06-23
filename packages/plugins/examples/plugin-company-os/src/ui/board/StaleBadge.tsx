@@ -43,16 +43,27 @@ const pillStyle: CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-/** Board-level freshness badge — derive age + the worst source freshness. */
+/** Board-level freshness badge — derive age, clock-skew, + the worst source freshness. */
 export function BoardFreshnessBadge({
   ageLabel,
   stale,
+  skewed = false,
   staleSourceCount,
 }: {
   ageLabel: string;
   stale: boolean;
+  skewed?: boolean;
   staleSourceCount: number;
 }) {
+  if (skewed) {
+    const aria = "Board derive timestamp is in the future — likely clock skew between machines";
+    return (
+      <span style={pillStyle} aria-label={aria} title={aria}>
+        <StatusDot color={statusColors.cached} />
+        <span aria-hidden="true">derived in the future · clock skew</span>
+      </span>
+    );
+  }
   const tone = stale ? statusColors.stale : statusColors.live;
   const aria = stale
     ? `Board is stale — derived ${ageLabel}${staleSourceCount > 0 ? `, ${staleSourceCount} source${staleSourceCount === 1 ? "" : "s"} not live` : ""}`

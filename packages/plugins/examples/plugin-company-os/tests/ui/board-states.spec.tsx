@@ -4,7 +4,8 @@ import { CompanyOsBoardView } from "../../src/ui/board/CompanyOsBoardView.js";
 import { EmptyState, ErrorState, LoadingState } from "../../src/ui/board/states.js";
 import { BOARD_STYLE_ID } from "../../src/ui/board/board-styles.js";
 import { NOW } from "../fixtures/signals.js";
-import { emptyBoard, goldenBoard, RENDER_NOW, staleBoard } from "./fixtures/board.js";
+import { barrenBoard, goldenBoard, RENDER_NOW, staleBoard, zeroChipBoard } from "./fixtures/board.js";
+import { isBoardEmpty } from "../../src/ui/board/view-model.js";
 
 const noop = () => {};
 
@@ -134,9 +135,14 @@ describe("board non-data states", () => {
     expect(html).toContain("Derive now");
   });
 
-  it("the empty board fixture is recognised as empty (would render EmptyState)", () => {
-    // Sanity: emptyBoard has rows but no chips/unclassified.
-    expect(emptyBoard().chips.length).toBe(0);
-    expect(emptyBoard().unclassified.length).toBe(0);
+  it("a barren board is empty (EmptyState path); a 0-chip taxonomy board is NOT (renders 0-count rows)", () => {
+    expect(isBoardEmpty(barrenBoard())).toBe(true);
+    expect(isBoardEmpty(zeroChipBoard())).toBe(false);
+  });
+
+  it("a 0-chip taxonomy board renders its lanes with 0-count cells (show the 0, don't hide it)", () => {
+    const html = renderBoard({ state: zeroChipBoard(), collapsedLanes: new Set() });
+    expect(html).toContain("Coaching"); // a registered lane renders
+    expect(html).toContain("—"); // 0-count cells shown, not hidden
   });
 });

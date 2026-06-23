@@ -104,7 +104,7 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
   );
 }
 
-export function EmptyState({ onRefresh }: { onRefresh?: () => void }) {
+export function EmptyState({ onRefresh, refreshing = false }: { onRefresh?: () => void; refreshing?: boolean }) {
   return (
     <Frame>
       <Glyph tone={tokens.accent}>
@@ -118,11 +118,21 @@ export function EmptyState({ onRefresh }: { onRefresh?: () => void }) {
         </p>
       </div>
       {onRefresh ? (
-        <button type="button" className="cos-refresh" onClick={onRefresh} style={retryButtonStyle}>
-          <span aria-hidden="true" className="cos-caret" style={{ display: "inline-flex" }}>
-            <RefreshIcon size={14} />
-          </span>
-          Derive now
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={refreshing}
+          aria-label={refreshing ? "Deriving the board" : "Derive the board now"}
+          style={{ ...retryButtonStyle, opacity: refreshing ? 0.7 : 1, cursor: refreshing ? "default" : "pointer" }}
+        >
+          {refreshing ? (
+            <LocalSpinner />
+          ) : (
+            <span aria-hidden="true" style={{ display: "inline-flex" }}>
+              <RefreshIcon size={14} />
+            </span>
+          )}
+          {refreshing ? "Deriving…" : "Derive now"}
         </button>
       ) : null}
     </Frame>

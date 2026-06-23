@@ -12,7 +12,7 @@ import type { ReactElement } from "react";
 import { CompanyOsBoardView } from "../../../src/ui/board/CompanyOsBoardView.js";
 import { EmptyState, ErrorState, LoadingState } from "../../../src/ui/board/states.js";
 import type { BoardStateV1 } from "../../../src/contracts/index.js";
-import { goldenBoard, emptyBoard, staleBoard, RENDER_NOW } from "../fixtures/board.js";
+import { goldenBoard, staleBoard, zeroChipBoard, RENDER_NOW } from "../fixtures/board.js";
 import { NOW } from "../../fixtures/signals.js";
 
 const noop = () => {};
@@ -69,6 +69,7 @@ export function harnessDocs(): HarnessDoc[] {
     { name: "populated-desktop", width: 1180, html: document("Board · populated", renderToStaticMarkup(board(goldenBoard(), RENDER_NOW, false)), 1180) },
     { name: "populated-mobile", width: 390, html: document("Board · populated · mobile", renderToStaticMarkup(board(goldenBoard(), RENDER_NOW, true)), 390) },
     { name: "stale", width: 1180, html: document("Board · stale", renderToStaticMarkup(board(staleBoard(), NOW, false)), 1180) },
+    { name: "zero-count", width: 1180, html: document("Board · zero-count rows", renderToStaticMarkup(board(zeroChipBoard(), RENDER_NOW, false)), 1180) },
     { name: "empty", width: 1180, html: document("Board · empty", renderToStaticMarkup(<EmptyState onRefresh={noop} />), 720) },
     { name: "loading", width: 1180, html: document("Board · loading", renderToStaticMarkup(<LoadingState />), 720) },
     { name: "error", width: 1180, html: document("Board · error", renderToStaticMarkup(<ErrorState message="The plugin worker did not respond." onRetry={noop} />), 720) },

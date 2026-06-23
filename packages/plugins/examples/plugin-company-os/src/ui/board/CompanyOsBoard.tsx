@@ -1,15 +1,21 @@
 /**
  * `CompanyOsBoard` — the data-connected Kanban. It owns exactly the state the
- * pure view cannot: the live `useBoard` fetch, per-lane collapse, and the manual
- * refresh action. Everything visual is delegated to `CompanyOsBoardView`. The
- * loading / error / empty / cold states are explicit so the board never crashes
- * on a missing or malformed snapshot.
+ * pure view cannot: the live `useBoard` fetch, a ticking `now`, per-lane collapse,
+ * and the manual refresh action. Everything visual is delegated to
+ * `CompanyOsBoardView`.
+ *
+ * Collapse model: a lane's collapsed state is its registry default UNLESS the
+ * operator has explicitly toggled it (`userCollapsed`). Defaults are recomputed
+ * from every new snapshot, so a lane that gains chips auto-expands and one that
+ * empties auto-collapses — but a user toggle always wins. The override map resets
+ * when the active company changes, so one company's toggles never leak to another.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePluginAction } from "@paperclipai/plugin-sdk/ui";
 import { useBoard } from "../hooks/useBoard.js";
 import { useIsMobile } from "../hooks/useMediaQuery.js";
+import { useNow } from "../hooks/useNow.js";
 import { CompanyOsBoardView } from "./CompanyOsBoardView.js";
 import { EmptyState, ErrorState, LoadingState } from "./states.js";
 import { defaultCollapsedLaneIds, isBoardEmpty } from "./view-model.js";
@@ -17,76 +23,80 @@ import type { BoardStateV1 } from "../../contracts/index.js";
 
 export function CompanyOsBoard({ companyId }: { companyId: string | null }) {
   const isMobile = useIsMobile();
+  const now = useNow();
   const { board, loading, error, refresh } = useBoard(companyId);
 
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
-  const seenLanes = useRef<Set<string>>(new Set());
-
-  // Seed default-collapsed lanes the first time each lane id appears; never
-  // re-seed a lane the operator has since toggled (first-seen-only).
+  // Explicit per-lane overrides (laneId → collapsed). Absent ⇒ use the snapshot default.
+  const [userCollapsed, setUserCollapsed] = useState<ReadonlyMap<string, boolean>>(() => new Map());
+  // Reset overrides when the active company changes — toggles must not leak across companies.
   useEffect(() => {
-    if (!board) return;
-    const defaults = new Set(defaultCollapsedLaneIds(board));
-    const laneIds = laneIdsOf(board);
-    const unseen = laneIds.filter((id) => !seenLanes.current.has(id));
-    if (unseen.length === 0) return;
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      for (const id of unseen) {
-        if (defaults.has(id)) next.add(id);
-        seenLanes.current.add(id);
-      }
-      return next;
-    });
-  }, [board]);
+    setUserCollapsed(new Map());
+  }, [companyId]);
 
-  const toggleLane = useCallback((laneId: string) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(laneId)) next.delete(laneId);
-      else next.add(laneId);
-      return next;
-    });
-  }, []);
+  const collapsedLanes = useMemo<ReadonlySet<string>>(() => {
+    const set = new Set<string>();
+    if (!board) return set;
+    const defaults = new Set(defaultCollapsedLaneIds(board));
+    for (const id of laneIdsOf(board)) {
+      const override = userCollapsed.get(id);
+      if (override ?? defaults.has(id)) set.add(id);
+    }
+    return set;
+  }, [board, userCollapsed]);
+
+  const toggleLane = useCallback(
+    (laneId: string) => {
+      setUserCollapsed((prev) => {
+        const defaults = board ? new Set(defaultCollapsedLaneIds(board)) : new Set<string>();
+        const current = prev.has(laneId) ? prev.get(laneId)! : defaults.has(laneId);
+        const next = new Map(prev);
+        next.set(laneId, !current);
+        return next;
+      });
+    },
+    [board],
+  );
 
   const setAllCollapsed = useCallback(
     (value: boolean) => {
       if (!board) return;
-      setCollapsed(value ? new Set(laneIdsOf(board)) : new Set());
+      setUserCollapsed(new Map(laneIdsOf(board).map((id) => [id, value] as const)));
     },
     [board],
   );
 
   const refreshAction = usePluginAction("refresh-board");
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const handleRefresh = useCallback(() => {
     if (!companyId || refreshing) return;
     setRefreshing(true);
+    setRefreshError(null);
     void refreshAction({ companyId })
-      .catch(() => {
-        /* surfaced on the next read; the board stays put */
+      .then(() => refresh()) // re-read only after a successful derive
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : "Refresh failed — the worker did not complete a derive.";
+        setRefreshError(message);
       })
-      .finally(() => {
-        setRefreshing(false);
-        refresh();
-      });
+      .finally(() => setRefreshing(false));
   }, [companyId, refreshAction, refresh, refreshing]);
 
   if (loading && !board) return <LoadingState />;
   if (error && !board) return <ErrorState message={error.message} onRetry={refresh} />;
-  if (!board) return <EmptyState onRefresh={companyId ? handleRefresh : undefined} />;
-  if (isBoardEmpty(board)) return <EmptyState onRefresh={companyId ? handleRefresh : undefined} />;
+  if (!board) return <EmptyState onRefresh={companyId ? handleRefresh : undefined} refreshing={refreshing} />;
+  if (isBoardEmpty(board)) return <EmptyState onRefresh={companyId ? handleRefresh : undefined} refreshing={refreshing} />;
 
   return (
     <CompanyOsBoardView
       state={board}
-      now={Date.now()}
+      now={now}
       isMobile={isMobile}
-      collapsedLanes={collapsed}
+      collapsedLanes={collapsedLanes}
       onToggleLane={toggleLane}
       onSetAllCollapsed={setAllCollapsed}
       onRefresh={companyId ? handleRefresh : undefined}
       refreshing={refreshing}
+      refreshError={refreshError}
     />
   );
 }

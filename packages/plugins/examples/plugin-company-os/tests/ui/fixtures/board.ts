@@ -30,6 +30,8 @@ const WORK = [
   work("MTP-03", "in_progress", "branch_path", { repo: "juice-bar", title: "Movement-aware coaching insights" }),
   work("MTP-04", "shipped", "commit_scope", { repo: "juice-bar", sha: "ship-m4", title: "Rep MTP score serve path" }),
   work("MTP-07", "next_up", "spec_frontmatter", { repo: "juice-bar", title: "White Rabbit's Tip feedback loop" }),
+  // SSF appears in juice-bar (home, processed first) AND arc-scraper → SSF-02 gets a cross-repo badge.
+  work("SSF-05", "in_progress", "branch_path", { repo: "juice-bar", title: "Awards cohesion spine" }),
   work("SSF-02", "shipped", "commit_scope", { repo: "arc-scraper", sha: "ship-s2", title: "Scrape-completion event spine" }),
   // JB:Reports lane — an In-review chip with NO matching review → unknown.
   work("RE-22", "in_review", "pr_scope", { repo: "juice-bar", sha: "head2", prNumber: 9, url: "https://github.com/lycaon/juice-bar/pull/9", title: "TAP flagship overview + REJ classification" }),
@@ -80,14 +82,24 @@ export function staleBoard(): BoardStateV1 {
   return goldenBoard(NOW - 10 * 60 * 1000);
 }
 
-/** An empty board: registered taxonomy (rows exist) but zero chips + zero unclassified. */
-export function emptyBoard(deriveAtMs: number = NOW): BoardStateV1 {
+/**
+ * A board with registered taxonomy (lanes + 0-count rows) but zero chips and
+ * zero unclassified. This is NOT "empty" — it renders its lanes with 0-count
+ * rows (show the 0, don't hide the state). Used to prove the board renders that.
+ */
+export function zeroChipBoard(deriveAtMs: number = NOW): BoardStateV1 {
   const batch: SignalBatch = {
     source: "git-work",
     collectedAt: deriveAtMs,
     signals: [...TAXA],
     repoFreshness: [liveFreshness("juice-bar"), liveFreshness("company")],
   };
+  return deriveBoardState({ collectedAt: deriveAtMs, batches: [batch] }, deriveAtMs);
+}
+
+/** A genuinely barren board: no taxonomy, no chips, no unclassified — the true empty state. */
+export function barrenBoard(deriveAtMs: number = NOW): BoardStateV1 {
+  const batch: SignalBatch = { source: "git-work", collectedAt: deriveAtMs, signals: [], repoFreshness: [liveFreshness("juice-bar")] };
   return deriveBoardState({ collectedAt: deriveAtMs, batches: [batch] }, deriveAtMs);
 }
 

@@ -10,7 +10,7 @@ import {
   staleSources,
 } from "../../src/ui/board/view-model.js";
 import { NOW } from "../fixtures/signals.js";
-import { emptyBoard, goldenBoard, staleBoard } from "./fixtures/board.js";
+import { barrenBoard, goldenBoard, staleBoard, zeroChipBoard } from "./fixtures/board.js";
 
 describe("board view-model", () => {
   it("buckets chips into lane → row → column and keeps zero-count rows", () => {
@@ -35,9 +35,14 @@ describe("board view-model", () => {
     expect(view.lanes.every((l) => !l.lane.isOps)).toBe(true);
   });
 
-  it("isBoardEmpty is false for a populated board, true for a chips-and-unclassified-free board", () => {
+  it("isBoardEmpty: false for populated, false for taxonomy-with-0-chips (show the 0), true only when barren", () => {
     expect(isBoardEmpty(goldenBoard())).toBe(false);
-    expect(isBoardEmpty(emptyBoard())).toBe(true);
+    // A board with registered lanes but no chips is NOT empty — it shows 0-count rows.
+    expect(zeroChipBoard().chips.length).toBe(0);
+    expect(zeroChipBoard().lanes.length).toBeGreaterThan(0);
+    expect(isBoardEmpty(zeroChipBoard())).toBe(false);
+    // Only a board with no taxonomy AND no unclassified is truly empty.
+    expect(isBoardEmpty(barrenBoard())).toBe(true);
   });
 
   it("isBoardStale flips at the 5-minute threshold", () => {
@@ -68,7 +73,7 @@ describe("board view-model", () => {
   });
 
   it("defaultCollapsedLaneIds collapses empty lanes (and never lanes with chips)", () => {
-    const empty = defaultCollapsedLaneIds(emptyBoard());
+    const empty = defaultCollapsedLaneIds(zeroChipBoard());
     // Every empty-board lane has zero chips → all collapsed by default.
     expect(empty.length).toBeGreaterThan(0);
     const populated = defaultCollapsedLaneIds(goldenBoard());

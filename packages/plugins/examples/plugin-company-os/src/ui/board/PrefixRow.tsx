@@ -20,20 +20,19 @@ export function rowGridTemplate(columnCount: number): string {
 export function PrefixRow({
   view,
   columns,
-  laneHomeRepo,
   isMobile,
   now,
 }: {
   view: RowView;
   columns: ColumnId[];
-  laneHomeRepo: string | null;
   isMobile: boolean;
   now: number;
 }) {
+  const homeRepo = view.homeRepo;
   if (isMobile) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 0", borderTop: `1px solid ${tokens.border}` }}>
-        <RowLabel view={view} laneHomeRepo={laneHomeRepo} />
+        <RowLabel view={view} />
         {view.cells.map((cell) => (
           <div key={cell.column} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: tokens.muted, textTransform: "uppercase", letterSpacing: 0.4 }}>
@@ -43,7 +42,7 @@ export function PrefixRow({
               <EmptyCell />
             ) : (
               cell.chips.map((chip, i) => (
-                <Chip key={chip.id} chip={chip} laneHomeRepo={laneHomeRepo} now={now} index={i} />
+                <Chip key={chip.id} chip={chip} laneHomeRepo={homeRepo} now={now} index={i} />
               ))
             )}
           </div>
@@ -63,14 +62,14 @@ export function PrefixRow({
         alignItems: "start",
       }}
     >
-      <RowLabel view={view} laneHomeRepo={laneHomeRepo} />
+      <RowLabel view={view} />
       {view.cells.map((cell) => (
         <div key={cell.column} style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
           {cell.chips.length === 0 ? (
             <EmptyCell />
           ) : (
             cell.chips.map((chip, i) => (
-              <Chip key={chip.id} chip={chip} laneHomeRepo={laneHomeRepo} now={now} index={i} />
+              <Chip key={chip.id} chip={chip} laneHomeRepo={homeRepo} now={now} index={i} />
             ))
           )}
         </div>
@@ -79,9 +78,9 @@ export function PrefixRow({
   );
 }
 
-function RowLabel({ view, laneHomeRepo }: { view: RowView; laneHomeRepo: string | null }) {
-  const { row, total } = view;
-  const crossRepos = row.repos.filter((r) => r !== laneHomeRepo);
+function RowLabel({ view }: { view: RowView }) {
+  const { row, total, homeRepo } = view;
+  const crossRepos = row.repos.filter((r) => r !== homeRepo);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 3, paddingRight: 8, minWidth: 0 }}>
       <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>

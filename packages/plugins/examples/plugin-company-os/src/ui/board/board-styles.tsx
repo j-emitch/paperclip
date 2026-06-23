@@ -87,7 +87,11 @@ const CSS = `
 }
 `;
 
-/** Single `<style>` tag, rendered once at the board root. Idempotent by id. */
+/**
+ * The board's `<style>` tag. The cockpit page mounts exactly one board, so this
+ * renders once; the stable `id` lets you spot it (and would let a future shared
+ * mount dedupe on it). The CSS is a local trusted constant — never user input.
+ */
 export function BoardStyles() {
   return <style id={BOARD_STYLE_ID} dangerouslySetInnerHTML={{ __html: CSS }} />;
 }
