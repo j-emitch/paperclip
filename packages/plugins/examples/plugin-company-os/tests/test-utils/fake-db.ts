@@ -1,0 +1,139 @@
+/**
+ * A faithful in-memory `DbClient` for the cache tests. It models the LOCK CAS
+ * semantics (the acquire UPDATE's WHERE clause, by reading the owner/expiry/now
+ * params) and the snapshot + source-version tables, by recognizing the cache
+ * layer's own stable SQL. This tests the cache contract (right SQL, right params,
+ * right rowCount handling) without a real Postgres; the live migration + SQL
+ * semantics are verified at install time.
+ *
+ * Lives under test-utils/ (a sanctioned test path) because the generic
+ * `DbClient.query<T>` requires one localized typed cast to satisfy the SDK
+ * interface — the allowed test-only pattern, never used in production code.
+ */
+
+import { COS_DB_NAMESPACE } from "../../src/db/namespace.js";
+import type { DbClient } from "../../src/db/cache.js";
+
+interface BoardRow {
+  lockOwner: string | null;
+  lockUntil: number | null; // epoch ms
+  snapshot: unknown;
+  schemaVersion: number;
+}
+interface SnapRow {
+  snapshot: unknown;
+  schemaVersion: number;
+}
+
+export class FakeDb implements DbClient {
+  readonly namespace: string;
+  board = new Map<string, BoardRow>();
+  artifact = new Map<string, SnapRow>();
+  routine = new Map<string, SnapRow>();
+  sourceVersions = new Map<string, { source: string; repo: string; signals: unknown; freshness: string; lastOkAt: string | null }>();
+  runs: Array<Record<string, unknown>> = [];
+
+  constructor(namespace: string = COS_DB_NAMESPACE) {
+    this.namespace = namespace;
+  }
+
+  async execute(sql: string, params: unknown[] = []): Promise<{ rowCount: number }> {
+    const s = sql.replace(/\s+/g, " ");
+
+    if (s.includes("INSERT INTO") && s.includes("cos_board_state (company_id) VALUES")) {
+      const id = String(params[0]);
+      if (!this.board.has(id)) {
+        this.board.set(id, { lockOwner: null, lockUntil: null, snapshot: null, schemaVersion: 1 });
+        return { rowCount: 1 };
+      }
+      return { rowCount: 0 };
+    }
+
+    // Acquire CAS.
+    if (s.includes("cos_board_state") && s.includes("SET lock_owner = $2, lock_until = to_timestamp")) {
+      const id = String(params[0]);
+      const owner = String(params[1]);
+      const expiryMs = Number(params[2]);
+      const nowMs = Number(params[3]);
+      const row = this.board.get(id);
+      if (!row) return { rowCount: 0 };
+      const free = row.lockUntil === null || row.lockUntil < nowMs;
+      if (!free) return { rowCount: 0 };
+      row.lockOwner = owner;
+      row.lockUntil = expiryMs;
+      return { rowCount: 1 };
+    }
+
+    // Release.
+    if (s.includes("cos_board_state") && s.includes("SET lock_owner = NULL")) {
+      const id = String(params[0]);
+      const owner = String(params[1]);
+      const row = this.board.get(id);
+      if (row && row.lockOwner === owner) {
+        row.lockOwner = null;
+        row.lockUntil = null;
+        return { rowCount: 1 };
+      }
+      return { rowCount: 0 };
+    }
+
+    // Board snapshot write.
+    if (s.includes("cos_board_state") && s.includes("SET snapshot = $2::jsonb")) {
+      const row = this.board.get(String(params[0]));
+      if (!row) return { rowCount: 0 };
+      row.snapshot = JSON.parse(String(params[1]));
+      row.schemaVersion = Number(params[2]);
+      return { rowCount: 1 };
+    }
+
+    if (s.includes("INSERT INTO") && s.includes("cos_artifact_index")) {
+      this.artifact.set(String(params[0]), { snapshot: JSON.parse(String(params[1])), schemaVersion: Number(params[2]) });
+      return { rowCount: 1 };
+    }
+    if (s.includes("INSERT INTO") && s.includes("cos_routine_health")) {
+      this.routine.set(String(params[0]), { snapshot: JSON.parse(String(params[1])), schemaVersion: Number(params[2]) });
+      return { rowCount: 1 };
+    }
+    if (s.includes("INSERT INTO") && s.includes("cos_source_versions")) {
+      const key = `${params[0]}|${params[1]}|${params[2]}`;
+      this.sourceVersions.set(key, {
+        source: String(params[1]),
+        repo: String(params[2]),
+        signals: JSON.parse(String(params[3])),
+        freshness: String(params[4]),
+        lastOkAt: params[5] === null ? null : String(params[5]),
+      });
+      return { rowCount: 1 };
+    }
+    if (s.includes("INSERT INTO") && s.includes("cos_collection_runs")) {
+      this.runs.push({ companyId: params[0], trigger: params[1], scopeRepo: params[2], ok: params[3], error: params[5] });
+      return { rowCount: 1 };
+    }
+    throw new Error(`FakeDb.execute: unrecognized SQL: ${s.slice(0, 80)}`);
+  }
+
+  async query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
+    const s = sql.replace(/\s+/g, " ");
+    const id = String(params[0]);
+    const rows = this.rowsFor(s, id);
+    return rows as T[];
+  }
+
+  private rowsFor(s: string, id: string): Record<string, unknown>[] {
+    const snap = (row: SnapRow | BoardRow | undefined): Record<string, unknown>[] =>
+      row ? [{ snapshot: row.snapshot, schema_version: row.schemaVersion }] : [];
+    if (s.includes("FROM") && s.includes("cos_board_state")) return snap(this.board.get(id));
+    if (s.includes("FROM") && s.includes("cos_artifact_index")) return snap(this.artifact.get(id));
+    if (s.includes("FROM") && s.includes("cos_routine_health")) return snap(this.routine.get(id));
+    if (s.includes("FROM") && s.includes("cos_source_versions")) {
+      return [...this.sourceVersions.values()].map((v) => ({
+        source: v.source,
+        repo: v.repo,
+        signals: v.signals,
+        freshness: v.freshness,
+        last_ok_at: v.lastOkAt,
+      }));
+    }
+    throw new Error(`FakeDb.query: unrecognized SQL: ${s.slice(0, 80)}`);
+  }
+}
