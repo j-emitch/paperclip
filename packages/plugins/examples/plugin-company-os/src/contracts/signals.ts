@@ -14,6 +14,8 @@
 
 import type {
   ArtifactType,
+  ReviewReportKind,
+  ReviewVerdict,
   SignalConfidence,
   SignalErrorCode,
   SignalFreshness,
@@ -77,6 +79,13 @@ export interface WorkSignal extends SignalProvenance {
   readonly url?: string;
   /** Set when `ticketId` is null — why this work couldn't be classified. */
   readonly unclassifiedReason?: UnclassifiedReason;
+  /**
+   * True for a `state: "shipped"` signal that is actually a REVERT of a prior
+   * ship (a `Revert "<scoped subject>"` commit). The projection uses this to
+   * un-ship the ticket rather than place a shipped chip (spec §6 Shipped
+   * extraction: "reverts (un-ship)"). Only meaningful when `state === "shipped"`.
+   */
+  readonly reverted?: boolean;
 }
 
 /** A workspace artifact (spec / handoff / cannons / routine output / teaching / knowledge). */
@@ -125,11 +134,38 @@ export interface TaxonomySignal extends SignalProvenance {
   readonly isGeneric: boolean;
 }
 
+/**
+ * An on-disk review report (cannons / review) parsed from its frontmatter. NOT a
+ * board column of its own — the projection JOINS these onto In-review work
+ * chips by `{repo, sha (full), prNumber?, reportKind, generatedAt}` to resolve
+ * `ChipReviewState`. These reports are gitignored + machine-local, so their
+ * ABSENCE is meaningful: no `ReviewSignal` for a PR ⇒ `unknown` (not
+ * "unreviewed"). The same report ALSO surfaces in the docs/reports viewer as an
+ * `ArtifactSignal` (`artifactType: "cannons"`) — that is `ArtifactSource`'s job,
+ * not this signal's, so the two concerns stay decoupled (spec §6 In-review key).
+ */
+export interface ReviewSignal extends SignalProvenance {
+  readonly kind: "review";
+  /** Which report store this came from (the `report_kind` half of the join key). */
+  readonly reportKind: ReviewReportKind;
+  /** Parsed verdict; `unknown` when a report exists but its verdict is unparseable. */
+  readonly verdict: ReviewVerdict;
+  /** ISO-8601 report generation time (frontmatter `run_at`/`generated_at`) — the join's tiebreak. */
+  readonly generatedAt: string;
+  /** Issue counts when the report records them (cannons p0/p1/p2). */
+  readonly p0?: number;
+  readonly p1?: number;
+  readonly p2?: number;
+  /** Branch the report was generated against (frontmatter), when present. */
+  readonly branch?: string;
+}
+
 /** The discriminated union of everything a source can emit. */
-export type Signal = WorkSignal | ArtifactSignal | RoutineSignal | TaxonomySignal;
+export type Signal = WorkSignal | ArtifactSignal | RoutineSignal | TaxonomySignal | ReviewSignal;
 
 /** Narrowing helpers — keep the `kind` discriminant the single branch point. */
 export const isWorkSignal = (s: Signal): s is WorkSignal => s.kind === "work";
 export const isArtifactSignal = (s: Signal): s is ArtifactSignal => s.kind === "artifact";
 export const isRoutineSignal = (s: Signal): s is RoutineSignal => s.kind === "routine";
 export const isTaxonomySignal = (s: Signal): s is TaxonomySignal => s.kind === "taxonomy";
+export const isReviewSignal = (s: Signal): s is ReviewSignal => s.kind === "review";

@@ -16,6 +16,7 @@ export * from "./vocab.js";
 // Layer 1 — signals + shared diagnostics primitives
 export * from "./signals.js";
 export * from "./diagnostics.js";
+export * from "./registry.js";
 
 // Layer 1 — the collection seam (sources collect against this) + the source interface
 export * from "./collection-context.js";

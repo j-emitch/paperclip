@@ -15,6 +15,7 @@
  * them, and the COS-0c adapter implements them — three consumers, one shape.
  */
 
+import type { RegistryLoader } from "./registry.js";
 import type { SignalError } from "./signals.js";
 import type { SignalFreshness } from "./vocab.js";
 
@@ -105,6 +106,14 @@ export interface SignalLogger {
   error(message: string, meta?: Readonly<Record<string, unknown>>): void;
 }
 
+/**
+ * Deterministic content hash (hex) used for artifact change-detection. Declared
+ * on the context so a source never imports `node:crypto`: the COS-0c adapter
+ * wires this to a real SHA-256 hex digest; fixture tests pass a deterministic
+ * stub. The hash is opaque to consumers — only equality matters.
+ */
+export type ContentHasher = (input: string) => string;
+
 /** The context handed to every `WorkSignalSource.collect`. */
 export interface CollectionContext {
   /** All resolved repo roots (available or not). Sources skip unavailable repos with a stale signal. */
@@ -116,6 +125,10 @@ export interface CollectionContext {
   readonly fs: WorkspaceReader;
   readonly clock: Clock;
   readonly logger: SignalLogger;
+  /** The canonical prefix-registry loader (single source of truth — see registry.ts). */
+  readonly registry: RegistryLoader;
+  /** SHA-256 hex of artifact content (keeps sources free of `node:crypto`). */
+  readonly hash: ContentHasher;
   /** Hard-timeout cancellation (spec §6: 60s hard timeout on the full derive). */
   readonly signal?: AbortSignal;
 }

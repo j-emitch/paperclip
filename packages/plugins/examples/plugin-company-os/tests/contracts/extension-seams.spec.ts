@@ -48,6 +48,8 @@ function fakeContext(overrides: Partial<CollectionContext> = {}): CollectionCont
     },
     clock: fixedClock,
     logger: { debug() {}, info() {}, warn() {}, error() {} },
+    registry: { load: async () => ({ entries: [], errors: [] }) },
+    hash: (input: string) => `stub:${input.length}`,
     ...overrides,
   };
 }

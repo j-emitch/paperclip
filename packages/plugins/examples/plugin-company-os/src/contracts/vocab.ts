@@ -83,6 +83,23 @@ export type UnclassifiedReason = (typeof UNCLASSIFIED_REASONS)[number];
 export const CHIP_REVIEW_STATES = ["reviewed", "unknown", "none"] as const;
 export type ChipReviewState = (typeof CHIP_REVIEW_STATES)[number];
 
+/**
+ * Which on-disk review-report family a `ReviewSignal` came from — the cockpit's
+ * two gitignored report stores (`reports/review-cannons/**` and
+ * `reports/reviews/**`). Part of the In-review join key `{repo, full_sha,
+ * pr_number?, report_kind, generated_at}` (spec §6).
+ */
+export const REVIEW_REPORT_KINDS = ["cannons", "review"] as const;
+export type ReviewReportKind = (typeof REVIEW_REPORT_KINDS)[number];
+
+/**
+ * Parsed verdict from a review report's frontmatter. `unknown` = a report exists
+ * but its verdict could not be parsed (NOT "no report" — that is the absence of
+ * any `ReviewSignal`, which the projection renders as `ChipReviewState.unknown`).
+ */
+export const REVIEW_VERDICTS = ["ship", "proceed", "revise", "block", "unknown"] as const;
+export type ReviewVerdict = (typeof REVIEW_VERDICTS)[number];
+
 // ---------------------------------------------------------------------------
 // Artifact + routine vocabularies
 // ---------------------------------------------------------------------------
