@@ -311,11 +311,28 @@ function getShimBlobUrl(specifier: "react" | "react-dom" | "react-dom/client" | 
       source = createReactShimSource(ReactModule);
       break;
     case "react/jsx-runtime":
+      // `jsxs` denotes STATIC children (the compiler guarantees a fixed child list,
+      // so no per-child keys are required). Passing that array through
+      // `createElement(type, { children: [...] })` makes React's dev reconciler
+      // key-check it and emit a false "unique key prop" warning for every
+      // multi-child element in every plugin. Spreading the static children as
+      // variadic createElement args restores React's own jsxs semantics (no false
+      // warning) while any genuine dynamic `.map()` array nested among them stays a
+      // nested array and is still key-validated. `jsx` (single/dynamic child) keeps
+      // the children-in-props form so real keyless lists are still flagged.
       source = `
         const R = globalThis.__paperclipPluginBridge__?.react;
         const withKey = ${applyJsxRuntimeKey.toString()};
+        const jsxsStatic = (type, props, key) => {
+          const merged = withKey(props, key);
+          if (merged && Array.isArray(merged.children)) {
+            const { children, ...rest } = merged;
+            return R.createElement(type, rest, ...children);
+          }
+          return R.createElement(type, merged);
+        };
         export const jsx = (type, props, key) => R.createElement(type, withKey(props, key));
-        export const jsxs = (type, props, key) => R.createElement(type, withKey(props, key));
+        export const jsxs = (type, props, key) => jsxsStatic(type, props, key);
         export const Fragment = R.Fragment;
       `;
       break;
