@@ -18,12 +18,17 @@
 import type { SignalError } from "./signals.js";
 import type { SignalFreshness } from "./vocab.js";
 
-/** A resolved product-repo root the collectors read (read-only). */
+/**
+ * A resolved product-repo root, as the SOURCES see it. Deliberately path-free:
+ * the runners + reader operate by repo KEY (`run(repo, …)`), so the absolute
+ * filesystem path (operator-configured via instanceConfigSchema.repoRoots) lives
+ * only in the COS-0c adapter that constructs them — it is never leaked into a
+ * source. A source needs exactly two things about a repo: its key and whether
+ * it is readable this run.
+ */
 export interface RepoRoot {
   /** Stable repo key used across signals + the board (e.g. "juice-bar"). */
   readonly repo: string;
-  /** Absolute filesystem path (operator-configured via instanceConfigSchema.repoRoots). */
-  readonly absPath: string;
   /**
    * False when the path is missing or not a git repo at derive time — that
    * repo's lanes show a stale badge instead of crashing the derive (spec §5.1).
@@ -120,19 +125,30 @@ export interface CollectionContext {
 // ---------------------------------------------------------------------------
 
 /**
- * The repos a source should actually read this run: all available repos on a
- * full sweep, or just the scoped repo (if available) on a hook fast-path. The
- * scoped-merge in COS-0d folds the untouched repos back from last-good cache.
+ * The repos a source is RESPONSIBLE for this run — INCLUDING unavailable ones.
+ * A full sweep covers every configured repo; a hook fast-path covers just the
+ * scoped repo. A source iterates this set and, for an unavailable repo, emits a
+ * degraded/stale signal (per the `WorkSignalSource` contract) instead of
+ * silently dropping it — that is what keeps an unreadable repo's lane on the
+ * board with a stale badge rather than vanishing.
  */
-export function reposInScope(ctx: CollectionContext): readonly RepoRoot[] {
-  const available = ctx.repos.filter((r) => r.available);
-  if (ctx.scopeRepo === null) return available;
-  return available.filter((r) => r.repo === ctx.scopeRepo);
+export function reposResponsibleFor(ctx: CollectionContext): readonly RepoRoot[] {
+  if (ctx.scopeRepo === null) return ctx.repos;
+  return ctx.repos.filter((r) => r.repo === ctx.scopeRepo);
 }
 
-/** True when `repo` is in scope for this collect (available AND matches any scope filter). */
+/**
+ * The subset of responsible repos that are actually READABLE (available) — what
+ * a source iterates to do real git/gh/fs reads. The scoped-merge in COS-0d folds
+ * the untouched repos back from last-good cache.
+ */
+export function reposReadableInScope(ctx: CollectionContext): readonly RepoRoot[] {
+  return reposResponsibleFor(ctx).filter((r) => r.available);
+}
+
+/** True when `repo` is responsible-for AND readable this run. */
 export function repoInScope(ctx: CollectionContext, repo: string): boolean {
-  return reposInScope(ctx).some((r) => r.repo === repo);
+  return reposReadableInScope(ctx).some((r) => r.repo === repo);
 }
 
 /** Look up a configured repo root by key (available or not), or null. */

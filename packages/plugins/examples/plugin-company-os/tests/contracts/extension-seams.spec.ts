@@ -20,6 +20,8 @@ import {
   type TeachingSignalSource,
   type WorkSignal,
   type WorkSignalSource,
+  reposResponsibleFor,
+  reposReadableInScope,
 } from "../../src/contracts/index.js";
 
 // ---------------------------------------------------------------------------
@@ -30,9 +32,7 @@ import {
 const fixedClock: Clock = { now: () => 1_700_000_000_000 };
 
 function fakeContext(overrides: Partial<CollectionContext> = {}): CollectionContext {
-  const repos: readonly RepoRoot[] = [
-    { repo: "company", absPath: "/repos/company", available: true },
-  ];
+  const repos: readonly RepoRoot[] = [{ repo: "company", available: true }];
   const notUsed = () => {
     throw new Error("runner must not be touched by these dummy sources");
   };
@@ -165,6 +165,37 @@ describe("extension seams", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Collection scope — a source is responsible for unavailable repos (to emit a
+// stale signal) but only READS the available ones
+// ---------------------------------------------------------------------------
+
+describe("collection scope (responsible vs readable)", () => {
+  it("is RESPONSIBLE for an unavailable scoped repo (can emit a stale signal) but does NOT read it", () => {
+    const ctx = fakeContext({
+      scopeRepo: "arc-scraper",
+      repos: [
+        { repo: "company", available: true },
+        { repo: "arc-scraper", available: false },
+      ],
+    });
+    expect(reposResponsibleFor(ctx).map((r) => r.repo)).toEqual(["arc-scraper"]);
+    expect(reposReadableInScope(ctx).map((r) => r.repo)).toEqual([]);
+  });
+
+  it("a full sweep is responsible for every configured repo; readable = the available subset", () => {
+    const ctx = fakeContext({
+      scopeRepo: null,
+      repos: [
+        { repo: "company", available: true },
+        { repo: "arc-scraper", available: false },
+      ],
+    });
+    expect(reposResponsibleFor(ctx).map((r) => r.repo)).toEqual(["company", "arc-scraper"]);
+    expect(reposReadableInScope(ctx).map((r) => r.repo)).toEqual(["company"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Vocab single-source — every zod enum is built FROM the canonical tuple
 // ---------------------------------------------------------------------------
 
@@ -209,6 +240,25 @@ describe("projection contracts validate", () => {
 
   it("a wrong schemaVersion is rejected (forces a re-derive on read)", () => {
     expect(boardStateV1Schema.safeParse({ ...minimalBoard, schemaVersion: 2 }).success).toBe(false);
+  });
+
+  it("reordered or duplicated columns are rejected (superRefine, not just the enum)", () => {
+    const reordered = { ...minimalBoard, columns: ["shipped", "next_up", "in_progress", "in_review"] };
+    expect(safeParseBoardStateV1(reordered).success).toBe(false);
+    const duplicated = { ...minimalBoard, columns: ["next_up", "next_up", "in_review", "shipped"] };
+    expect(safeParseBoardStateV1(duplicated).success).toBe(false);
+  });
+
+  it("a typo'd countsByType key is rejected (key constrained to artifact types)", () => {
+    const bad = {
+      schemaVersion: 1,
+      derivedAt: "2026-06-23T00:00:00.000Z",
+      entries: [],
+      countsByType: { spec: 1, typo: 2 },
+      sources: [],
+      diagnostics: [],
+    };
+    expect(() => parseArtifactIndexV1(bad)).toThrow();
   });
 
   it("minimal ArtifactIndexV1 + RoutineHealthV1 round-trip", () => {

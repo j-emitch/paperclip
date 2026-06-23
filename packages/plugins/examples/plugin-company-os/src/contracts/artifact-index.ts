@@ -42,8 +42,12 @@ export const artifactIndexV1Schema = z.object({
   schemaVersion: z.literal(ARTIFACT_INDEX_SCHEMA_VERSION),
   derivedAt: z.string().min(1),
   entries: z.array(artifactEntrySchema),
-  /** Per-type counts for the Reports filter chips (e.g. { spec: 42, cannons: 34 }). */
-  countsByType: z.record(z.string(), z.number().int().nonnegative()),
+  /**
+   * Per-type counts for the Reports filter chips (e.g. { spec: 42, cannons: 34 }).
+   * Keys are constrained to the artifact-type vocabulary (a typo'd key is
+   * rejected); the map is sparse — zero-count types may be omitted.
+   */
+  countsByType: z.record(artifactTypeSchema, z.number().int().nonnegative()),
   sources: z.array(sourceFreshnessSchema),
   diagnostics: z.array(diagnosticSchema),
 });

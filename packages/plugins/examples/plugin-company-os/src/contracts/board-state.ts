@@ -119,20 +119,37 @@ export type UnclassifiedChip = z.infer<typeof unclassifiedChipSchema>;
 // The persisted contract
 // ---------------------------------------------------------------------------
 
-export const boardStateV1Schema = z.object({
-  schemaVersion: z.literal(BOARD_STATE_SCHEMA_VERSION),
-  /** ISO-8601 derive timestamp. */
-  derivedAt: z.string().min(1),
-  /** Per-(source, repo) freshness — drives the stale badges. */
-  sources: z.array(sourceFreshnessSchema),
-  lanes: z.array(laneSchema),
-  rows: z.array(prefixRowSchema),
-  /** Column order (canonically WORK_STATES); carried so the UI need not import vocab. */
-  columns: z.array(columnIdSchema),
-  chips: z.array(chipSchema),
-  diagnostics: z.array(diagnosticSchema),
-  unclassified: z.array(unclassifiedChipSchema),
-});
+export const boardStateV1Schema = z
+  .object({
+    schemaVersion: z.literal(BOARD_STATE_SCHEMA_VERSION),
+    /** ISO-8601 derive timestamp. */
+    derivedAt: z.string().min(1),
+    /** Per-(source, repo) freshness — drives the stale badges. */
+    sources: z.array(sourceFreshnessSchema),
+    lanes: z.array(laneSchema),
+    rows: z.array(prefixRowSchema),
+    /** Column order (canonically WORK_STATES); carried so the UI need not import vocab. */
+    columns: z.array(columnIdSchema),
+    chips: z.array(chipSchema),
+    diagnostics: z.array(diagnosticSchema),
+    unclassified: z.array(unclassifiedChipSchema),
+  })
+  .superRefine((value, ctx) => {
+    // `columns` is canonical: exactly WORK_STATES, in order. Reject a cache row
+    // with duplicated, missing, or reordered columns (the enum alone would let
+    // any ColumnId[] through).
+    const expected = WORK_STATES;
+    const matches =
+      value.columns.length === expected.length &&
+      value.columns.every((c, i) => c === expected[i]);
+    if (!matches) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["columns"],
+        message: `columns must be exactly [${expected.join(", ")}] in order`,
+      });
+    }
+  });
 export type BoardStateV1 = z.infer<typeof boardStateV1Schema>;
 
 // ---------------------------------------------------------------------------

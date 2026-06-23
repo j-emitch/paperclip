@@ -13,7 +13,7 @@
  */
 
 import type { WorkSignalSource } from "./WorkSignalSource.js";
-import type { ArtifactSignal, SignalProvenance, TaxonomySignal } from "./signals.js";
+import type { ArtifactSignal, TaxonomySignal } from "./signals.js";
 import type { ArtifactType, SignalConfidence } from "./vocab.js";
 
 /**
@@ -88,15 +88,27 @@ export interface TaxonomyResolver {
  * every COS-0 source/projection untouched (the same additive rule as COS-1/2).
  */
 
-/** PWA tier, scaled to (risk × irreversibility). Default is Tier 2 (approval-gated). */
+/** PWA tier — PWA-01 scales it to (risk × irreversibility); the tier model is defined there, not here. */
 export type WriteTier = 0 | 1 | 2;
 
-/** One reversible write a Paperclip agent performed — the unit COS-3's Hygiene tab renders. */
-export interface HygieneActionSignal extends SignalProvenance {
+/**
+ * One write a Paperclip agent performed — the unit COS-3's Hygiene tab renders.
+ *
+ * It carries its OWN minimal provenance, deliberately NOT the read-signal
+ * `SignalProvenance` envelope: a write-audit record has no confidence /
+ * freshness / errors[]. Kept out of the core `Signal` union too, so COS-0's
+ * sources + projections stay untouched (COS-3 adds its own audit source +
+ * projection + tab).
+ */
+export interface HygieneActionSignal {
   readonly kind: "hygiene";
+  /** The COS-3 HygieneAuditSource id that recorded it. */
+  readonly source: string;
+  /** Repo the write touched. */
+  readonly repo: string;
   /** Owning agent (CEO | COO | CTO | Librarian). */
   readonly actor: string;
-  /** The autonomy tier this write ran under. */
+  /** The tier this write ran under (PWA-01 defines the tier model). */
   readonly tier: WriteTier;
   /** Allowlisted write surface, e.g. "backlog-archival" | "context-in-progress" | "spec-section-10". */
   readonly surface: string;
@@ -104,15 +116,17 @@ export interface HygieneActionSignal extends SignalProvenance {
   readonly action: string;
   /** Commit sha / PR url / append-only write-log id; null only for a dry-run preview. */
   readonly evidenceRef: string | null;
-  /** True for git-reversible writes (git mv, PR diff); an irreversible write must be Tier 2. */
+  /** Whether the write is git-reversible (git mv, PR diff) — PWA-01 ties this to its tier model. */
   readonly reversible: boolean;
+  /** ISO-8601 timestamp of the write. */
+  readonly at: string;
 }
 
 /**
  * The per-agent write-authority stanza COS-3 adds to the AGENTS.md `company_os`
  * directive block (sibling to `routines:`). COS-0's RoutineContractSource parser
  * (COS-0c) treats it as an OPTIONAL key, so PWA can land it without a parser
- * change; COS-0 never populates it.
+ * change; COS-0 never populates it and encodes no tier policy.
  */
 export interface WriteAuthority {
   readonly tier: WriteTier;
