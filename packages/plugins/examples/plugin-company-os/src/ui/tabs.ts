@@ -1,0 +1,57 @@
+/**
+ * The cockpit's tab taxonomy — single source of truth consumed by both the
+ * page tab bar and the route sidebar so they cannot drift. Adding the COS-1
+ * Teaching / COS-2 Knowledge surfaces is a one-line change here.
+ */
+export type CompanyOsTabKey = "board" | "reports" | "routines" | "teaching" | "knowledge";
+
+export interface CompanyOsTab {
+  key: CompanyOsTabKey;
+  label: string;
+  description: string;
+  /** The phase that lights this tab up with live data. */
+  liveIn: string;
+  /** Placeholder tabs reserved for COS-1 / COS-2. */
+  placeholder?: boolean;
+}
+
+export const COMPANY_OS_TABS: readonly CompanyOsTab[] = [
+  {
+    key: "board",
+    label: "Board",
+    description: "Auto-updating Kanban across systems x spec-prefix families. Chips move themselves.",
+    liveIn: "COS-0e",
+  },
+  {
+    key: "reports",
+    label: "Reports",
+    description: "Specs, handoffs, and review reports — rendered in place.",
+    liveIn: "COS-0f",
+  },
+  {
+    key: "routines",
+    label: "Routines",
+    description: "CEO / COO / CTO / Librarian routine outputs plus their SLO health.",
+    liveIn: "COS-0f",
+  },
+  {
+    key: "teaching",
+    label: "Teaching",
+    description: "The teaching loop surface — arrives in COS-1.",
+    liveIn: "COS-1",
+    placeholder: true,
+  },
+  {
+    key: "knowledge",
+    label: "Knowledge",
+    description: "Library / classifier / graph convergence — arrives in COS-2.",
+    liveIn: "COS-2",
+    placeholder: true,
+  },
+] as const;
+
+export const DEFAULT_TAB_KEY: CompanyOsTabKey = "board";
+
+export function isCompanyOsTabKey(value: string): value is CompanyOsTabKey {
+  return COMPANY_OS_TABS.some((tab) => tab.key === value);
+}

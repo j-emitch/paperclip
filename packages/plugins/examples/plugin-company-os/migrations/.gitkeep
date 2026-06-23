@@ -1,0 +1,4 @@
+# The company_os DB namespace (plugin_company_os_cc959257d2) is created on
+# install even with no migrations present. The real schema lands in COS-0d as
+# 001_company_os.sql. This .gitkeep keeps the migrationsDir present so the host
+# migration scanner (readdir) does not throw on an absent directory.
