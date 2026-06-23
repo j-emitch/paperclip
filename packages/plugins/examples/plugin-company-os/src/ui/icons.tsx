@@ -78,6 +78,16 @@ export function KnowledgeIcon({ size = 16, strokeWidth = 1.8 }: IconProps) {
   ));
 }
 
+export function HygieneIcon({ size = 16, strokeWidth = 1.8 }: IconProps) {
+  // "Sparkle" — tidy/hygiene: the write-authority audit surface (PWA-01 / COS-3).
+  return svg(size, strokeWidth, (
+    <>
+      <path d="M11 3l1.7 4.3L17 9l-4.3 1.7L11 15l-1.7-4.3L5 9l4.3-1.7z" />
+      <path d="M17.5 14l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z" />
+    </>
+  ));
+}
+
 export function CompanyOsGlyph({ size = 18, strokeWidth = 1.8 }: IconProps) {
   return svg(size, strokeWidth, (
     <>
@@ -91,6 +101,7 @@ export const TAB_ICONS: Record<CompanyOsTabKey, (props: IconProps) => ReactEleme
   board: BoardIcon,
   reports: ReportsIcon,
   routines: RoutinesIcon,
+  hygiene: HygieneIcon,
   teaching: TeachingIcon,
   knowledge: KnowledgeIcon,
 };

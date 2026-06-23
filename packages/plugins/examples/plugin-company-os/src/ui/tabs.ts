@@ -3,7 +3,7 @@
  * page tab bar and the route sidebar so they cannot drift. Adding the COS-1
  * Teaching / COS-2 Knowledge surfaces is a one-line change here.
  */
-export type CompanyOsTabKey = "board" | "reports" | "routines" | "teaching" | "knowledge";
+export type CompanyOsTabKey = "board" | "reports" | "routines" | "hygiene" | "teaching" | "knowledge";
 
 export interface CompanyOsTab {
   key: CompanyOsTabKey;
@@ -33,6 +33,13 @@ export const COMPANY_OS_TABS: readonly CompanyOsTab[] = [
     label: "Routines",
     description: "CEO / COO / CTO / Librarian routine outputs plus their SLO health.",
     liveIn: "COS-0f",
+  },
+  {
+    key: "hygiene",
+    label: "Hygiene",
+    description: "Paperclip write-authority audit — what the agents archived, reconciled, and closed (PWA-01). Arrives in COS-3.",
+    liveIn: "COS-3",
+    placeholder: true,
   },
   {
     key: "teaching",
