@@ -20,7 +20,7 @@ import {
   ensureBoardRow,
   recordRun,
   releaseDeriveLock,
-  saveSourceVersions,
+  replaceSourceVersions,
   loadSourceVersions,
   writeProjections,
   type DbClient,
@@ -76,10 +76,12 @@ export async function deriveForCompany(
       scopeRepo === null ? bundle : mergeScopedBundle(bundle, await loadSourceVersions(db, companyId), scopeRepo);
 
     const projections = collectAndProject(merged, deps.now());
-    await writeProjections(db, companyId, projections);
+    await writeProjections(db, companyId, projections, owner);
     // Persist the per-source last-good slices from the MERGED bundle so a future
     // scoped refresh of a different repo still has every other repo's last-good.
-    await saveSourceVersions(db, companyId, bundleToSourceVersions(merged));
+    // REPLACE semantics: a full sweep purges dropped repos; a scoped refresh only
+    // replaces its own repo's slices.
+    await replaceSourceVersions(db, companyId, scopeRepo, bundleToSourceVersions(merged));
     await recordRun(db, companyId, {
       trigger,
       scopeRepo,

@@ -51,15 +51,16 @@ export function deriveRoutineHealth(bundle: SignalBundle, nowMs: number): Routin
 
       const lastRunMs = r.lastRunAt ? Date.parse(r.lastRunAt) : NaN;
       const latestMs = latest ? artifactMs(latest) : NaN;
+      const hasArtifact = Number.isFinite(latestMs);
       const lastActivity = Math.max(
         Number.isFinite(lastRunMs) ? lastRunMs : -Infinity,
-        Number.isFinite(latestMs) ? latestMs : -Infinity,
+        hasArtifact ? latestMs : -Infinity,
       );
       const hasActivity = lastActivity > -Infinity;
 
       const windowMs = cadenceWindowMs(r.cadence);
-      const verdict = computeVerdict(nowMs, lastActivity, hasActivity, windowMs, Number.isFinite(latestMs));
-      const present = Number.isFinite(latestMs) && (windowMs === null || nowMs - latestMs <= windowMs);
+      const verdict = computeVerdict(nowMs, latestMs, hasArtifact, hasActivity, windowMs);
+      const present = hasArtifact && (windowMs === null || nowMs - latestMs <= windowMs);
 
       return {
         routineKey: r.routineKey,
@@ -93,16 +94,22 @@ function artifactMs(a: ArtifactSignal): number {
   return Number.isFinite(t) ? t : 0;
 }
 
+/**
+ * Artifact-centric verdict: freshness is about whether the EXPECTED ARTIFACT was
+ * produced recently, not merely whether the agent ran. A recent `lastRunAt` with
+ * no artifact is `missing` (ran, produced nothing), never `fresh`.
+ */
 function computeVerdict(
   nowMs: number,
-  lastActivity: number,
+  latestArtifactMs: number,
+  hasArtifact: boolean,
   hasActivity: boolean,
   windowMs: number | null,
-  hasArtifact: boolean,
 ): RoutineVerdict {
   if (!hasActivity) return "never_ran";
   if (windowMs === null) return hasArtifact ? "fresh" : "stale"; // cron: presence-only
-  const age = nowMs - lastActivity;
+  if (!hasArtifact) return "missing"; // ran (lastRun) but never produced the artifact
+  const age = nowMs - latestArtifactMs;
   if (age <= windowMs) return "fresh";
   if (age <= 2 * windowMs) return "stale";
   return "missing";

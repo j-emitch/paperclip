@@ -22,6 +22,7 @@ import type { Signal, SignalError, WorkSignal } from "../contracts/signals.js";
 import type { WorkSignalPrecedence, WorkState } from "../contracts/vocab.js";
 import {
   extractShipped,
+  GIT_LOG_FORMAT,
   parseBranch,
   parseCommitScope,
   parseFrontmatter,
@@ -162,7 +163,7 @@ async function collectShipped(
     const log = await ctx.git.run(repo.repo, [
       "log",
       "--first-parent",
-      "--format=%H%x1f%s%x1f%b%x1e",
+      `--format=${GIT_LOG_FORMAT}`,
       "-n",
       String(SHIPPED_SCAN_LIMIT),
       base,
@@ -173,7 +174,7 @@ async function collectShipped(
     const out: WorkSignal[] = [];
     for (const rec of parseGitLogRecords(log.stdout)) {
       for (const t of extractShipped({ subject: rec.subject, body: rec.body })) {
-        out.push(shippedSignal(repo.repo, rec.sha, rec.subject, t));
+        out.push(shippedSignal(repo.repo, rec.sha, rec.subject, rec.committedAt, t));
       }
     }
     return out;
@@ -183,10 +184,12 @@ async function collectShipped(
   return [];
 }
 
-function shippedSignal(repo: string, sha: string, subject: string, t: ShippedTicket): WorkSignal {
+function shippedSignal(repo: string, sha: string, subject: string, committedAt: string, t: ShippedTicket): WorkSignal {
   const precedence: WorkSignalPrecedence = t.via === "branch" ? "branch_path" : "commit_scope";
   return workSignal(repo, "shipped", t.ticketId, precedence, subject, {
     sha,
     reverted: t.reverted,
+    // The committer date orders ship vs revert at projection time (newest wins).
+    ...(committedAt ? { mtime: committedAt } : {}),
   });
 }

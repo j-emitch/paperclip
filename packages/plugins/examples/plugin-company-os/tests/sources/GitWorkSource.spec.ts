@@ -18,10 +18,11 @@ const WORKTREES = [
   "",
 ].join("\n");
 
+// Records are sha · committer-date (%cI) · subject · body, RS/US separated.
 const SHIPPED_LOG =
-  `m1\x1ffeat(OB-01): step engine (#5)\x1f\x1e` +
-  `m2\x1fRevert "feat(GU-07): orphan sweep"\x1fThis reverts commit deadbeef.\x1e` +
-  `m3\x1ffix(GAP-00, GAP-01): dedupe\x1f\x1e`;
+  `m1\x1f2026-05-01T00:00:00Z\x1ffeat(OB-01): step engine (#5)\x1f\x1e` +
+  `m2\x1f2026-05-02T00:00:00Z\x1fRevert "feat(GU-07): orphan sweep"\x1fThis reverts commit deadbeef.\x1e` +
+  `m3\x1f2026-05-03T00:00:00Z\x1ffix(GAP-00, GAP-01): dedupe\x1f\x1e`;
 
 function workSignals(signals: readonly Signal[]): WorkSignal[] {
   return signals.filter(isWorkSignal);
@@ -40,7 +41,7 @@ function collectGit(scopeRepo: string | null = "juice-bar") {
       "worktree list --porcelain": proc.ok(WORKTREES),
       "log -1 --format=%s bbb1111": proc.ok("feat(COS-0c): collectors wip"),
       "log -1 --format=%s ccc2222": proc.ok("chore: scratch"),
-      "log --first-parent --format=%H%x1f%s%x1f%b%x1e -n 400 origin/main": proc.ok(SHIPPED_LOG),
+      "log --first-parent": proc.ok(SHIPPED_LOG),
     }),
   });
   return gitWorkSource.collect(ctx);
@@ -96,8 +97,8 @@ describe("GitWorkSource — shipped", () => {
       repos: [{ repo: "juice-bar", available: true }],
       git: gitTable({
         "worktree list --porcelain": proc.ok("worktree /r/main\nHEAD a\nbranch refs/heads/main\n"),
-        "log --first-parent --format=%H%x1f%s%x1f%b%x1e -n 400 origin/main": proc.ok(
-          `mm\x1fMerge pull request #5 from j-emitch/feat/OB-01-step\x1f\x1e`,
+        "log --first-parent": proc.ok(
+          `mm\x1f2026-05-01T00:00:00Z\x1fMerge pull request #5 from j-emitch/feat/OB-01-step\x1f\x1e`,
         ),
       }),
     });
@@ -110,8 +111,8 @@ describe("GitWorkSource — shipped", () => {
       repos: [{ repo: "juice-bar", available: true }],
       git: gitTable({
         "worktree list --porcelain": proc.ok("worktree /repo/main\nHEAD a\nbranch refs/heads/main\n"),
-        "log --first-parent --format=%H%x1f%s%x1f%b%x1e -n 400 origin/main": proc.fail(128, "unknown revision"),
-        "log --first-parent --format=%H%x1f%s%x1f%b%x1e -n 400 main": proc.ok(`m9\x1ffeat(TAP-02): overview\x1f\x1e`),
+        "log --first-parent --format=%H%x1f%cI%x1f%s%x1f%b%x1e -n 400 origin/main": proc.fail(128, "unknown revision"),
+        "log --first-parent --format=%H%x1f%cI%x1f%s%x1f%b%x1e -n 400 main": proc.ok(`m9\x1f2026-05-01T00:00:00Z\x1ffeat(TAP-02): overview\x1f\x1e`),
       }),
     });
     const w = (await gitWorkSource.collect(ctx)).signals.filter(isWorkSignal);

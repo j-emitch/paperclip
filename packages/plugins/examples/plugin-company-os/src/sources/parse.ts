@@ -275,21 +275,28 @@ export function parseWorktreeList(porcelain: string): Worktree[] {
 
 export interface GitLogRecord {
   readonly sha: string;
+  /** Committer date (ISO-8601, `%cI`) — orders ship vs revert so the newest wins. */
+  readonly committedAt: string;
   readonly subject: string;
   readonly body: string;
 }
 
+/** The `git log --format` string the shipped scan uses (sha · committer-date · subject · body). */
+export const GIT_LOG_FORMAT = "%H%x1f%cI%x1f%s%x1f%b%x1e";
+
 /**
- * Parse a `git log --format=%H%x1f%s%x1f%b%x1e` stream: records separated by
- * `\x1e` (RS), fields by `\x1f` (US). Robust to multi-line bodies + CRLF.
+ * Parse a `git log --format=%H%x1f%cI%x1f%s%x1f%b%x1e` stream: records separated
+ * by `\x1e` (RS), fields by `\x1f` (US). Robust to multi-line bodies + CRLF.
  */
 export function parseGitLogRecords(stdout: string): GitLogRecord[] {
   const out: GitLogRecord[] = [];
   for (const rec of stdout.split("\x1e")) {
     const trimmed = rec.replace(/^[\r\n]+/, "");
     if (trimmed.trim() === "") continue;
-    const [sha = "", subject = "", body = ""] = trimmed.split("\x1f");
-    if (sha.trim() !== "") out.push({ sha: sha.trim(), subject: subject.trim(), body: body.trim() });
+    const [sha = "", committedAt = "", subject = "", body = ""] = trimmed.split("\x1f");
+    if (sha.trim() !== "") {
+      out.push({ sha: sha.trim(), committedAt: committedAt.trim(), subject: subject.trim(), body: body.trim() });
+    }
   }
   return out;
 }

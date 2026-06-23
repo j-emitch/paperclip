@@ -231,11 +231,13 @@ describe("git output parsers", () => {
       { path: "/a/det", head: "ccc", branch: null, detached: true },
     ]);
   });
-  it("parses log records (RS/US separated, multi-line bodies)", () => {
-    const recs = parseGitLogRecords(`abc\x1ffeat(COS-0a): x\x1fbody line1\nline2\x1e` + `def\x1ffix(OB-01): y\x1f\x1e`);
+  it("parses log records (sha · committer-date · subject · body; RS/US separated, multi-line bodies)", () => {
+    const recs = parseGitLogRecords(
+      `abc\x1f2026-05-01T00:00:00Z\x1ffeat(COS-0a): x\x1fbody line1\nline2\x1e` + `def\x1f2026-05-02T00:00:00Z\x1ffix(OB-01): y\x1f\x1e`,
+    );
     expect(recs).toEqual([
-      { sha: "abc", subject: "feat(COS-0a): x", body: "body line1\nline2" },
-      { sha: "def", subject: "fix(OB-01): y", body: "" },
+      { sha: "abc", committedAt: "2026-05-01T00:00:00Z", subject: "feat(COS-0a): x", body: "body line1\nline2" },
+      { sha: "def", committedAt: "2026-05-02T00:00:00Z", subject: "fix(OB-01): y", body: "" },
     ]);
   });
 });

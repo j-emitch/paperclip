@@ -58,6 +58,16 @@ describe("deriveRoutineHealth", () => {
     expect(health.routines[0]).toMatchObject({ verdict: "never_ran", expectedArtifactPresent: false, latestArtifactPath: null });
   });
 
+  it("a recent last-run with NO artifact is 'missing', not 'fresh' (ran, produced nothing)", () => {
+    const health = deriveRoutineHealth(
+      bundleOf([
+        routine("daily-standup", "daily", "company/reports/standup/*.md", { lastRunAt: "2026-06-23T11:00:00.000Z" }),
+      ]),
+      NOW,
+    );
+    expect(health.routines[0]).toMatchObject({ verdict: "missing", expectedArtifactPresent: false });
+  });
+
   it("matches the monorepo-parent glob against the repo-relative artifact path", () => {
     const health = deriveRoutineHealth(
       bundleOf([

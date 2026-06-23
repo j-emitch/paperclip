@@ -30,7 +30,7 @@ export class FakeDb implements DbClient {
   board = new Map<string, BoardRow>();
   artifact = new Map<string, SnapRow>();
   routine = new Map<string, SnapRow>();
-  sourceVersions = new Map<string, { source: string; repo: string; signals: unknown; freshness: string; lastOkAt: string | null }>();
+  sourceVersions = new Map<string, { companyId: string; source: string; repo: string; signals: unknown; freshness: string; lastOkAt: string | null }>();
   runs: Array<Record<string, unknown>> = [];
 
   constructor(namespace: string = COS_DB_NAMESPACE) {
@@ -49,7 +49,7 @@ export class FakeDb implements DbClient {
       return { rowCount: 0 };
     }
 
-    // Acquire CAS.
+    // Acquire CAS (`<=` boundary — exactly-at-expiry is reclaimable).
     if (s.includes("cos_board_state") && s.includes("SET lock_owner = $2, lock_until = to_timestamp")) {
       const id = String(params[0]);
       const owner = String(params[1]);
@@ -57,7 +57,7 @@ export class FakeDb implements DbClient {
       const nowMs = Number(params[3]);
       const row = this.board.get(id);
       if (!row) return { rowCount: 0 };
-      const free = row.lockUntil === null || row.lockUntil < nowMs;
+      const free = row.lockUntil === null || row.lockUntil <= nowMs;
       if (!free) return { rowCount: 0 };
       row.lockOwner = owner;
       row.lockUntil = expiryMs;
@@ -77,10 +77,10 @@ export class FakeDb implements DbClient {
       return { rowCount: 0 };
     }
 
-    // Board snapshot write.
+    // Board snapshot write — FENCED by lock ownership (WHERE ... lock_owner = $5).
     if (s.includes("cos_board_state") && s.includes("SET snapshot = $2::jsonb")) {
       const row = this.board.get(String(params[0]));
-      if (!row) return { rowCount: 0 };
+      if (!row || row.lockOwner !== String(params[4])) return { rowCount: 0 }; // lease lost
       row.snapshot = JSON.parse(String(params[1]));
       row.schemaVersion = Number(params[2]);
       return { rowCount: 1 };
@@ -94,9 +94,22 @@ export class FakeDb implements DbClient {
       this.routine.set(String(params[0]), { snapshot: JSON.parse(String(params[1])), schemaVersion: Number(params[2]) });
       return { rowCount: 1 };
     }
+    if (s.includes("DELETE FROM") && s.includes("cos_source_versions")) {
+      const companyId = String(params[0]);
+      const scopeRepo = params.length > 1 ? String(params[1]) : null; // scoped delete passes repo
+      let n = 0;
+      for (const [key, v] of this.sourceVersions) {
+        if (v.companyId === companyId && (scopeRepo === null || v.repo === scopeRepo)) {
+          this.sourceVersions.delete(key);
+          n++;
+        }
+      }
+      return { rowCount: n };
+    }
     if (s.includes("INSERT INTO") && s.includes("cos_source_versions")) {
       const key = `${params[0]}|${params[1]}|${params[2]}`;
       this.sourceVersions.set(key, {
+        companyId: String(params[0]),
         source: String(params[1]),
         repo: String(params[2]),
         signals: JSON.parse(String(params[3])),
@@ -126,13 +139,9 @@ export class FakeDb implements DbClient {
     if (s.includes("FROM") && s.includes("cos_artifact_index")) return snap(this.artifact.get(id));
     if (s.includes("FROM") && s.includes("cos_routine_health")) return snap(this.routine.get(id));
     if (s.includes("FROM") && s.includes("cos_source_versions")) {
-      return [...this.sourceVersions.values()].map((v) => ({
-        source: v.source,
-        repo: v.repo,
-        signals: v.signals,
-        freshness: v.freshness,
-        last_ok_at: v.lastOkAt,
-      }));
+      return [...this.sourceVersions.values()]
+        .filter((v) => v.companyId === id) // mirror the real WHERE company_id = $1
+        .map((v) => ({ source: v.source, repo: v.repo, signals: v.signals, freshness: v.freshness, last_ok_at: v.lastOkAt }));
     }
     throw new Error(`FakeDb.query: unrecognized SQL: ${s.slice(0, 80)}`);
   }

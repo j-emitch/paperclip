@@ -211,17 +211,29 @@ function addRepoToRow(rows: Map<string, PrefixRow>, taxon: Taxon, repo: string):
 function resolveColumn(group: readonly WorkSignal[]): WorkState | null {
   const stages = new Set<WorkState>();
   for (const s of group) {
-    if (s.state === "shipped") {
-      if (!s.reverted) stages.add("shipped"); // a revert removes the ship
-    } else {
-      stages.add(s.state);
-    }
+    if (s.state !== "shipped") stages.add(s.state);
   }
+  // Shipped is active iff the NEWEST shipped-or-revert signal is a real ship —
+  // so ship→revert un-ships, and revert→re-ship re-ships (commit-date ordered).
+  if (isShippedActive(group.filter((s) => s.state === "shipped"))) stages.add("shipped");
+
   let best: WorkState | null = null;
   for (const s of stages) {
     if (best === null || STAGE_RANK[s] > STAGE_RANK[best]) best = s;
   }
   return best;
+}
+
+/** True when the latest shipped signal (by committer date) is NOT a revert. */
+function isShippedActive(shipped: readonly WorkSignal[]): boolean {
+  if (shipped.length === 0) return false;
+  const newest = shipped.reduce((a, b) => (shippedTime(b) >= shippedTime(a) ? b : a));
+  return newest.reverted !== true;
+}
+
+function shippedTime(s: WorkSignal): number {
+  const t = s.mtime ? Date.parse(s.mtime) : NaN;
+  return Number.isFinite(t) ? t : 0;
 }
 
 /** Among the signals arguing for `column`, the strongest-precedence one (chip metadata source). */

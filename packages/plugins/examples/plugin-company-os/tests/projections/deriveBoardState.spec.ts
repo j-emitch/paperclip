@@ -52,6 +52,23 @@ describe("deriveBoardState — placement", () => {
     expect(board.chips.find((c) => c.id === "OB-01")?.column).toBe("shipped");
     expect(board.chips.find((c) => c.id === "COS-0")).toBeUndefined(); // un-shipped
   });
+
+  it("ship-then-revert un-ships, but a later re-ship re-ships (newest committer-date wins)", () => {
+    // OB-01: ship @ 05-01, revert @ 05-02 → newest is the revert → NOT shipped.
+    // COS-0: revert @ 05-01, re-ship @ 05-02 → newest is the ship → shipped.
+    const board = deriveBoardState(
+      bundleOf([
+        ...TAXA,
+        work("OB-01", "shipped", "commit_scope", { sha: "a", mtime: "2026-05-01T00:00:00Z" }),
+        work("OB-01", "shipped", "commit_scope", { sha: "b", reverted: true, mtime: "2026-05-02T00:00:00Z" }),
+        work("COS-0", "shipped", "commit_scope", { sha: "c", reverted: true, mtime: "2026-05-01T00:00:00Z" }),
+        work("COS-0", "shipped", "commit_scope", { sha: "d", mtime: "2026-05-02T00:00:00Z" }),
+      ]),
+      NOW,
+    );
+    expect(board.chips.find((c) => c.id === "OB-01")).toBeUndefined(); // ship→revert = un-shipped
+    expect(board.chips.find((c) => c.id === "COS-0")?.column).toBe("shipped"); // revert→re-ship = shipped
+  });
 });
 
 describe("deriveBoardState — lanes/rows/taxonomy", () => {

@@ -44,7 +44,7 @@ function fullContext() {
     git: gitTable({
       "worktree list --porcelain": proc.ok("worktree /r/main\nHEAD a\nbranch refs/heads/main\n\nworktree /r/wt\nHEAD bbb\nbranch refs/heads/claude/COS-0\n"),
       "log -1 --format=%s bbb": proc.ok("feat(COS-0c): wip"),
-      "log --first-parent --format=%H%x1f%s%x1f%b%x1e -n 400 origin/main": proc.ok(`m1\x1ffeat(OB-01): step engine\x1f\x1e`),
+      "log --first-parent": proc.ok(`m1\x1f2026-05-01T00:00:00Z\x1ffeat(OB-01): step engine\x1f\x1e`),
     }),
     gh: (repo) =>
       repo === "juice-bar"

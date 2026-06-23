@@ -76,7 +76,7 @@ export async function acquireDeriveLock(
   const { rowCount } = await db.execute(
     `UPDATE ${NS}.cos_board_state
        SET lock_owner = $2, lock_until = to_timestamp($3 / 1000.0)
-     WHERE company_id = $1 AND (lock_until IS NULL OR lock_until < to_timestamp($4 / 1000.0))`,
+     WHERE company_id = $1 AND (lock_until IS NULL OR lock_until <= to_timestamp($4 / 1000.0))`,
     [companyId, owner, nowMs + leaseMs, nowMs],
   );
   return rowCount === 1;
@@ -91,19 +91,34 @@ export async function releaseDeriveLock(db: DbClient, companyId: string, owner: 
   );
 }
 
-/** Validate + persist all three projections for a company (board row must already exist). */
-export async function writeProjections(db: DbClient, companyId: string, set: ProjectionSet): Promise<void> {
+/**
+ * Validate + persist all three projections for a company, FENCED by lock
+ * ownership. The board write carries `AND lock_owner = $owner`: if a slow derive
+ * lost its lease and another derive took over (changing lock_owner), this write
+ * affects 0 rows and throws — so a stale derive can never overwrite a newer one
+ * (codex A P0). The artifact/routine upserts run only after the board fence
+ * passes, so they are gated by the same ownership check.
+ */
+export async function writeProjections(
+  db: DbClient,
+  companyId: string,
+  set: ProjectionSet,
+  owner: string,
+): Promise<void> {
   // Validate-before-write: a malformed projection throws here, never reaches the DB.
   parseBoardStateV1(set.board);
   parseArtifactIndexV1(set.artifactIndex);
   parseRoutineHealthV1(set.routineHealth);
 
-  await db.execute(
+  const { rowCount } = await db.execute(
     `UPDATE ${NS}.cos_board_state
        SET snapshot = $2::jsonb, schema_version = $3, derived_at = $4, updated_at = now()
-     WHERE company_id = $1`,
-    [companyId, JSON.stringify(set.board), BOARD_STATE_SCHEMA_VERSION, set.board.derivedAt],
+     WHERE company_id = $1 AND lock_owner = $5`,
+    [companyId, JSON.stringify(set.board), BOARD_STATE_SCHEMA_VERSION, set.board.derivedAt, owner],
   );
+  if (rowCount !== 1) {
+    throw new Error(`derive lease lost for ${companyId} — aborting write (owner=${owner})`);
+  }
   await upsertSnapshot(db, "cos_artifact_index", companyId, set.artifactIndex, ARTIFACT_INDEX_SCHEMA_VERSION, set.artifactIndex.derivedAt);
   await upsertSnapshot(db, "cos_routine_health", companyId, set.routineHealth, ROUTINE_HEALTH_SCHEMA_VERSION, set.routineHealth.derivedAt);
 }
@@ -197,12 +212,29 @@ export async function loadSourceVersions(db: DbClient, companyId: string): Promi
   }));
 }
 
-export async function saveSourceVersions(
+/**
+ * Persist the per-(source, repo) last-good slices, REPLACING rather than blindly
+ * upserting so a stale slice can never resurrect (codex B P1):
+ *   - full sweep (`scopeRepo === null`): authoritative — delete ALL the company's
+ *     slices first, so a repo dropped from config is purged.
+ *   - scoped refresh: delete only the scoped repo's slices, then insert its fresh
+ *     ones (other repos' last-good is untouched).
+ * Runs under the derive lock (single-writer per company), so the delete→insert
+ * window is safe without an explicit transaction.
+ */
+export async function replaceSourceVersions(
   db: DbClient,
   companyId: string,
+  scopeRepo: string | null,
   versions: readonly SourceVersion[],
 ): Promise<void> {
-  for (const v of versions) {
+  if (scopeRepo === null) {
+    await db.execute(`DELETE FROM ${NS}.cos_source_versions WHERE company_id = $1`, [companyId]);
+  } else {
+    await db.execute(`DELETE FROM ${NS}.cos_source_versions WHERE company_id = $1 AND repo = $2`, [companyId, scopeRepo]);
+  }
+  const toInsert = scopeRepo === null ? versions : versions.filter((v) => v.repo === scopeRepo);
+  for (const v of toInsert) {
     await db.execute(
       `INSERT INTO ${NS}.cos_source_versions (company_id, source, repo, signals, freshness, last_ok_at, updated_at)
          VALUES ($1, $2, $3, $4::jsonb, $5, $6, now())
