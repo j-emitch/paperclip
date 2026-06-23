@@ -18,7 +18,13 @@ const manifest: PaperclipPluginManifestV1 = {
     "Owner/developer cockpit: an auto-updating Kanban (system x spec-prefix family) plus a docs/reports/routines viewer over the Lycaon multi-repo workspace. Read-only over product repos; the only writes are the plugin-owned company_os cache, plugin state, and an opt-in git hook.",
   author: "Lycaon",
   categories: ["automation", "ui"],
-  minimumHostVersion: "2026.618.0",
+  // No minimumHostVersion floor: the local dev host the cockpit installs into
+  // reports its version to the plugin loader as "0.0.0" (the app bootstrap
+  // fallback in server/app.ts; healthz separately reports the package's 0.3.1),
+  // so ANY floor above 0.0.0 blocks install on the very machine this runs on.
+  // The SDK features the cockpit uses (ctx.companies/jobs, the data/action
+  // bridge, DB namespaces) are present regardless of the version string, so a
+  // floor adds no safety here and only breaks the single-machine deploy.
   capabilities: [
     // Read — per-company derive + workspace file reads + routine last-run.
     "companies.read",
