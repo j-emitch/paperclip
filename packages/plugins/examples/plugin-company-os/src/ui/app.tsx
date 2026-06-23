@@ -1,42 +1,17 @@
 import {
-  Spinner,
-  usePluginData,
   useHostNavigation,
   type PluginPageProps,
   type PluginRouteSidebarProps,
   type PluginSidebarProps,
 } from "@paperclipai/plugin-sdk/ui";
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import type { CSSProperties } from "react";
 import { COMPANY_OS_ROUTE } from "../manifest.js";
-import { tokens, mobileMediaQuery, springTransition } from "./tokens.js";
+import { tokens, springTransition } from "./tokens.js";
 import { COMPANY_OS_TABS, type CompanyOsTab } from "./tabs.js";
 import { TAB_ICONS, CompanyOsGlyph } from "./icons.js";
 import { useActiveTab } from "./active-tab-store.js";
-
-// ---------------------------------------------------------------------------
-// Worker data shape (kept local so the UI never imports worker/runtime code —
-// the import-boundary the board UI hardens in COS-0e).
-// ---------------------------------------------------------------------------
-
-interface ScaffoldStatusData {
-  ok?: boolean;
-  phase?: string;
-  message?: string;
-  upcoming?: { tab: string; liveIn: string }[];
-}
-
-function useIsMobile(): boolean {
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mql = window.matchMedia(mobileMediaQuery);
-    const update = () => setIsMobile(mql.matches);
-    update();
-    mql.addEventListener("change", update);
-    return () => mql.removeEventListener("change", update);
-  }, []);
-  return isMobile;
-}
+import { useIsMobile } from "./hooks/useMediaQuery.js";
+import { CompanyOsBoard } from "./board/CompanyOsBoard.js";
 
 // ---------------------------------------------------------------------------
 // Sidebar entry — top-level nav link into the cockpit.
@@ -141,10 +116,8 @@ export function CompanyOsRouteSidebar(_props: PluginRouteSidebarProps) {
 export function CompanyOsPage({ context }: PluginPageProps) {
   const isMobile = useIsMobile();
   const [activeTab, setTab] = useActiveTab();
-  const { data, loading, error } = usePluginData<ScaffoldStatusData>("scaffold-status", {
-    companyId: context.companyId,
-  });
   const current = COMPANY_OS_TABS.find((tab) => tab.key === activeTab) ?? COMPANY_OS_TABS[0];
+  const isBoard = current.key === "board";
 
   return (
     <main
@@ -160,20 +133,20 @@ export function CompanyOsPage({ context }: PluginPageProps) {
         gap: isMobile ? 16 : 20,
       }}
     >
-      <Header isMobile={isMobile} loading={loading} ok={data?.ok === true} errored={error !== null} />
+      <Header isMobile={isMobile} />
 
       <TabBar isMobile={isMobile} activeKey={activeTab} onSelect={setTab} />
 
       <section
         aria-live="polite"
         style={{
-          background: tokens.card,
-          border: `1px solid ${tokens.border}`,
+          background: isBoard ? "transparent" : tokens.card,
+          border: isBoard ? "none" : `1px solid ${tokens.border}`,
           borderRadius: tokens.radius,
-          padding: isMobile ? 16 : 24,
+          padding: isBoard ? 0 : isMobile ? 16 : 24,
         }}
       >
-        <TabPanel tab={current} status={data} loading={loading} errored={error !== null} />
+        {isBoard ? <CompanyOsBoard companyId={context.companyId} /> : <PlaceholderPanel tab={current} />}
       </section>
     </main>
   );
@@ -183,17 +156,7 @@ export function CompanyOsPage({ context }: PluginPageProps) {
 // Pieces
 // ---------------------------------------------------------------------------
 
-function Header({
-  isMobile,
-  loading,
-  ok,
-  errored,
-}: {
-  isMobile: boolean;
-  loading: boolean;
-  ok: boolean;
-  errored: boolean;
-}) {
+function Header({ isMobile }: { isMobile: boolean }) {
   return (
     <header style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
       <span
@@ -220,41 +183,7 @@ function Header({
           Owner / developer cockpit — build, architecture, and review at a glance.
         </p>
       </div>
-      <WorkerStatusPill loading={loading} ok={ok} errored={errored} />
     </header>
-  );
-}
-
-function WorkerStatusPill({ loading, ok, errored }: { loading: boolean; ok: boolean; errored: boolean }) {
-  const { label, dot } = errored
-    ? { label: "Worker offline", dot: "oklch(0.62 0.21 25)" }
-    : loading
-      ? { label: "Connecting…", dot: tokens.muted }
-      : ok
-        ? { label: "Scaffold live", dot: "oklch(0.7 0.16 145)" }
-        : { label: "Idle", dot: tokens.muted };
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 7,
-        padding: "5px 11px",
-        borderRadius: 999,
-        background: tokens.secondary,
-        border: `1px solid ${tokens.border}`,
-        fontSize: 12,
-        fontWeight: 500,
-        color: tokens.fg,
-      }}
-    >
-      {loading ? (
-        <Spinner size="sm" />
-      ) : (
-        <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: dot }} />
-      )}
-      {label}
-    </span>
   );
 }
 
@@ -318,17 +247,8 @@ function TabBar({
   );
 }
 
-function TabPanel({
-  tab,
-  status,
-  loading,
-  errored,
-}: {
-  tab: CompanyOsTab;
-  status: ScaffoldStatusData | null;
-  loading: boolean;
-  errored: boolean;
-}) {
+function PlaceholderPanel({ tab }: { tab: CompanyOsTab }) {
+  const Icon = TAB_ICONS[tab.key];
   return (
     <div role="tabpanel" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -338,85 +258,27 @@ function TabPanel({
       <p style={{ margin: 0, fontSize: 14, color: tokens.muted, maxWidth: 640, lineHeight: 1.5 }}>
         {tab.description}
       </p>
-
-      <Placeholder tab={tab} />
-
-      {tab.key === "board" ? (
-        <WorkerBanner status={status} loading={loading} errored={errored} />
-      ) : null}
-    </div>
-  );
-}
-
-function Placeholder({ tab }: { tab: CompanyOsTab }) {
-  return (
-    <div
-      style={{
-        border: `1px dashed ${tokens.border}`,
-        borderRadius: tokens.radius,
-        padding: 20,
-        background: tokens.bg,
-        color: tokens.muted,
-        fontSize: 13,
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-      }}
-    >
-      <span aria-hidden="true" style={{ color: tokens.accent, display: "inline-flex" }}>
-        {(() => {
-          const Icon = TAB_ICONS[tab.key];
-          return <Icon size={20} />;
-        })()}
-      </span>
-      <span>
-        <strong style={{ color: tokens.fg, fontWeight: 600 }}>{tab.label}</strong> arrives in{" "}
-        <code style={{ fontFamily: tokens.mono, color: tokens.fg }}>{tab.liveIn}</code>. This scaffold
-        proves the plugin installs, routes, and renders inside Paperclip.
-      </span>
-    </div>
-  );
-}
-
-function WorkerBanner({
-  status,
-  loading,
-  errored,
-}: {
-  status: ScaffoldStatusData | null;
-  loading: boolean;
-  errored: boolean;
-}) {
-  let body: ReactNode;
-  if (errored) {
-    body = (
-      <span style={{ color: "oklch(0.78 0.13 25)" }}>
-        Could not reach the plugin worker. Check the host plugin logs.
-      </span>
-    );
-  } else if (loading) {
-    body = (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 8, color: tokens.muted }}>
-        <Spinner size="sm" /> Contacting the worker…
-      </span>
-    );
-  } else if (status?.message) {
-    body = <span style={{ color: tokens.fg }}>{status.message}</span>;
-  } else {
-    body = <span style={{ color: tokens.muted }}>Worker idle.</span>;
-  }
-  return (
-    <div
-      style={{
-        marginTop: 4,
-        padding: "12px 14px",
-        borderRadius: tokens.radiusSm,
-        background: tokens.accentSoft,
-        border: `1px solid ${tokens.accentBorder}`,
-        fontSize: 13,
-      }}
-    >
-      {body}
+      <div
+        style={{
+          border: `1px dashed ${tokens.border}`,
+          borderRadius: tokens.radius,
+          padding: 20,
+          background: tokens.bg,
+          color: tokens.muted,
+          fontSize: 13,
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
+        <span aria-hidden="true" style={{ color: tokens.accent, display: "inline-flex" }}>
+          <Icon size={20} />
+        </span>
+        <span>
+          <strong style={{ color: tokens.fg, fontWeight: 600 }}>{tab.label}</strong> arrives in{" "}
+          <code style={{ fontFamily: tokens.mono, color: tokens.fg }}>{tab.liveIn}</code>.
+        </span>
+      </div>
     </div>
   );
 }

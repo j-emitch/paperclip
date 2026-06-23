@@ -14,8 +14,8 @@ import { readArtifactIndex, readBoardState, readRoutineHealth } from "./db/cache
  * lock). The deterministic pipeline — collect → scoped-merge → collectAndProject
  * → cache — lives in `deriveForCompany`; this file is just the SDK wiring.
  *
- * (`scaffold-status` is retained so the COS-0a/0b UI keeps rendering until the
- * board UI lands in COS-0e, then it is removed.)
+ * The COS-0e Kanban UI reads `board-state` directly, so the COS-0a/0b
+ * `scaffold-status` bridge has been removed.
  */
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -60,23 +60,10 @@ const plugin = definePlugin({
         if (!result.ok) ctx.logger.warn(`derive failed for ${company.id}`, { error: result.error });
       }
     });
-
-    // Retained scaffold bridge — removed in COS-0e when the board UI replaces it.
-    ctx.data.register("scaffold-status", async () => ({
-      ok: true,
-      pluginId: PLUGIN_ID,
-      phase: "COS-0d - derive pipeline",
-      message: "Collection + projection + cache live. The Kanban UI arrives in COS-0e.",
-      upcoming: [
-        { tab: "Board", liveIn: "COS-0e" },
-        { tab: "Reports", liveIn: "COS-0f" },
-        { tab: "Routines", liveIn: "COS-0f" },
-      ],
-    }));
   },
 
   async onHealth() {
-    return { status: "ok", message: "Company OS cockpit ready (COS-0d derive)" };
+    return { status: "ok", message: "Company OS cockpit ready (COS-0e board)" };
   },
 });
 

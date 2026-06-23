@@ -97,6 +97,63 @@ export function CompanyOsGlyph({ size = 18, strokeWidth = 1.8 }: IconProps) {
   ));
 }
 
+// --- Board glyphs (COS-0e) ---------------------------------------------------
+
+export function CaretIcon({ size = 14, strokeWidth = 2 }: IconProps) {
+  return svg(size, strokeWidth, <path d="M6 9l6 6 6-6" />);
+}
+
+export function ExternalLinkIcon({ size = 12, strokeWidth = 1.8 }: IconProps) {
+  return svg(size, strokeWidth, (
+    <>
+      <path d="M14 4h6v6M20 4l-9 9" />
+      <path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+    </>
+  ));
+}
+
+export function CheckIcon({ size = 12, strokeWidth = 2.2 }: IconProps) {
+  return svg(size, strokeWidth, <path d="M4 12.5l5 5 11-12" />);
+}
+
+export function AlertIcon({ size = 14, strokeWidth = 1.9 }: IconProps) {
+  return svg(size, strokeWidth, (
+    <>
+      <path d="M12 3.5 1.8 20.5h20.4z" />
+      <path d="M12 10v4.5M12 17.6v.1" />
+    </>
+  ));
+}
+
+export function RefreshIcon({ size = 14, strokeWidth = 1.9 }: IconProps) {
+  return svg(size, strokeWidth, (
+    <>
+      <path d="M20 11a8 8 0 0 0-14.3-4.6M4 5v3.5h3.5" />
+      <path d="M4 13a8 8 0 0 0 14.3 4.6M20 19v-3.5h-3.5" />
+    </>
+  ));
+}
+
+export function InboxIcon({ size = 28, strokeWidth = 1.6 }: IconProps) {
+  return svg(size, strokeWidth, (
+    <>
+      <path d="M3 13l3-8h12l3 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z" />
+      <path d="M3 13h5l1.5 2.5h5L16 13h5" />
+    </>
+  ));
+}
+
+export function PlugOffIcon({ size = 28, strokeWidth = 1.6 }: IconProps) {
+  return svg(size, strokeWidth, (
+    <>
+      <path d="M9 7V4M15 7V4" />
+      <path d="M7 7h10v4a5 5 0 0 1-10 0z" />
+      <path d="M12 16v4" />
+      <path d="M4 4l16 16" />
+    </>
+  ));
+}
+
 export const TAB_ICONS: Record<CompanyOsTabKey, (props: IconProps) => ReactElement> = {
   board: BoardIcon,
   reports: ReportsIcon,
