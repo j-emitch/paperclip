@@ -15,7 +15,7 @@ import type { WorkSignalSource, SignalBatch } from "../contracts/WorkSignalSourc
 import type { ArtifactSignal, Signal, SignalError } from "../contracts/signals.js";
 import type { ArtifactType } from "../contracts/vocab.js";
 import { parseFrontmatter, prefixOf, ticketFromFilename } from "./parse.js";
-import { collectPerRepo, type RepoReadResult } from "./_shared.js";
+import { collectPerRepo, readError, type RepoReadResult } from "./_shared.js";
 
 export const ARTIFACT_SOURCE_ID = "artifact";
 
@@ -65,7 +65,7 @@ export const artifactSource: WorkSignalSource = {
         try {
           text = await c.fs.readText(repo.repo, file.relPath);
         } catch (err) {
-          errors.push({ code: "not_found", message: `unreadable artifact ${file.relPath}: ${String(err)}`, degraded: false });
+          errors.push(readError(file.relPath, err));
           continue;
         }
         const sig = artifactSignal(repo, file.relPath, file.mtime, file.sizeBytes, text, c);

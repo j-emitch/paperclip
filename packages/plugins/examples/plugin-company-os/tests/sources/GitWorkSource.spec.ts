@@ -91,6 +91,20 @@ describe("GitWorkSource — shipped", () => {
     expect(revert).toMatchObject({ reverted: true });
   });
 
+  it("ships a true merge commit via the branch in its subject (no scope/trailer)", async () => {
+    const ctx = makeFixtureContext({
+      repos: [{ repo: "juice-bar", available: true }],
+      git: gitTable({
+        "worktree list --porcelain": proc.ok("worktree /r/main\nHEAD a\nbranch refs/heads/main\n"),
+        "log --first-parent --format=%H%x1f%s%x1f%b%x1e -n 400 origin/main": proc.ok(
+          `mm\x1fMerge pull request #5 from j-emitch/feat/OB-01-step\x1f\x1e`,
+        ),
+      }),
+    });
+    const w = workSignals((await gitWorkSource.collect(ctx)).signals).filter((s) => s.state === "shipped");
+    expect(w.find((s) => s.ticketId === "OB-01")).toMatchObject({ precedence: "branch_path", sha: "mm" });
+  });
+
   it("falls through base candidates when origin/main is absent", async () => {
     const ctx = makeFixtureContext({
       repos: [{ repo: "juice-bar", available: true }],

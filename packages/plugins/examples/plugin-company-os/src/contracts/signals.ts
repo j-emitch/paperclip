@@ -146,6 +146,13 @@ export interface TaxonomySignal extends SignalProvenance {
  */
 export interface ReviewSignal extends SignalProvenance {
   readonly kind: "review";
+  /**
+   * Full commit sha the report pertains to — REQUIRED (narrows the optional
+   * provenance `sha`). The In-review join keys on it, so a report with no sha is
+   * useless to this signal: `ReviewReportSource` reports a `parse_error` and
+   * emits nothing rather than a join-less signal.
+   */
+  readonly sha: string;
   /** Which report store this came from (the `report_kind` half of the join key). */
   readonly reportKind: ReviewReportKind;
   /** Parsed verdict; `unknown` when a report exists but its verdict is unparseable. */

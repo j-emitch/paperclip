@@ -29,21 +29,22 @@ export async function collect(
   sources: readonly WorkSignalSource[] = DEFAULT_SOURCES,
 ): Promise<CollectResult> {
   const collectedAt = ctx.clock.now();
-  const failedSources: string[] = [];
 
   const settled = await Promise.all(
-    sources.map(async (source): Promise<SignalBatch> => {
+    sources.map(async (source): Promise<{ batch: SignalBatch; failed: boolean }> => {
       try {
-        return await source.collect(ctx);
+        return { batch: await source.collect(ctx), failed: false };
       } catch (err) {
         // A source MUST NOT throw (it should degrade internally). If one does,
         // contain it: log, record, and contribute an empty batch.
         ctx.logger.error(`source ${source.id} threw during collect`, { error: String(err) });
-        failedSources.push(source.id);
-        return { source: source.id, collectedAt, signals: [], repoFreshness: [] };
+        return { batch: { source: source.id, collectedAt, signals: [], repoFreshness: [] }, failed: true };
       }
     }),
   );
 
-  return { bundle: { collectedAt, batches: settled }, failedSources };
+  // Derive failedSources from the settled array in SOURCE order (deterministic),
+  // not from push-on-completion order.
+  const failedSources = settled.filter((s) => s.failed).map((s) => s.batch.source);
+  return { bundle: { collectedAt, batches: settled.map((s) => s.batch) }, failedSources };
 }

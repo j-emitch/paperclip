@@ -66,10 +66,18 @@ describe("makeCollectionContext (real fs + git)", () => {
     expect(text).toContain("type: spec");
   });
 
-  it("rejects path traversal and symlink escape", async () => {
+  it("rejects path traversal (incl. .. that normalizes back in-root) and symlink escape", async () => {
     const ctx = await makeCollectionContext({ repoRoots: [companyRoot], scopeRepo: null, logger: silentLogger });
     await expect(ctx.fs.readText("company", "../passwd")).rejects.toThrow();
+    await expect(ctx.fs.readText("company", "specs/../config/prefix-registry.json")).rejects.toThrow(/escapes workspace/);
     await expect(ctx.fs.readText("company", "specs/escape.md")).rejects.toThrow(/escapes workspace/);
+  });
+
+  it("stat mirrors readText containment — an escaping symlink stats as null", async () => {
+    const ctx = await makeCollectionContext({ repoRoots: [companyRoot], scopeRepo: null, logger: silentLogger });
+    expect(await ctx.fs.stat("company", "specs/escape.md")).toBeNull();
+    expect(await ctx.fs.stat("company", "../passwd")).toBeNull();
+    expect((await ctx.fs.stat("company", "specs/COS-0.md"))?.relPath).toBe("specs/COS-0.md");
   });
 
   it("the walk never surfaces a symlink as a listed file", async () => {

@@ -11,15 +11,17 @@ import {
   parseFrontmatter,
   parseGhPrList,
   parseGitLogRecords,
+  parseMergeBranch,
   parseReviewReport,
   parseRevert,
   parseTrailers,
   parseWorktreeList,
   prefixOf,
   reportKindFromPath,
+  stripScalarComment,
   ticketFromFilename,
 } from "../../src/sources/parse.js";
-import { globToRegExp, matchesAnyGlob } from "../../src/sources/glob.js";
+import { globRootDirs, globToRegExp, matchesAnyGlob } from "../../src/sources/glob.js";
 
 describe("ticket grammar", () => {
   it("extracts prefix+num+optional single suffix", () => {
@@ -111,6 +113,15 @@ describe("revert + shipped extraction", () => {
       { ticketId: "COS-0a", via: "revert", reverted: true },
     ]);
   });
+
+  it("merge-commit subjects carry the branch for the fallback (no explicit branch field)", () => {
+    expect(parseMergeBranch("Merge pull request #5 from j-emitch/feat/OB-01-foo")).toBe("feat/OB-01-foo");
+    expect(parseMergeBranch("Merge branch 'fix/GAP-00-x' into main")).toBe("fix/GAP-00-x");
+    expect(parseMergeBranch("feat(COS-0a): not a merge")).toBeNull();
+    expect(extractShipped({ subject: "Merge pull request #5 from org/feat/OB-01-foo", body: "" })).toEqual([
+      { ticketId: "OB-01", via: "branch", reverted: false },
+    ]);
+  });
 });
 
 describe("frontmatter", () => {
@@ -122,6 +133,12 @@ describe("frontmatter", () => {
     expect(parseFrontmatter("no frontmatter")).toBeNull();
     const fm = parseFrontmatter(`---\nkey: v\nnested:\n  - a\n  - b\n---\n`);
     expect(fm).toEqual({ key: "v", nested: "" });
+  });
+  it("strips comments quote-aware (a # inside a quoted value survives)", () => {
+    expect(stripScalarComment("ship  # the verdict")).toBe("ship");
+    expect(stripScalarComment('"Phase #1"  # note')).toBe('"Phase #1"');
+    const fm = parseFrontmatter(`---\ntitle: "Phase #1"\nstatus: planned # wip\n---\n`);
+    expect(fm).toEqual({ title: "Phase #1", status: "planned" });
   });
 });
 
@@ -248,6 +265,10 @@ describe("misc parsers", () => {
     const md = `## What's In Progress\n- OB-11 finishing\n- GAP-00 ghost\n\n## Recent Decisions\n- SSF-02 shipped\n`;
     expect(extractContextInProgress(md)).toEqual(["OB-11", "GAP-00"]);
   });
+  it("extractContextInProgress tolerates a curly apostrophe", () => {
+    const md = `## What’s In Progress\n- COS-0 cockpit\n`;
+    expect(extractContextInProgress(md)).toEqual(["COS-0"]);
+  });
 });
 
 describe("glob matcher", () => {
@@ -261,5 +282,11 @@ describe("glob matcher", () => {
   it("escapes regex metachars in literals", () => {
     expect(globToRegExp("a.b").test("axb")).toBe(false);
     expect(globToRegExp("a.b").test("a.b")).toBe(true);
+  });
+  it("globRootDirs extracts literal roots and flags wildcard roots", () => {
+    expect(globRootDirs(["specs/**/*.md", "reports/reviews/*.md", "CONTEXT.md"])).toEqual(
+      new Set(["specs", "reports", "CONTEXT.md"]),
+    );
+    expect(globRootDirs(["**/*.md"]).has("*")).toBe(true);
   });
 });

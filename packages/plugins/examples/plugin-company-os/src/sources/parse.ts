@@ -68,7 +68,7 @@ export function extractContextInProgress(markdown: string): string[] {
     const heading = /^(#{1,6})\s+(.*)$/.exec(line);
     if (heading) {
       const level = heading[1].length;
-      if (!inSection && /what'?s\s+in\s+progress/i.test(heading[2])) {
+      if (!inSection && /what.?s\s+in\s+progress/i.test(heading[2])) {
         inSection = true;
         sectionLevel = level;
         continue;
@@ -176,8 +176,23 @@ export function parseRevert(subject: string): RevertParse {
 export interface ShippedCommit {
   readonly subject: string;
   readonly body: string;
-  /** Branch name when known (PR-merge subjects expose it) — the last-resort fallback. */
+  /** Branch name when known (git log ref) — overrides the subject-derived branch. */
   readonly branch?: string;
+}
+
+/**
+ * Recover the source branch from a default merge-commit subject, the only place
+ * a true merge commit (no conventional scope) names its ticket:
+ *   `Merge pull request #5 from owner/feat/OB-01-x` → `feat/OB-01-x`
+ *   `Merge branch 'feat/OB-01-x' into main`         → `feat/OB-01-x`
+ * Returns null for non-merge subjects.
+ */
+export function parseMergeBranch(subject: string): string | null {
+  const pr = /^Merge pull request #\d+ from [^/\s]+\/(.+?)\s*$/.exec(subject.trim());
+  if (pr) return pr[1];
+  const mb = /^Merge branch ['"](.+?)['"]/.exec(subject.trim());
+  if (mb) return mb[1];
+  return null;
 }
 
 export interface ShippedTicket {
@@ -215,8 +230,11 @@ export function extractShipped(commit: ShippedCommit): ShippedTicket[] {
   add(parseCommitScope(commit.subject), "scope");
   add(parseTrailers(commit.body), "trailer");
   // Branch fallback only when nothing more authoritative classified the commit.
-  if (out.length === 0 && commit.branch) {
-    add(parseBranch(commit.branch).ticketIds, "branch");
+  // The branch comes from the git log ref when known, else from the merge
+  // subject itself (`Merge pull request #N from owner/<branch>`).
+  if (out.length === 0) {
+    const branch = commit.branch ?? parseMergeBranch(commit.subject);
+    if (branch) add(parseBranch(branch).ticketIds, "branch");
   }
   return out;
 }
@@ -327,27 +345,47 @@ export function parseGhPrList(stdout: string): { prs: GhPr[]; ok: boolean } {
 // ---------------------------------------------------------------------------
 
 /**
+ * Strip a trailing `# comment` from a YAML scalar WITHOUT corrupting a quoted
+ * value that legitimately contains `#` (e.g. `title: "Phase #1"`). A quoted
+ * scalar keeps everything through its closing quote; an unquoted scalar drops
+ * from the first whitespace-preceded `#`.
+ */
+export function stripScalarComment(value: string): string {
+  const t = value.trim();
+  const q = t[0];
+  if (q === '"' || q === "'") {
+    const end = t.indexOf(q, 1);
+    return end === -1 ? t : t.slice(0, end + 1);
+  }
+  const idx = t.search(/\s#/);
+  return idx === -1 ? t : t.slice(0, idx).trimEnd();
+}
+
+/** Strip surrounding quotes from an (already comment-stripped) scalar. */
+function unquote(value: string): string {
+  const v = value.trim();
+  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+    return v.slice(1, -1);
+  }
+  return v;
+}
+
+/**
  * Parse leading `--- … ---` YAML frontmatter into a flat string map. Handles the
  * scalar `key: value` lines our specs/reports/routine-outputs use (quotes
- * stripped, `#` comments trimmed). Deliberately NOT a general YAML parser —
- * nested structures are ignored, which is all the frontmatter contract needs.
- * Returns `null` when the text has no frontmatter block.
+ * stripped, `#` comments trimmed quote-aware). Deliberately NOT a general YAML
+ * parser — nested structures are ignored, which is all the frontmatter contract
+ * needs. Returns `null` when the text has no frontmatter block.
  */
 export function parseFrontmatter(text: string): Record<string, string> | null {
   const m = /^﻿?---\r?\n([\s\S]*?)\r?\n---\s*(?:\r?\n|$)/.exec(text);
   if (!m) return null;
   const out: Record<string, string> = {};
   for (const rawLine of m[1].split(/\r?\n/)) {
-    const line = rawLine.replace(/\s+#.*$/, "").trimEnd();
-    if (line.trim() === "" || /^\s/.test(rawLine) || line.trimStart().startsWith("-")) continue;
-    const kv = /^([A-Za-z0-9_.-]+)\s*:\s*(.*)$/.exec(line);
+    if (rawLine.trim() === "" || /^\s/.test(rawLine) || rawLine.trimStart().startsWith("-")) continue;
+    const kv = /^([A-Za-z0-9_.-]+)\s*:\s*(.*)$/.exec(rawLine.trimEnd());
     if (!kv) continue;
-    const key = kv[1];
-    let value = kv[2].trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-    out[key] = value;
+    out[kv[1]] = unquote(stripScalarComment(kv[2]));
   }
   return out;
 }
@@ -456,11 +494,7 @@ export function parseCompanyOsBlock(yamlText: string): CompanyOsBlock {
 }
 
 function stripScalar(value: string): string {
-  const v = value.replace(/\s+#.*$/, "").trim();
-  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
-    return v.slice(1, -1);
-  }
-  return v;
+  return unquote(stripScalarComment(value));
 }
 
 // ---------------------------------------------------------------------------

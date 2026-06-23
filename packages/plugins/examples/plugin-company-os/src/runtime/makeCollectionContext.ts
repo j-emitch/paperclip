@@ -33,7 +33,7 @@ import type {
 } from "../contracts/collection-context.js";
 import type { RegistryEntry, RegistryLoadResult, RegistryLoader } from "../contracts/registry.js";
 import type { SignalError } from "../contracts/signals.js";
-import { matchesAnyGlob } from "../sources/glob.js";
+import { globRootDirs, matchesAnyGlob } from "../sources/glob.js";
 
 /** Tuning knobs (all overridable for tests / perf). */
 export interface AdapterOptions {
@@ -79,10 +79,25 @@ function repoKey(absPath: string): string {
 /** Resolve a requested relative path within a root, rejecting traversal escapes. */
 function containedResolve(root: string, relPath: string): string | null {
   if (path.isAbsolute(relPath)) return null;
+  // Reject ANY `..` segment outright (even one that would normalize back under
+  // root, e.g. `specs/../CONTEXT.md`) — the contract forbids `..` in reads.
+  if (relPath.split(/[\\/]/).some((seg) => seg === "..")) return null;
   const resolved = path.resolve(root, relPath);
   const rel = path.relative(root, resolved);
   if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) return null;
   return resolved;
+}
+
+/** Realpath-check that `abs` stays under `root` (follows symlinks). Null = escapes/absent. */
+async function realpathContained(root: string, abs: string): Promise<string | null> {
+  try {
+    const real = await realpath(abs);
+    const realRoot = await realpath(root);
+    const rel = path.relative(realRoot, real);
+    return rel.startsWith("..") || path.isAbsolute(rel) ? null : real;
+  } catch {
+    return null;
+  }
 }
 
 /** Promisified `execFile` that resolves (never rejects) into a `SubprocessResult`. */
@@ -204,6 +219,8 @@ function makeWorkspaceReader(
   async function statRel(root: string, relPath: string): Promise<WorkspaceFileStat | null> {
     const abs = containedResolve(root, relPath);
     if (!abs) return null;
+    // A symlink whose target escapes the root must not be reported (mirror readText).
+    if ((await realpathContained(root, abs)) === null) return null;
     try {
       const st = await lstat(abs);
       return {
@@ -222,7 +239,11 @@ function makeWorkspaceReader(
       const root = rootFor(repo);
       if (!root) return [];
       const out: WorkspaceFileStat[] = [];
-      await walk(root, "", globs, opts, out, logger);
+      // Prune the walk to the literal top-level dirs the globs can reach (huge
+      // win vs walking a whole repo for `specs/**`); "*" means a glob could
+      // touch any root, so fall back to a full walk.
+      const roots = globRootDirs(globs);
+      await walk(root, "", globs, opts, out, logger, roots.has("*") ? null : roots);
       out.sort((a, b) => a.relPath.localeCompare(b.relPath));
       return out;
     },
@@ -233,10 +254,8 @@ function makeWorkspaceReader(
       const abs = containedResolve(root, relPath);
       if (!abs) throw new Error(`path escapes workspace: ${relPath}`);
       // Reject a symlink that escapes the root (containment under realpath).
-      const real = await realpath(abs);
-      const realRoot = await realpath(root);
-      const rel = path.relative(realRoot, real);
-      if (rel.startsWith("..") || path.isAbsolute(rel)) throw new Error(`symlink escapes workspace: ${relPath}`);
+      const real = await realpathContained(root, abs);
+      if (real === null) throw new Error(`path escapes workspace: ${relPath}`);
       const st = await lstat(real);
       if (st.size > opts.maxFileBytes) throw new Error(`file exceeds size cap (${st.size} > ${opts.maxFileBytes})`);
       return readFile(real, "utf-8");
@@ -250,7 +269,11 @@ function makeWorkspaceReader(
   };
 }
 
-/** Recursively collect files matching any glob, pruning ignored + escaping dirs. */
+/**
+ * Recursively collect files matching any glob, pruning ignored + escaping dirs.
+ * `topLevelRoots`, when non-null, limits the FIRST level to those directory
+ * names (the glob-root optimization); null = walk every top-level dir.
+ */
 async function walk(
   root: string,
   relDir: string,
@@ -258,6 +281,7 @@ async function walk(
   opts: Required<AdapterOptions>,
   out: WorkspaceFileStat[],
   logger: SignalLogger,
+  topLevelRoots: ReadonlySet<string> | null,
 ): Promise<void> {
   const absDir = path.join(root, relDir);
   let entries: Dirent<string>[];
@@ -272,7 +296,8 @@ async function walk(
     const rel = relDir === "" ? entry.name : `${relDir}/${entry.name}`;
     if (entry.isDirectory()) {
       if (opts.ignoreDirs.includes(entry.name)) continue;
-      await walk(root, rel, globs, opts, out, logger);
+      if (relDir === "" && topLevelRoots && !topLevelRoots.has(entry.name)) continue; // glob-root prune
+      await walk(root, rel, globs, opts, out, logger, topLevelRoots);
     } else if (entry.isFile() && matchesAnyGlob(rel, globs)) {
       try {
         const st = await lstat(path.join(root, rel));
@@ -313,8 +338,10 @@ function makeRegistryLoader(absByKey: Map<string, string>, logger: SignalLogger)
         }
         return { entries, errors: [] };
       } catch (e) {
+        // Keep the absolute parserPath + raw error in the logs only — the
+        // UI-facing signal stays host-path-free.
         logger.warn("registry load failed", { parserPath, error: String(e) });
-        return { entries: [], errors: [err("parse_error", `registry load failed: ${String(e)}`)] };
+        return { entries: [], errors: [err("parse_error", "registry load failed (see logs)")] };
       }
     },
   };

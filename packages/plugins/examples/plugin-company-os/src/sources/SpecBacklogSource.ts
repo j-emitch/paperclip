@@ -19,7 +19,7 @@ import {
   prefixOf,
   ticketFromFilename,
 } from "./parse.js";
-import { collectPerRepo, type RepoReadResult } from "./_shared.js";
+import { collectPerRepo, readError, type RepoReadResult } from "./_shared.js";
 
 export const SPEC_BACKLOG_SOURCE_ID = "spec-backlog";
 
@@ -82,7 +82,7 @@ async function collectSpecDocs(
     try {
       text = await ctx.fs.readText(repo.repo, file.relPath);
     } catch (err) {
-      errors.push({ code: "not_found", message: `unreadable spec ${file.relPath}: ${String(err)}`, degraded: false });
+      errors.push(readError(file.relPath, err));
       continue;
     }
     const fm = parseFrontmatter(text);
@@ -121,7 +121,7 @@ async function collectContextInProgress(
     try {
       text = await ctx.fs.readText(repo.repo, file.relPath);
     } catch (err) {
-      errors.push({ code: "not_found", message: `unreadable CONTEXT ${file.relPath}: ${String(err)}`, degraded: false });
+      errors.push(readError(file.relPath, err));
       continue;
     }
     for (const ticketId of extractContextInProgress(text)) {

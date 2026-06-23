@@ -80,6 +80,25 @@ export async function collectPerRepo(
   return { source: sourceId, collectedAt, signals, repoFreshness };
 }
 
+/**
+ * Classify a workspace-read failure into a DEGRADED `SignalError`. A file that
+ * `fs.list` just returned but `readText` then rejects is a real read failure
+ * (containment violation, oversize, vanished, permission) — it MUST stale the
+ * repo, not pass as live (the source no-throw/degrade contract). The message is
+ * sanitized to the workspace-relative path only; the raw error (which may embed
+ * an absolute host path) goes nowhere near the UI-facing signal.
+ */
+export function readError(relPath: string, err: unknown): SignalError {
+  const raw = String(err);
+  if (/escapes workspace|outside workspace/.test(raw)) {
+    return signalError("containment_violation", `path escapes workspace: ${relPath}`);
+  }
+  if (/size cap/.test(raw)) {
+    return signalError("oversize", `file exceeds size cap: ${relPath}`);
+  }
+  return signalError("not_found", `unreadable file: ${relPath}`);
+}
+
 /** Classify a subprocess result into an optional `SignalError` (null = clean exit). */
 export function errorFromSubprocess(
   result: { code: number | null; timedOut: boolean; stderr: string },

@@ -15,7 +15,7 @@ import { type CollectionContext, type RepoRoot } from "../contracts/collection-c
 import type { WorkSignalSource, SignalBatch } from "../contracts/WorkSignalSource.js";
 import type { RoutineSignal, Signal, SignalError } from "../contracts/signals.js";
 import { extractCompanyOsYaml, parseCompanyOsBlock } from "./parse.js";
-import { collectPerRepo, type RepoReadResult } from "./_shared.js";
+import { collectPerRepo, readError, type RepoReadResult } from "./_shared.js";
 
 export const ROUTINE_CONTRACT_SOURCE_ID = "routine-contract";
 
@@ -34,7 +34,7 @@ export const routineContractSource: WorkSignalSource = {
         try {
           text = await c.fs.readText(repo.repo, file.relPath);
         } catch (err) {
-          errors.push({ code: "not_found", message: `unreadable AGENTS ${file.relPath}: ${String(err)}`, degraded: false });
+          errors.push(readError(file.relPath, err));
           continue;
         }
         const yaml = extractCompanyOsYaml(text);

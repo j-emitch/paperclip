@@ -56,6 +56,16 @@ describe("ReviewReportSource", () => {
     expect(r.prNumber).toBeUndefined();
   });
 
+  it("a report without a commit sha → parse_error, no signal (can't join In-review)", async () => {
+    const ctx = makeFixtureContext({
+      repos: [{ repo: "juice-bar", available: true }],
+      files: { "juice-bar": { "reports/review-cannons/nosha.md": { content: `---\nrepo: juice-bar\nverdict: ship\n---\n` } } },
+    });
+    const batch = await reviewReportSource.collect(ctx);
+    expect(batch.signals).toEqual([]);
+    expect(batch.repoFreshness[0].errors.some((e) => /no commit sha/.test(e.message))).toBe(true);
+  });
+
   it("a report without frontmatter → parse_error (non-degrading), no signal", async () => {
     const ctx = makeFixtureContext({
       repos: [{ repo: "juice-bar", available: true }],

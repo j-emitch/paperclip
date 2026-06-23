@@ -21,7 +21,7 @@ import {
   reportKindFromPath,
   type ParsedReviewReport,
 } from "./parse.js";
-import { collectPerRepo, type RepoReadResult } from "./_shared.js";
+import { collectPerRepo, readError, type RepoReadResult } from "./_shared.js";
 
 export const REVIEW_REPORT_SOURCE_ID = "review-report";
 
@@ -40,7 +40,7 @@ export const reviewReportSource: WorkSignalSource = {
         try {
           text = await c.fs.readText(repo.repo, file.relPath);
         } catch (err) {
-          errors.push({ code: "not_found", message: `unreadable report ${file.relPath}: ${String(err)}`, degraded: false });
+          errors.push(readError(file.relPath, err));
           continue;
         }
         const fm = parseFrontmatter(text);
@@ -48,7 +48,14 @@ export const reviewReportSource: WorkSignalSource = {
           errors.push({ code: "parse_error", message: `report ${file.relPath} has no frontmatter`, degraded: false });
           continue;
         }
-        signals.push(reviewSignal(repo, file.relPath, file.mtime, parseReviewReport(fm)));
+        const parsed = parseReviewReport(fm);
+        // The In-review join keys on the full commit sha — a report without one
+        // can't join to a chip, so report it (non-degrading) and skip the signal.
+        if (!parsed.fullSha) {
+          errors.push({ code: "parse_error", message: `report ${file.relPath} has no commit sha`, degraded: false });
+          continue;
+        }
+        signals.push(reviewSignal(repo, file.relPath, file.mtime, parsed, parsed.fullSha));
       }
       return { signals, errors };
     });
@@ -60,6 +67,7 @@ function reviewSignal(
   relPath: string,
   mtime: string,
   parsed: ParsedReviewReport,
+  fullSha: string,
 ): ReviewSignal {
   // The report pertains to its frontmatter `repo` when present (a report is
   // stored in the repo it reviews, but the field is authoritative).
@@ -70,13 +78,13 @@ function reviewSignal(
     repo: pertains,
     path: relPath,
     mtime,
+    sha: fullSha,
     confidence: "high",
     freshness: "live",
     errors: [],
     reportKind: reportKindFromPath(relPath),
     verdict: parsed.verdict,
     generatedAt: parsed.generatedAt ?? mtime,
-    ...(parsed.fullSha ? { sha: parsed.fullSha } : {}),
     ...(parsed.prNumber !== null ? { prNumber: parsed.prNumber } : {}),
     ...(parsed.branch ? { branch: parsed.branch } : {}),
     ...(parsed.p0 !== null ? { p0: parsed.p0 } : {}),
