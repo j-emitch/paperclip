@@ -4,17 +4,20 @@ import { DERIVE_BOARD_JOB_KEY, PLUGIN_ID } from "./manifest.js";
 import { makeCollectionContext } from "./runtime/makeCollectionContext.js";
 import { absByKeyFromRoots, readContainedText } from "./runtime/workspace-fs.js";
 import { deriveForCompany, type DeriveDeps } from "./derive.js";
+import { runDeriveBoardJob } from "./derive-job.js";
 import { readArtifactIndex, readBoardState, readRoutineHealth } from "./db/cache.js";
 import { DOCS_VIEWER_MAX_BYTES, readReportContent } from "./report-content-read.js";
 
 /**
- * Company OS cockpit worker — COS-0d.
+ * Company OS cockpit worker — COS-0d/0g.
  *
  * Registers the read-side data handlers (board-state / artifact-index /
- * routine-health), the `refresh-board` action (on-demand full or scoped derive),
- * and the real `derive-board` scheduled job (per-company, under the atomic cache
- * lock). The deterministic pipeline — collect → scoped-merge → collectAndProject
- * → cache — lives in `deriveForCompany`; this file is just the SDK wiring.
+ * routine-health), the `refresh-board` action (on-demand full or scoped derive,
+ * hit by the COS-0g git-hook thin trigger + the UI refresh), and the real
+ * `derive-board` scheduled job (per-company, jitter-spread, under the atomic
+ * cache lock). The deterministic pipeline — collect → scoped-merge →
+ * collectAndProject → cache — lives in `deriveForCompany`; the per-tick
+ * fan-out + jitter live in `runDeriveBoardJob`; this file is just the SDK wiring.
  *
  * The COS-0e Kanban UI reads `board-state` directly, so the COS-0a/0b
  * `scaffold-status` bridge has been removed.
@@ -74,19 +77,21 @@ const plugin = definePlugin({
       return deriveForCompany(deps, companyId, scopeRepo ? "hook" : "manual", scopeRepo, randomUUID());
     });
 
-    // --- scheduled full derive: enumerate companies, derive each under the lock ---
+    // --- scheduled full derive: jitter, then enumerate companies + derive each
+    //     under the lock (failure-isolated). Orchestration lives in runDeriveBoardJob. ---
     ctx.jobs.register(DERIVE_BOARD_JOB_KEY, async () => {
-      const companies = await ctx.companies.list();
-      ctx.logger.info(`${DERIVE_BOARD_JOB_KEY}: deriving ${companies.length} compan${companies.length === 1 ? "y" : "ies"}`);
-      for (const company of companies) {
-        const result = await deriveForCompany(deps, company.id, "schedule", null, randomUUID());
-        if (!result.ok) ctx.logger.warn(`derive failed for ${company.id}`, { error: result.error });
-      }
+      await runDeriveBoardJob({
+        listCompanies: () => ctx.companies.list(),
+        derive: (companyId) => deriveForCompany(deps, companyId, "schedule", null, randomUUID()),
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        rng: Math.random,
+        logger: ctx.logger,
+      });
     });
   },
 
   async onHealth() {
-    return { status: "ok", message: "Company OS cockpit ready (COS-0f reports + routines)" };
+    return { status: "ok", message: "Company OS cockpit ready (COS-0g triggers + kill-switch)" };
   },
 });
 
