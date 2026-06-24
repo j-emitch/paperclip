@@ -154,6 +154,48 @@ export function PlugOffIcon({ size = 28, strokeWidth = 1.6 }: IconProps) {
   ));
 }
 
+export function SearchIcon({ size = 14, strokeWidth = 1.9 }: IconProps) {
+  return svg(size, strokeWidth, (
+    <>
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="M20 20l-4.7-4.7" />
+    </>
+  ));
+}
+
+export function ClockIcon({ size = 13, strokeWidth = 1.8 }: IconProps) {
+  return svg(size, strokeWidth, (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 2" />
+    </>
+  ));
+}
+
+export function DocIcon({ size = 26, strokeWidth = 1.6 }: IconProps) {
+  return svg(size, strokeWidth, (
+    <>
+      <path d="M6 2.5h8l4 4V21a.5.5 0 0 1-.5.5h-11A.5.5 0 0 1 6 21z" />
+      <path d="M14 2.5V6.5h4" />
+      <path d="M9 12h6M9 15.5h6" />
+    </>
+  ));
+}
+
+export function FileWarningIcon({ size = 26, strokeWidth = 1.6 }: IconProps) {
+  return svg(size, strokeWidth, (
+    <>
+      <path d="M6 2.5h8l4 4V21a.5.5 0 0 1-.5.5h-11A.5.5 0 0 1 6 21z" />
+      <path d="M14 2.5V6.5h4" />
+      <path d="M12 11v4M12 17.6v.1" />
+    </>
+  ));
+}
+
+export function CloseIcon({ size = 14, strokeWidth = 2 }: IconProps) {
+  return svg(size, strokeWidth, <path d="M6 6l12 12M18 6 6 18" />);
+}
+
 export const TAB_ICONS: Record<CompanyOsTabKey, (props: IconProps) => ReactElement> = {
   board: BoardIcon,
   reports: ReportsIcon,

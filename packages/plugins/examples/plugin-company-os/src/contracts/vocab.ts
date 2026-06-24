@@ -119,6 +119,27 @@ export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
 export const ROUTINE_VERDICTS = ["fresh", "stale", "missing", "never_ran"] as const;
 export type RoutineVerdict = (typeof ROUTINE_VERDICTS)[number];
 
+/**
+ * Outcome of a docs-viewer `report-content` read (spec §7 safety states). `ok` is
+ * the only status that carries `content`; every other is a typed refusal the UI
+ * renders as an explicit, non-crashing panel (never a blank). The browser only
+ * ever sees workspace-relative paths + these statuses — never an absolute host
+ * path or a raw read error.
+ */
+export const REPORT_CONTENT_STATUSES = [
+  "ok", // rendered content present
+  "not_indexed", // the (repo, relPath) is not in the vetted artifact index — refuse to read arbitrary files
+  "unsupported_type", // extension not on the docs-viewer allowlist (link-only, not rendered)
+  "too_large", // exceeds the docs-viewer size cap — "open in your editor"
+  "not_found", // file absent / repo not configured / vanished mid-read
+  "denied", // containment violation (traversal / symlink escape) — should never reach a user, but typed
+] as const;
+export type ReportContentStatus = (typeof REPORT_CONTENT_STATUSES)[number];
+
+/** How the docs viewer should render an `ok` payload (drives the markdown-vs-plaintext slot). */
+export const REPORT_RENDER_MODES = ["markdown", "text", "none"] as const;
+export type ReportRenderMode = (typeof REPORT_RENDER_MODES)[number];
+
 /** The four directive agents that own report-routines (data-driven from AGENTS.md, seeded here). */
 export const OWNER_AGENTS = ["CEO", "COO", "CTO", "Librarian"] as const;
 export type OwnerAgent = (typeof OWNER_AGENTS)[number];

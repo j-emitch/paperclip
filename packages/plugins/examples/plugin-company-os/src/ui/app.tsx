@@ -12,6 +12,8 @@ import { TAB_ICONS, CompanyOsGlyph } from "./icons.js";
 import { useActiveTab } from "./active-tab-store.js";
 import { useIsMobile } from "./hooks/useMediaQuery.js";
 import { CompanyOsBoard } from "./board/CompanyOsBoard.js";
+import { Reports } from "./reports/Reports.js";
+import { Routines } from "./routines/Routines.js";
 
 // ---------------------------------------------------------------------------
 // Sidebar entry — top-level nav link into the cockpit.
@@ -117,7 +119,8 @@ export function CompanyOsPage({ context }: PluginPageProps) {
   const isMobile = useIsMobile();
   const [activeTab, setTab] = useActiveTab();
   const current = COMPANY_OS_TABS.find((tab) => tab.key === activeTab) ?? COMPANY_OS_TABS[0];
-  const isBoard = current.key === "board";
+  // The live surfaces own their own panel chrome; placeholders sit inside a card.
+  const isLive = current.key === "board" || current.key === "reports" || current.key === "routines";
 
   return (
     <main
@@ -140,16 +143,37 @@ export function CompanyOsPage({ context }: PluginPageProps) {
       <section
         aria-live="polite"
         style={{
-          background: isBoard ? "transparent" : tokens.card,
-          border: isBoard ? "none" : `1px solid ${tokens.border}`,
+          background: isLive ? "transparent" : tokens.card,
+          border: isLive ? "none" : `1px solid ${tokens.border}`,
           borderRadius: tokens.radius,
-          padding: isBoard ? 0 : isMobile ? 16 : 24,
+          padding: isLive ? 0 : isMobile ? 16 : 24,
         }}
       >
-        {isBoard ? <CompanyOsBoard companyId={context.companyId} /> : <PlaceholderPanel tab={current} />}
+        <TabPanel tabKey={current.key} companyId={context.companyId} tab={current} />
       </section>
     </main>
   );
+}
+
+function TabPanel({
+  tabKey,
+  companyId,
+  tab,
+}: {
+  tabKey: CompanyOsTab["key"];
+  companyId: string | null;
+  tab: CompanyOsTab;
+}) {
+  switch (tabKey) {
+    case "board":
+      return <CompanyOsBoard companyId={companyId} />;
+    case "reports":
+      return <Reports companyId={companyId} />;
+    case "routines":
+      return <Routines companyId={companyId} />;
+    default:
+      return <PlaceholderPanel tab={tab} />;
+  }
 }
 
 // ---------------------------------------------------------------------------

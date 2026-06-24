@@ -2,8 +2,10 @@ import { definePlugin, runWorker, type PluginContext } from "@paperclipai/plugin
 import { randomUUID } from "node:crypto";
 import { DERIVE_BOARD_JOB_KEY, PLUGIN_ID } from "./manifest.js";
 import { makeCollectionContext } from "./runtime/makeCollectionContext.js";
+import { absByKeyFromRoots, readContainedText } from "./runtime/workspace-fs.js";
 import { deriveForCompany, type DeriveDeps } from "./derive.js";
 import { readArtifactIndex, readBoardState, readRoutineHealth } from "./db/cache.js";
+import { DOCS_VIEWER_MAX_BYTES, readReportContent } from "./report-content-read.js";
 
 /**
  * Company OS cockpit worker — COS-0d.
@@ -43,6 +45,27 @@ const plugin = definePlugin({
     ctx.data.register("artifact-index", async (params) => readArtifactIndex(ctx.db, str(params.companyId)));
     ctx.data.register("routine-health", async (params) => readRoutineHealth(ctx.db, str(params.companyId)));
 
+    // --- docs viewer: a LIVE, index-gated, containment-checked single-file read ---
+    ctx.data.register("report-content", async (params) => {
+      const repoRoots = await readRepoRoots();
+      const absByKey = absByKeyFromRoots(repoRoots);
+      return readReportContent(
+        {
+          readIndex: (companyId) => readArtifactIndex(ctx.db, companyId),
+          readFile: async (repo, relPath) => {
+            const root = absByKey.get(repo);
+            if (!root) throw new Error(`unknown repo ${repo}`);
+            const { content, stat } = await readContainedText(root, relPath, DOCS_VIEWER_MAX_BYTES);
+            return { content, sizeBytes: stat.sizeBytes, mtime: stat.mtime };
+          },
+          repoConfigured: (repo) => absByKey.has(repo),
+        },
+        str(params.companyId),
+        str(params.repo),
+        str(params.relPath),
+      );
+    });
+
     // --- on-demand refresh (the COS-0g hook + a manual UI refresh both hit this) ---
     ctx.actions.register("refresh-board", async (params) => {
       const companyId = str(params.companyId);
@@ -63,7 +86,7 @@ const plugin = definePlugin({
   },
 
   async onHealth() {
-    return { status: "ok", message: "Company OS cockpit ready (COS-0e board)" };
+    return { status: "ok", message: "Company OS cockpit ready (COS-0f reports + routines)" };
   },
 });
 

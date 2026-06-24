@@ -15,9 +15,10 @@
 import { execFile, type ExecFileException } from "node:child_process";
 import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
-import { readFile, readdir, lstat, realpath } from "node:fs/promises";
+import { readdir, lstat } from "node:fs/promises";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
+import { readContainedText, repoKey, statContained } from "./workspace-fs.js";
 
 import type {
   Clock,
@@ -69,35 +70,6 @@ export interface AdapterDeps {
   /** Hard-timeout cancellation for the whole derive. */
   readonly signal?: AbortSignal;
   readonly options?: AdapterOptions;
-}
-
-/** Map a repo's absolute path to its stable key (the directory basename). */
-function repoKey(absPath: string): string {
-  return path.basename(absPath.replace(/\/+$/, ""));
-}
-
-/** Resolve a requested relative path within a root, rejecting traversal escapes. */
-function containedResolve(root: string, relPath: string): string | null {
-  if (path.isAbsolute(relPath)) return null;
-  // Reject ANY `..` segment outright (even one that would normalize back under
-  // root, e.g. `specs/../CONTEXT.md`) — the contract forbids `..` in reads.
-  if (relPath.split(/[\\/]/).some((seg) => seg === "..")) return null;
-  const resolved = path.resolve(root, relPath);
-  const rel = path.relative(root, resolved);
-  if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) return null;
-  return resolved;
-}
-
-/** Realpath-check that `abs` stays under `root` (follows symlinks). Null = escapes/absent. */
-async function realpathContained(root: string, abs: string): Promise<string | null> {
-  try {
-    const real = await realpath(abs);
-    const realRoot = await realpath(root);
-    const rel = path.relative(realRoot, real);
-    return rel.startsWith("..") || path.isAbsolute(rel) ? null : real;
-  } catch {
-    return null;
-  }
 }
 
 /** Promisified `execFile` that resolves (never rejects) into a `SubprocessResult`. */
@@ -216,24 +188,6 @@ function makeWorkspaceReader(
 ): WorkspaceReader {
   const rootFor = (repo: string): string | null => absByKey.get(repo) ?? null;
 
-  async function statRel(root: string, relPath: string): Promise<WorkspaceFileStat | null> {
-    const abs = containedResolve(root, relPath);
-    if (!abs) return null;
-    // A symlink whose target escapes the root must not be reported (mirror readText).
-    if ((await realpathContained(root, abs)) === null) return null;
-    try {
-      const st = await lstat(abs);
-      return {
-        relPath: relPath.replace(/\\/g, "/"),
-        sizeBytes: st.size,
-        mtime: st.mtime.toISOString(),
-        isSymlink: st.isSymbolicLink(),
-      };
-    } catch {
-      return null;
-    }
-  }
-
   return {
     async list(repo, globs) {
       const root = rootFor(repo);
@@ -251,20 +205,15 @@ function makeWorkspaceReader(
     async readText(repo, relPath) {
       const root = rootFor(repo);
       if (!root) throw new Error(`unknown repo ${repo}`);
-      const abs = containedResolve(root, relPath);
-      if (!abs) throw new Error(`path escapes workspace: ${relPath}`);
-      // Reject a symlink that escapes the root (containment under realpath).
-      const real = await realpathContained(root, abs);
-      if (real === null) throw new Error(`path escapes workspace: ${relPath}`);
-      const st = await lstat(real);
-      if (st.size > opts.maxFileBytes) throw new Error(`file exceeds size cap (${st.size} > ${opts.maxFileBytes})`);
-      return readFile(real, "utf-8");
+      // Single audited containment path (traversal/symlink/oversize) — see workspace-fs.
+      const { content } = await readContainedText(root, relPath, opts.maxFileBytes);
+      return content;
     },
 
     stat(repo, relPath) {
       const root = rootFor(repo);
       if (!root) return Promise.resolve(null);
-      return statRel(root, relPath);
+      return statContained(root, relPath);
     },
   };
 }
