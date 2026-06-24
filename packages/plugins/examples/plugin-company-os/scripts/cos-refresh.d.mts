@@ -19,6 +19,7 @@ export type RefreshOutcome =
   | "ok"
   | "disabled"
   | "no_company"
+  | "blocked_host"
   | "unauthenticated"
   | "host_down"
   | "timeout"
@@ -28,6 +29,7 @@ export const OUTCOME: {
   readonly OK: "ok";
   readonly DISABLED: "disabled";
   readonly NO_COMPANY: "no_company";
+  readonly BLOCKED_HOST: "blocked_host";
   readonly UNAUTHENTICATED: "unauthenticated";
   readonly HOST_DOWN: "host_down";
   readonly TIMEOUT: "timeout";

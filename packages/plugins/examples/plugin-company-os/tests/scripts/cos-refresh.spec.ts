@@ -126,6 +126,41 @@ describe("runRefresh", () => {
     expect(res.outcome).toBe(OUTCOME.TIMEOUT);
   });
 
+  it("SSRF guard: a non-loopback host is refused (no fetch) unless explicitly allowed", async () => {
+    const fetchImpl = fetchReturning(200);
+    const blocked: RefreshResult = await runRefresh(
+      { companyId: COMPANY, host: "http://10.0.0.5:3100" },
+      { fetchImpl, env: {} },
+    );
+    expect(blocked.outcome).toBe(OUTCOME.BLOCKED_HOST);
+    expect(fetchImpl).not.toHaveBeenCalled();
+
+    // Explicit opt-out (the future cloud seam) lets it through.
+    const allowed: RefreshResult = await runRefresh(
+      { companyId: COMPANY, host: "http://10.0.0.5:3100" },
+      { fetchImpl, env: { COS_ALLOW_NONLOOPBACK: "1" } },
+    );
+    expect(allowed.outcome).toBe(OUTCOME.OK);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("SSRF guard: localhost / 127.x / [::1] are accepted as loopback", async () => {
+    for (const host of ["http://localhost:3100", "http://127.0.0.2:3100", "http://[::1]:3100"]) {
+      const fetchImpl = fetchReturning(200);
+      const res: RefreshResult = await runRefresh({ companyId: COMPANY, host }, { fetchImpl, env: {} });
+      expect(res.outcome).toBe(OUTCOME.OK);
+    }
+  });
+
+  it("SSRF guard: malformed host, embedded credentials, and non-http schemes are refused", async () => {
+    const fetchImpl = fetchReturning(200);
+    for (const host of ["not a url", "http://user:pass@127.0.0.1:3100", "file:///etc/passwd", "ftp://127.0.0.1"]) {
+      const res: RefreshResult = await runRefresh({ companyId: COMPANY, host }, { fetchImpl, env: {} });
+      expect(res.outcome).toBe(OUTCOME.BLOCKED_HOST);
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("returns ERROR (never throws) when no fetch implementation is available", async () => {
     const original = globalThis.fetch;
     vi.stubGlobal("fetch", undefined);

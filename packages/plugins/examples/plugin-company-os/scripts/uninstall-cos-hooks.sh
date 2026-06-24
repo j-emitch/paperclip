@@ -4,9 +4,9 @@
 # Strips ONLY the sentinel-bounded COS block from each installed hook (preserving
 # any pre-existing content), removes a hook FILE only if the installer created it
 # and it is now empty, and removes the machine-local dispatcher + config +
-# manifest. Idempotent + non-fatal. Then prints the manual DB rollback note
-# (uninstall does NOT drop the plugin schema — that is a deliberate, separate
-# destructive step).
+# manifests. Idempotent + non-fatal. Reads the shell-readable TSV manifest, so it
+# needs NO node. Then prints the manual DB rollback note (uninstall does NOT drop
+# the plugin schema — that is a deliberate, separate destructive step).
 #
 # Usage: uninstall-cos-hooks.sh [--repo <path> ...] [--keep-config] [--dry-run]
 #
@@ -14,13 +14,21 @@
 
 set -euo pipefail
 
-SENTINEL_START="# >>> cos-company-os >>>"
-SENTINEL_END="# <<< cos-company-os <<<"
+SCRIPT_SRC="${BASH_SOURCE[0]}"
+while [ -L "$SCRIPT_SRC" ]; do
+  link="$(readlink "$SCRIPT_SRC")"
+  case "$link" in /*) SCRIPT_SRC="$link" ;; *) SCRIPT_SRC="$(dirname "$SCRIPT_SRC")/$link" ;; esac
+done
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SRC")" && pwd)"
+# shellcheck source=cos-hook-lib.sh
+. "$SCRIPT_DIR/cos-hook-lib.sh"
+
 HOOK_EVENTS=("post-commit" "post-merge")
 WRAPPER_DEST="$HOME/.claude/hooks/cos-refresh-hook.sh"
 CONFIG_DIR="$HOME/.config/cos-company-os"
 CONFIG_FILE="$CONFIG_DIR/config.env"
 MANIFEST_FILE="$CONFIG_DIR/hooks-manifest.json"
+MANIFEST_TSV="$CONFIG_DIR/hooks-manifest.tsv"
 
 KEEP_CONFIG=0
 DRY_RUN=0
@@ -39,51 +47,21 @@ done
 
 say() { echo "  $*"; }
 
-resolve_hooks_dir() {
-  local repo="$1" hp
-  hp="$(git -C "$repo" config --get core.hooksPath 2>/dev/null || true)"
-  if [ -n "$hp" ]; then
-    case "$hp" in /*) echo "$hp" ;; *) echo "$(cd "$repo" && pwd)/$hp" ;; esac
-  else
-    local gd; gd="$(git -C "$repo" rev-parse --git-common-dir 2>/dev/null || echo ".git")"
-    case "$gd" in /*) echo "$gd/hooks" ;; *) echo "$(cd "$repo" && pwd)/$gd/hooks" ;; esac
-  fi
-}
-
-# Collect "hookPath<TAB>created" rows from the manifest (created defaults false).
-manifest_rows() {
-  [ -r "$MANIFEST_FILE" ] || return 0
-  if command -v node >/dev/null 2>&1; then
-    node -e '
-      const fs = require("node:fs");
-      try {
-        const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-        for (const h of m.hooks ?? []) process.stdout.write(`${h.hookPath}\t${h.created ? "true" : "false"}\n`);
-      } catch { /* unreadable manifest → nothing to do */ }
-    ' "$MANIFEST_FILE"
-  fi
-}
-
 # A hook file is "ours to delete" only if the installer created it AND, after the
 # block is stripped, nothing but a shebang/blank lines remain.
 only_shebang_left() {
-  local f="$1"
-  awk 'NF && $0 !~ /^#!/{found=1} END{exit found?1:0}' "$f"
+  awk 'NF && $0 !~ /^#!/{found=1} END{exit found?1:0}' "$1"
 }
 
-strip_block() {
+strip_one() {
   local hook_path="$1" created="$2"
-  [ -f "$hook_path" ] || return 0
-  if ! grep -qF "$SENTINEL_START" "$hook_path"; then
-    return 0 # no COS block here
-  fi
+  cos_block_present "$hook_path" || return 0
   if [ "$DRY_RUN" = "1" ]; then
     say "would strip COS block from $hook_path"
     return 0
   fi
   local tmp; tmp="$(mktemp)"
-  awk -v s="$SENTINEL_START" -v e="$SENTINEL_END" \
-    'index($0,s){skip=1} !skip{print} index($0,e){skip=0}' "$hook_path" >"$tmp"
+  cos_strip_block "$hook_path" "$tmp"
   if [ "$created" = "true" ] && only_shebang_left "$tmp"; then
     rm -f "$hook_path" "$tmp"
     say "removed installer-created $hook_path"
@@ -97,26 +75,28 @@ strip_block() {
 echo "uninstall-cos-hooks: removing COS-0g board-refresh hooks"
 [ "$DRY_RUN" = "1" ] && echo "  (dry-run — no files will be written)"
 
-# 1. Manifest-recorded hooks.
-while IFS=$'\t' read -r hook_path created; do
-  [ -n "$hook_path" ] && strip_block "$hook_path" "$created"
-done < <(manifest_rows)
+# 1. Manifest-recorded hooks (TSV: repo \t hookPath \t event \t created \t sha).
+if [ -r "$MANIFEST_TSV" ]; then
+  while IFS=$'\t' read -r _repo hook_path _event created _sha; do
+    [ -n "$hook_path" ] && strip_one "$hook_path" "$created"
+  done <"$MANIFEST_TSV"
+fi
 
 # 2. Any extra repos passed explicitly (treat as not-created → never delete file).
 for repo in ${REPOS[@]+"${REPOS[@]}"}; do
   [ -d "$repo" ] || continue
   git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || continue
-  hooks_dir="$(resolve_hooks_dir "$(cd "$repo" && pwd)")"
+  hooks_dir="$(cos_resolve_hooks_dir "$(cd "$repo" && pwd -P)")"
   for event in "${HOOK_EVENTS[@]}"; do
-    strip_block "$hooks_dir/$event" "false"
+    strip_one "$hooks_dir/$event" "false"
   done
 done
 
 # 3. Machine-local artifacts.
 if [ "$KEEP_CONFIG" = "0" ]; then
-  for f in "$WRAPPER_DEST" "$CONFIG_FILE" "$MANIFEST_FILE"; do
+  for f in "$WRAPPER_DEST" "$CONFIG_FILE" "$MANIFEST_FILE" "$MANIFEST_TSV"; do
     if [ -e "$f" ]; then
-      [ "$DRY_RUN" = "1" ] && say "would remove $f" || { rm -f "$f"; say "removed $f"; }
+      if [ "$DRY_RUN" = "1" ]; then say "would remove $f"; else rm -f "$f"; say "removed $f"; fi
     fi
   done
 else

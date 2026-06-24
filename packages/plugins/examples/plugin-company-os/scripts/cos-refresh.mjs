@@ -41,6 +41,7 @@ export const OUTCOME = Object.freeze({
   OK: "ok",
   DISABLED: "disabled", // kill-switch engaged
   NO_COMPANY: "no_company", // missing required companyId — nothing to refresh
+  BLOCKED_HOST: "blocked_host", // non-loopback / malformed host refused (SSRF guard)
   UNAUTHENTICATED: "unauthenticated", // host in `authenticated` mode → graceful no-op
   HOST_DOWN: "host_down", // connection refused / DNS / network error
   TIMEOUT: "timeout", // request exceeded the abort deadline
@@ -49,6 +50,12 @@ export const OUTCOME = Object.freeze({
 
 const TRUTHY = new Set(["1", "true", "yes", "on"]);
 const isTruthy = (v) => typeof v === "string" && TRUTHY.has(v.trim().toLowerCase());
+
+/** Loopback-only by design (the hook is a local fast-path). Escape hatch: COS_ALLOW_NONLOOPBACK. */
+function isLoopbackHostname(hostname) {
+  const h = String(hostname).toLowerCase().replace(/^\[|\]$/g, "");
+  return h === "localhost" || h === "::1" || /^127(?:\.\d{1,3}){3}$/.test(h);
+}
 
 /** Outcomes that represent a successful, no-action, or expected-degraded run (exit 0 even with --strict). */
 const NON_STRICT_FAILURE = new Set([OUTCOME.OK, OUTCOME.DISABLED, OUTCOME.NO_COMPANY, OUTCOME.UNAUTHENTICATED]);
@@ -85,6 +92,30 @@ export async function runRefresh(opts = {}, deps = {}) {
   const timeoutMs = Number(opts.timeoutMs ?? env.COS_REFRESH_TIMEOUT_MS ?? DEFAULTS.timeoutMs) || DEFAULTS.timeoutMs;
   const scopeRepoRaw = opts.scopeRepo ?? env.COS_SCOPE_REPO ?? null;
   const scopeRepo = typeof scopeRepoRaw === "string" && scopeRepoRaw.trim() !== "" ? scopeRepoRaw.trim() : null;
+
+  // SSRF guard: the hook is a local fast-path, so refuse anything but a loopback
+  // http(s) host with no embedded credentials. The future cloud seam can opt out
+  // explicitly via COS_ALLOW_NONLOOPBACK.
+  let parsedHost;
+  try {
+    parsedHost = new URL(host);
+  } catch {
+    return { outcome: OUTCOME.BLOCKED_HOST, status: null, message: `malformed host: ${host}`, data: null };
+  }
+  if (parsedHost.username || parsedHost.password) {
+    return { outcome: OUTCOME.BLOCKED_HOST, status: null, message: "host must not contain credentials", data: null };
+  }
+  if (parsedHost.protocol !== "http:" && parsedHost.protocol !== "https:") {
+    return { outcome: OUTCOME.BLOCKED_HOST, status: null, message: `unsupported scheme: ${parsedHost.protocol}`, data: null };
+  }
+  if (!isLoopbackHostname(parsedHost.hostname) && !isTruthy(env.COS_ALLOW_NONLOOPBACK)) {
+    return {
+      outcome: OUTCOME.BLOCKED_HOST,
+      status: null,
+      message: `non-loopback host refused: ${parsedHost.hostname} (set COS_ALLOW_NONLOOPBACK=1 to override)`,
+      data: null,
+    };
+  }
 
   const url = `${host}/api/plugins/${encodeURIComponent(pluginKey)}/actions/${DEFAULTS.action}`;
   // `companyId` rides at the top level (the host authorizes the scope from it and

@@ -18,7 +18,17 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, chmodSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  rmSync,
+  chmodSync,
+  symlinkSync,
+  lstatSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -137,11 +147,60 @@ describe("install-cos-hooks.sh", () => {
     expect(existsSync(join(repo, ".git", "hooks", "post-commit"))).toBe(false);
   });
 
-  it("requires --company", () => {
+  it("requires --company and rejects an unsafe company id", () => {
     const repo = initRepo();
-    const r = sh(INSTALL, ["--repo", repo]);
-    expect(r.code).not.toBe(0);
-    expect(r.out).toContain("--company");
+    const missing = sh(INSTALL, ["--repo", repo]);
+    expect(missing.code).not.toBe(0);
+    expect(missing.out).toContain("--company");
+
+    const unsafe = sh(INSTALL, ["--company", "a; rm -rf /", "--repo", repo, "--node", NODE_BIN]);
+    expect(unsafe.code).not.toBe(0);
+  });
+
+  it("refuses to write through a symlinked hook (symlink-escape guard)", () => {
+    const repo = initRepo();
+    const hooksDir = join(repo, ".git", "hooks");
+    mkdirSync(hooksDir, { recursive: true });
+    const outsideDir = tmp("cos-outside-");
+    const target = join(outsideDir, "evil-target");
+    writeFileSync(target, "#!/bin/bash\necho ORIGINAL_TARGET\n");
+    symlinkSync(target, join(hooksDir, "post-commit"));
+
+    sh(INSTALL, ["--company", COMPANY, "--repo", repo, "--node", NODE_BIN]);
+    // The hook stays a symlink (not replaced) and the outside target is untouched.
+    expect(lstatSync(join(hooksDir, "post-commit")).isSymbolicLink()).toBe(true);
+    expect(readFileSync(target, "utf8")).not.toContain("cos-company-os");
+  });
+
+  it("config.env is injection-safe even with shell metacharacters in --host", () => {
+    const repo = initRepo();
+    const home = tmp("cos-inj-home-");
+    const marker = join(home, "PWNED");
+    const evil = `http://127.0.0.1:3100"; touch ${marker}; echo "`;
+    execFileSync("bash", [INSTALL, "--company", COMPANY, "--repo", repo, "--node", NODE_BIN, "--host", evil], {
+      env: { ...process.env, HOME: home },
+    });
+    // Sourcing the generated config must assign the literal, not execute the payload.
+    const out = execFileSync(
+      "bash",
+      ["-c", `. "${join(home, ".config/cos-company-os/config.env")}"; printf '%s' "$COS_HOST"`],
+      { env: { ...process.env, HOME: home }, encoding: "utf8" },
+    );
+    expect(existsSync(marker)).toBe(false);
+    expect(out).toBe(evil);
+  });
+
+  it("writes a shell-readable TSV manifest with checksums", () => {
+    const repo = initRepo();
+    sh(INSTALL, ["--company", COMPANY, "--repo", repo, "--node", NODE_BIN]);
+    const tsv = readFileSync(join(HOME, ".config", "cos-company-os", "hooks-manifest.tsv"), "utf8").trim();
+    const rows = tsv.split("\n");
+    expect(rows.length).toBe(2);
+    for (const row of rows) {
+      const cols = row.split("\t");
+      expect(cols.length).toBe(5); // repo, hookPath, event, created, sha
+      expect(cols[4]).toMatch(/^[0-9a-f]{64}$/);
+    }
   });
 });
 
@@ -251,5 +310,25 @@ describe("uninstall-cos-hooks.sh", () => {
     sh(UNINSTALL, []);
     // Installer-created + now-empty → fully removed.
     expect(existsSync(hook)).toBe(false);
+  });
+
+  it("keeps created:true across a reinstall so uninstall still removes the file", () => {
+    const repo = initRepo();
+    const hook = join(repo, ".git", "hooks", "post-commit");
+    sh(INSTALL, ["--company", COMPANY, "--repo", repo, "--node", NODE_BIN]); // creates it
+    sh(INSTALL, ["--company", COMPANY, "--repo", repo, "--node", NODE_BIN]); // reinstall (file now exists)
+    sh(UNINSTALL, []);
+    expect(existsSync(hook)).toBe(false);
+  });
+
+  it("is NON-DESTRUCTIVE on a corrupted block (START present, END missing → tail preserved)", () => {
+    const repo = initRepo();
+    const hook = join(repo, ".git", "hooks", "post-commit");
+    // A damaged hook: a START marker, no END, then real user content after.
+    writeFileSync(hook, `#!/bin/bash\n${SENTINEL_START}\nstray cos line\nIMPORTANT_USER_TAIL\n`);
+    chmodSync(hook, 0o755);
+    sh(UNINSTALL, ["--repo", repo]);
+    // The strip refuses to drop an unterminated block → the user's tail survives.
+    expect(readFileSync(hook, "utf8")).toContain("IMPORTANT_USER_TAIL");
   });
 });

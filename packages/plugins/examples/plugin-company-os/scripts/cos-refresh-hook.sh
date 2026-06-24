@@ -66,37 +66,42 @@ if [ -n "$GCD" ]; then
   [ -n "$MAIN_ROOT" ] && SCOPE_REPO="$(basename "$MAIN_ROOT")"
 fi
 
-# --- non-blocking, time-boxed, backgrounded dispatch -------------------------
+# --- non-blocking, watchdog-bounded, backgrounded dispatch -------------------
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
-LOCK_FILE="${TMPDIR:-/tmp}/cos-refresh-${COMPANY_ID}.lock"
-
-# Pick a timeout wrapper if one exists (macOS ships neither by default; the .mjs
-# AbortController is the primary bound, this is the backstop for a wedged node).
-TIMEOUT_BIN=""
-if command -v timeout >/dev/null 2>&1; then
-  TIMEOUT_BIN="timeout 20"
-elif command -v gtimeout >/dev/null 2>&1; then
-  TIMEOUT_BIN="gtimeout 20"
-fi
+# Sanitize the lock key (defensive — the installer already constrains the id).
+LOCK_KEY="$(printf '%s' "$COMPANY_ID" | tr -c 'A-Za-z0-9._-' '_')"
+LOCK_DIR="${TMPDIR:-/tmp}/cos-refresh-${LOCK_KEY}.lock"
+WATCHDOG_SECS="${COS_REFRESH_WATCHDOG_SECS:-25}"
 
 (
-  # Non-blocking lock: if a refresh for this company is already in flight, skip
-  # rather than queue — the in-flight one already captures this commit's state.
-  if command -v flock >/dev/null 2>&1; then
-    exec 9>"$LOCK_FILE" || exit 0
-    flock -n 9 || exit 0
+  # Portable, atomic, non-blocking lock via `mkdir` — no `flock` dependency
+  # (stock macOS ships none). Reclaim a stale lock left by a crashed prior
+  # dispatch (older than the watchdog window).
+  if [ -d "$LOCK_DIR" ] && [ -n "$(find "$LOCK_DIR" -maxdepth 0 -mmin +2 2>/dev/null)" ]; then
+    rm -rf "$LOCK_DIR" 2>/dev/null || true
   fi
+  mkdir "$LOCK_DIR" 2>/dev/null || exit 0   # another dispatch holds it → skip (it already captured this state)
+  trap 'rm -rf "$LOCK_DIR" 2>/dev/null || true' EXIT
 
   SCOPE_ARGS=()
   [ -n "$SCOPE_REPO" ] && SCOPE_ARGS=(--scope "$SCOPE_REPO")
 
-  # shellcheck disable=SC2086
-  # `${arr[@]+...}` guards the empty-array expansion under `set -u` on bash 3.2 (macOS default).
-  $TIMEOUT_BIN "$NODE_BIN" "$REFRESH_SCRIPT" \
+  # `${arr[@]+...}` guards the empty-array expansion under `set -u` on bash 3.2.
+  "$NODE_BIN" "$REFRESH_SCRIPT" \
     --company "$COMPANY_ID" \
     ${SCOPE_ARGS[@]+"${SCOPE_ARGS[@]}"} \
     --quiet \
-    >>"$LOG_FILE" 2>&1 || true
+    >>"$LOG_FILE" 2>&1 &
+  CHILD=$!
+
+  # Watchdog: bound a wedged Node even where `timeout` is absent. The .mjs
+  # AbortController is the primary ~8s bound; this is the hard backstop.
+  ( sleep "$WATCHDOG_SECS"; kill -TERM "$CHILD" 2>/dev/null; sleep 2; kill -KILL "$CHILD" 2>/dev/null ) &
+  GUARD=$!
+
+  wait "$CHILD" 2>/dev/null || true
+  kill "$GUARD" 2>/dev/null || true   # child finished first → cancel the watchdog
+  wait "$GUARD" 2>/dev/null || true
 ) >/dev/null 2>&1 &
 
 # Detach so git's hook wait returns immediately regardless of the refresh.

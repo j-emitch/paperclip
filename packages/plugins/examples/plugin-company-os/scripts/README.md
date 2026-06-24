@@ -75,6 +75,27 @@ instance-admin). Under `authenticated` mode the POST returns 401/403 and
 `cos-refresh.mjs` treats it as a graceful no-op — the board falls back to
 job-only refresh. Host down, network error, and timeout all degrade the same way.
 
+## Hardening (reviewed surface)
+
+- **SSRF guard:** `cos-refresh.mjs` refuses any non-loopback host, embedded
+  credentials, or non-`http(s)` scheme (the hook is a local fast-path). The
+  future cloud seam opts out with `COS_ALLOW_NONLOOPBACK=1`.
+- **Injection-safe config:** `config.env` values are written shell-quoted (`%q`),
+  so a host/path containing shell metacharacters can never execute when the
+  dispatcher sources the file. The company id is constrained to `[A-Za-z0-9._-]+`.
+- **Non-destructive strip:** the installer/uninstaller only remove a *matched*
+  `>>> … <<<` block; a corrupted block (START with no END) is left intact rather
+  than truncating a user's real hook tail.
+- **Symlink-escape guard:** the installer refuses to write through a symlinked
+  hook file.
+- **Portable watchdog:** the dispatcher uses an atomic `mkdir` lock (no `flock`
+  dependency) and a `sleep`-based watchdog (no `timeout` dependency), so a wedged
+  Node can't leak a process on stock macOS. The `cos-refresh.mjs` AbortController
+  is the primary ~8s bound; the watchdog is the hard backstop.
+- The shared, security-critical logic (markers, hooks-dir resolution, block
+  strip, sha) lives in one sourced `cos-hook-lib.sh` so install + uninstall can't
+  drift. Uninstall reads a shell-readable TSV manifest, so it needs no Node.
+
 ## Uninstall & rollback
 
 ```bash
