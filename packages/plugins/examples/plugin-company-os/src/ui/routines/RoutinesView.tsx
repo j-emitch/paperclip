@@ -89,7 +89,12 @@ function AgentSection({ group, now, isMobile }: { group: AgentGroup; now: number
 function RoutineCard({ routine, now }: { routine: RoutineHealthEntry; now: number }) {
   const tone = VERDICT_TONES[routine.verdict];
   const lastRun = relativeTime(routine.lastRunAt, now);
-  const nextRun = relativeFromNow(routine.nextExpectedAt, now);
+  // A past `nextExpectedAt` means the routine is overdue — label it as such rather
+  // than rendering a contradictory "Next: 6d ago".
+  const nextMs = routine.nextExpectedAt ? Date.parse(routine.nextExpectedAt) : NaN;
+  const overdue = Number.isFinite(nextMs) && nextMs < now;
+  const nextLabel = overdue ? "Overdue" : "Next";
+  const nextValue = overdue ? relativeTime(routine.nextExpectedAt, now) : relativeFromNow(routine.nextExpectedAt, now);
   return (
     <article
       style={{
@@ -131,7 +136,7 @@ function RoutineCard({ routine, now }: { routine: RoutineHealthEntry; now: numbe
 
       <dl style={{ margin: 0, display: "flex", flexDirection: "column", gap: 5, fontSize: 12 }}>
         <MetaRow icon={<ClockIcon size={12} />} label="Last run" value={lastRun ?? "never"} />
-        {nextRun ? <MetaRow icon={<ClockIcon size={12} />} label="Next" value={nextRun} /> : null}
+        {nextValue ? <MetaRow icon={<ClockIcon size={12} />} label={nextLabel} value={nextValue} iconTone={overdue ? VERDICT_TONES.missing : undefined} /> : null}
         <MetaRow
           icon={routine.expectedArtifactPresent ? <CheckIcon size={12} /> : <AlertIcon size={12} />}
           iconTone={routine.expectedArtifactPresent ? VERDICT_TONES.fresh : VERDICT_TONES.missing}

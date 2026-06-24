@@ -88,15 +88,14 @@ export function ReportFilters({ view, filter, onChange, isMobile = false }: Repo
         ) : null}
       </div>
 
-      <div role="tablist" aria-label="Filter by type" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      <div role="group" aria-label="Filter by type" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {view.typeFacets.map((t) => {
           const selected = filter.type === t.value;
           return (
             <button
               key={String(t.value)}
               type="button"
-              role="tab"
-              aria-selected={selected}
+              aria-pressed={selected}
               onClick={() => onChange({ ...filter, type: t.value })}
               className="cos-chip-hover"
               style={{

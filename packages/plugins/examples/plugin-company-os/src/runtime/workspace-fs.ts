@@ -83,6 +83,12 @@ export async function readContainedText(
   const content = await readFile(real, "utf-8");
   return {
     content,
+    // The stat describes the resolved TARGET (`real`) — what was actually read —
+    // so `isSymlink` is always false here. `statContained` lstat's the requested
+    // path instead and reports link-ness truthfully; both are internal-only
+    // (the docs-viewer payload carries no isSymlink field), so the asymmetry is
+    // intentional and harmless. `relPath` is always the caller's input string,
+    // never an absolute host path.
     stat: {
       relPath: relPath.replace(/\\/g, "/"),
       sizeBytes: st.size,

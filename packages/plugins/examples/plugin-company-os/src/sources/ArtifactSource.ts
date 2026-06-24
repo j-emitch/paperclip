@@ -19,15 +19,20 @@ import { collectPerRepo, readError, type RepoReadResult } from "./_shared.js";
 
 export const ARTIFACT_SOURCE_ID = "artifact";
 
-/** Union of artifact globs scanned per repo (repo-relative; non-matches return nothing). */
+/**
+ * Union of artifact globs scanned per repo (repo-relative; non-matches return
+ * nothing). `reports/**` is indexed WHOLE rather than dir-by-dir so the index
+ * catches every routine-output directory an AGENTS `company_os` block can declare
+ * (strategy / health / process / journal / harvest / standup / weekly / …) — the
+ * routine-health join (COS-0f) depends on those artifacts being present, and a
+ * hardcoded dir list silently drops the routines whose dir isn't enumerated.
+ * `typeFromPath` classifies each `reports/**` file (cannons / handoff / routine
+ * output) so the broad glob doesn't mis-bucket.
+ */
 const ARTIFACT_GLOBS = [
   "specs/**/*.md",
   "docs/superpowers/specs/**/*.md",
-  "reports/handoffs/**/*.md",
-  "reports/review-cannons/**/*.md",
-  "reports/reviews/**/*.md",
-  "reports/standup/**/*.md",
-  "reports/weekly/**/*.md",
+  "reports/**/*.md",
 ] as const;
 
 /** Frontmatter `type` value → artifact type (authoritative when present). */
@@ -41,12 +46,19 @@ const TYPE_BY_FRONTMATTER: Record<string, ArtifactType> = {
   routine_output: "routine_output",
 };
 
-/** Path heuristic when frontmatter carries no `type`. */
+/**
+ * Path heuristic when frontmatter carries no `type`. Order matters: the specific
+ * report families (cannons, handoffs) win first; every OTHER file under
+ * `reports/**` is a routine output. That catch-all is deliberate — it means a NEW
+ * routine-output directory (declared in an AGENTS `company_os` block) is indexed
+ * the moment it exists, without editing this list, so the routine-health join
+ * never silently drops a routine whose dir we forgot to enumerate.
+ */
 function typeFromPath(relPath: string): ArtifactType | null {
   if (/(^|\/)reports\/review-cannons\//.test(relPath) || /(^|\/)reports\/reviews\//.test(relPath)) return "cannons";
   if (/(^|\/)reports\/handoffs\//.test(relPath)) return "handoff";
   if (/(^|\/)(specs|docs\/superpowers\/specs)\//.test(relPath)) return "spec";
-  if (/(^|\/)reports\/(standup|weekly)\//.test(relPath)) return "routine_output";
+  if (/(^|\/)reports\//.test(relPath)) return "routine_output"; // any other reports/** file
   return null;
 }
 

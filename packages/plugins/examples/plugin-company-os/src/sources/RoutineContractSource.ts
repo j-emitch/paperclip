@@ -22,6 +22,18 @@ export const ROUTINE_CONTRACT_SOURCE_ID = "routine-contract";
 /** Where the directive AGENTS.md files live (only the company repo matches in practice). */
 const AGENTS_GLOB = "config/paperclip/agents/**/AGENTS.md";
 
+/**
+ * Normalize a routine's `expected_artifact` glob so a flat single-segment match
+ * also matches date-bucketed outputs (`<dir>/2026/06-23.md`). The AGENTS blocks
+ * declare a single-star tail (one path segment only), but a routine may bucket
+ * its output into sub-dirs; rewriting that tail to a recursive cross-segment
+ * match makes the artifact join robust to either layout. A glob that is already
+ * recursive (double-star anchored) is left untouched (no doubling).
+ */
+export function normalizeArtifactGlob(glob: string): string {
+  return glob.replace(/([^*/])\/\*(\.[A-Za-z0-9]+)?$/, "$1/**/*$2");
+}
+
 export const routineContractSource: WorkSignalSource = {
   id: ROUTINE_CONTRACT_SOURCE_ID,
   collect(ctx: CollectionContext): Promise<SignalBatch> {
@@ -44,7 +56,9 @@ export const routineContractSource: WorkSignalSource = {
           errors.push({ code: "parse_error", message: `${file.relPath}: ${e}`, degraded: false });
         }
         for (const r of block.routines) {
-          signals.push(routineSignal(repo, file.relPath, r.id, r.display_name, r.owner_agent, r.cadence, r.expected_artifact));
+          signals.push(
+            routineSignal(repo, file.relPath, r.id, r.display_name, r.owner_agent, r.cadence, normalizeArtifactGlob(r.expected_artifact)),
+          );
         }
       }
       return { signals, errors };

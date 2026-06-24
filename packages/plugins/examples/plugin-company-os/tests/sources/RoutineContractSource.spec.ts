@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { routineContractSource } from "../../src/sources/RoutineContractSource.js";
+import { routineContractSource, normalizeArtifactGlob } from "../../src/sources/RoutineContractSource.js";
 import { isRoutineSignal } from "../../src/contracts/signals.js";
+import { matchesAnyGlob } from "../../src/sources/glob.js";
 import { makeFixtureContext } from "../fixtures/context.js";
 
 const CTO_AGENTS = `# CTO Directive
@@ -52,9 +53,23 @@ describe("RoutineContractSource", () => {
       displayName: "Daily Standup",
       ownerAgent: "CTO",
       cadence: "daily",
-      expectedArtifactGlob: "company/reports/standup/*.md",
+      // The single-`*` AGENTS glob is normalized to a recursive match so bucketed outputs still join (P1-2).
+      expectedArtifactGlob: "company/reports/standup/**/*.md",
       path: "config/paperclip/agents/cto/AGENTS.md",
     });
+  });
+
+  it("normalizes a single-segment expected_artifact glob to a recursive match (P1-2)", () => {
+    expect(normalizeArtifactGlob("company/reports/strategy/*.md")).toBe("company/reports/strategy/**/*.md");
+    expect(normalizeArtifactGlob("company/reports/health/*")).toBe("company/reports/health/**/*");
+    // Already-recursive globs are left untouched (no double **).
+    expect(normalizeArtifactGlob("company/reports/x/**/*.md")).toBe("company/reports/x/**/*.md");
+    // The normalized glob matches BOTH a flat file and a date-bucketed one.
+    const g = normalizeArtifactGlob("company/reports/strategy/*.md");
+    expect(matchesAnyGlob("company/reports/strategy/2026-06-23.md", [g])).toBe(true);
+    expect(matchesAnyGlob("company/reports/strategy/2026/06-23.md", [g])).toBe(true);
+    // ...but does not leak outside the dir.
+    expect(matchesAnyGlob("company/reports/other/x.md", [g])).toBe(false);
   });
 
   it("tolerates an optional write_authority key without affecting routine parsing", async () => {

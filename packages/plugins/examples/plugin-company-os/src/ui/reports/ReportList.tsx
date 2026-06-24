@@ -40,7 +40,7 @@ export function ReportList({ entries, selectedKey, onSelect, now, isMobile = fal
 
   return (
     <ul
-      aria-label="Reports"
+      aria-label="Report documents"
       style={{
         listStyle: "none",
         margin: 0,

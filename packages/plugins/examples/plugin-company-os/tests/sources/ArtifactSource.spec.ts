@@ -46,4 +46,27 @@ describe("ArtifactSource", () => {
     });
     expect((await artifactSource.collect(ctx)).signals).toEqual([]);
   });
+
+  it("indexes ANY reports/** dir as routine_output so new AGENTS routine dirs are caught (P1-1)", async () => {
+    // The live AGENTS company_os blocks write to reports/{strategy,health,process,journal,harvest}/
+    // — none of which were in the old hardcoded glob list. The broad reports/** glob + the
+    // typeFromPath catch-all must index them as routine_output so the routine-health join works.
+    const ctx = makeFixtureContext({
+      repos: [{ repo: "company", available: true }],
+      files: {
+        company: {
+          "reports/strategy/2026-06-23.md": { content: "# Weekly strategy" },
+          "reports/health/2026-06-23.md": { content: "# Daily health scan" },
+          "reports/journal/2026/06-23.md": { content: "# Codebase awareness (date-bucketed)" },
+        },
+      },
+    });
+    const arts = (await artifactSource.collect(ctx)).signals.filter(isArtifactSignal);
+    expect(arts.map((a) => a.relPath).sort()).toEqual([
+      "reports/health/2026-06-23.md",
+      "reports/journal/2026/06-23.md",
+      "reports/strategy/2026-06-23.md",
+    ]);
+    expect(arts.every((a) => a.artifactType === "routine_output")).toBe(true);
+  });
 });

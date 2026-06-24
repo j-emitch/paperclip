@@ -164,13 +164,18 @@ function TabPanel({
   companyId: string | null;
   tab: CompanyOsTab;
 }) {
+  // Key the live surfaces by companyId so switching companies REMOUNTS them —
+  // `usePluginData` keeps the prior company's data while the next request is in
+  // flight (stale-while-revalidate), and a remount clears it so one company's
+  // board/reports/routines can never flash under another's id.
+  const key = companyId ?? "_no_company";
   switch (tabKey) {
     case "board":
-      return <CompanyOsBoard companyId={companyId} />;
+      return <CompanyOsBoard key={key} companyId={companyId} />;
     case "reports":
-      return <Reports companyId={companyId} />;
+      return <Reports key={key} companyId={companyId} />;
     case "routines":
-      return <Routines companyId={companyId} />;
+      return <Routines key={key} companyId={companyId} />;
     default:
       return <PlaceholderPanel tab={tab} />;
   }

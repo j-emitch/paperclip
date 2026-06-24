@@ -53,7 +53,7 @@ export function Pill({ label, tone = tokens.muted, soft = false, withDot = false
         lineHeight: 1.4,
         whiteSpace: "nowrap",
         color: tone,
-        background: soft ? tintOf(tone) : "transparent",
+        background: soft ? withAlpha(tone, 0.16) : "transparent",
         border: `1px solid ${soft ? "transparent" : tokens.border}`,
         ...style,
       }}
@@ -95,11 +95,15 @@ export function RepoBadge({ repo, title }: { repo: string; title?: string }) {
 }
 
 /**
- * A translucent tint of an oklch/hsl tone for soft pill fills. We can't derive an
- * alpha from an arbitrary color string at runtime, so we wrap it in
- * `color-mix` (supported in the host's modern Chromium) with a transparent
- * partner — degrading to the solid tone is acceptable on the rare non-support.
+ * A translucent tint of a tone for soft pill fills. Rather than `color-mix` (which
+ * has no graceful inline-style fallback if unsupported — it just yields an invalid
+ * background), we inject an alpha into the functional color itself
+ * (`oklch(L C H / a)` / `hsl(H S L / a)`), which every target renderer supports.
+ * A color we can't parse falls back to the solid tone.
  */
-function tintOf(tone: string): string {
-  return `color-mix(in oklch, ${tone} 16%, transparent)`;
+function withAlpha(tone: string, alpha: number): string {
+  const m = /^(oklch|oklab|hsl|hwb|lab|lch|rgb)\(([^)]*)\)$/.exec(tone.trim());
+  if (!m) return tone;
+  const inner = m[2].includes("/") ? m[2].slice(0, m[2].indexOf("/")).trim() : m[2].trim();
+  return `${m[1]}(${inner} / ${alpha})`;
 }

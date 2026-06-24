@@ -53,6 +53,10 @@ export function Reports({ companyId }: { companyId: string | null }) {
 
   const viewer = selected ? (
     <ConnectedReportViewer
+      // Remount on selection change so the viewer resets to its spinner instead
+      // of leaving the previous document visible while the next one loads
+      // (usePluginData keeps prior content during the in-flight fetch).
+      key={selectionKey(selected)}
       companyId={companyId}
       repo={selected.repo}
       relPath={selected.relPath}
