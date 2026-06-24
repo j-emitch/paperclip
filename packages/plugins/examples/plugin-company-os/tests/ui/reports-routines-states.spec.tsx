@@ -59,11 +59,14 @@ describe("Reports SSR", () => {
     expect(html).toContain("No reports match these filters.");
   });
 
-  it("viewer: ok markdown renders the body + header metadata", () => {
+  it("viewer: ok markdown renders the body (frontmatter stripped) + header metadata", () => {
     const html = viewerPanel(okMarkdownContent());
     expect(html).toContain("Specs"); // type pill
+    expect(html).toContain("approved"); // docStatus pill
     expect(html).toContain("company"); // repo badge
-    expect(html).toContain("A first-party Paperclip plugin");
+    expect(html).toContain("A first-party Paperclip plugin"); // the body
+    // The leading YAML frontmatter is NOT rendered as body text.
+    expect(html).not.toContain("type: spec");
   });
 
   it("viewer: too-large renders the typed safety notice, never the bytes", () => {

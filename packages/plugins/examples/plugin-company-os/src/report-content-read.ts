@@ -119,6 +119,7 @@ export async function readReportContent(
       sizeBytes: read.sizeBytes,
       mtime: read.mtime ?? entry.mtime,
       title: entry.title,
+      docStatus: entry.status,
       artifactType: entry.artifactType,
       message: null,
     });
@@ -158,6 +159,7 @@ function refusal(
     sizeBytes: entry?.sizeBytes ?? 0,
     mtime: entry?.mtime ?? null,
     title: entry?.title ?? null,
+    docStatus: entry?.status ?? null,
     artifactType: entry?.artifactType ?? null,
     message,
   };

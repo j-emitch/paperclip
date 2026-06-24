@@ -131,7 +131,8 @@ export function emptyArtifactIndex(): ArtifactIndexV1 {
 }
 
 // --- report-content payloads (validated) ---------------------------------------
-const SAMPLE_MARKDOWN = `# COS-0 — Company OS Dev Cockpit\n\nA first-party Paperclip plugin: an auto-updating Kanban plus a docs/reports + routines viewer.\n\n## Status\n\n- **Board** — shipped (COS-0e)\n- **Reports + Routines** — this phase (COS-0f)\n\n> Read-only over the product repos.\n`;
+// A real-shaped doc: leading YAML frontmatter (which the viewer strips) + body.
+const SAMPLE_MARKDOWN = `---\ntitle: COS-0 — Company OS Dev Cockpit\ntype: spec\nstatus: approved\n---\n\n# COS-0 — Company OS Dev Cockpit\n\nA first-party Paperclip plugin: an auto-updating Kanban plus a docs/reports + routines viewer.\n\n## Status\n\n- **Board** — shipped (COS-0e)\n- **Reports + Routines** — this phase (COS-0f)\n\n> Read-only over the product repos.\n`;
 
 export function okMarkdownContent(): ReportContentV1 {
   return parseReportContentV1({
@@ -144,6 +145,7 @@ export function okMarkdownContent(): ReportContentV1 {
     sizeBytes: SAMPLE_MARKDOWN.length,
     mtime: iso(NOW - 2 * HOUR),
     title: "COS-0 — Company OS Dev Cockpit",
+    docStatus: "approved",
     artifactType: "spec",
     message: null,
   });
@@ -160,6 +162,7 @@ export function tooLargeContent(): ReportContentV1 {
     sizeBytes: 2_400_000,
     mtime: iso(NOW - 6 * HOUR),
     title: "MTP Coaching Engine (omnibus)",
+    docStatus: "in_progress",
     artifactType: "spec",
     message: "This file is 2.4 MB (cap 1.0 MB) — open it in your editor.",
   });

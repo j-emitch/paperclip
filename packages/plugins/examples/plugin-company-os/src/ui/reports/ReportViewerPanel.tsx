@@ -18,7 +18,7 @@ import { Frame, Glyph, LocalSpinner, ghostButtonStyle } from "../shared/feedback
 import { Pill, RepoBadge } from "../shared/badges.js";
 import { AlertIcon, ClockIcon, CloseIcon, DocIcon, FileWarningIcon, RefreshIcon } from "../icons.js";
 import { relativeTime, formatBytes } from "../shared/time.js";
-import { ARTIFACT_TYPE_LABELS, baseName } from "./reports-view-model.js";
+import { ARTIFACT_TYPE_LABELS, baseName, stripFrontmatter } from "./reports-view-model.js";
 
 export interface ReportViewerPanelProps {
   /** The selected document payload, or null when nothing is selected. */
@@ -119,6 +119,7 @@ export function ReportViewerPanel({
           {content.artifactType ? (
             <Pill label={ARTIFACT_TYPE_LABELS[content.artifactType]} tone={tokens.accent} soft />
           ) : null}
+          {content.docStatus ? <Pill label={content.docStatus} tone={tokens.muted} /> : null}
           <RepoBadge repo={content.repo} />
           {content.relPath ? (
             <code
@@ -175,7 +176,7 @@ function Body({
   if (renderMode === "markdown") {
     return (
       <div style={{ minWidth: 0, fontSize: isMobile ? 13 : 13.5, lineHeight: 1.65, color: tokens.fg }} className="cos-report-body">
-        {renderMarkdown(content)}
+        {renderMarkdown(stripFrontmatter(content))}
       </div>
     );
   }

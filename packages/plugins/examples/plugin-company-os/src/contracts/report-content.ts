@@ -44,6 +44,8 @@ export const reportContentV1Schema = z.object({
   mtime: z.string().nullable(),
   /** Human title from the index entry; null when absent. */
   title: z.string().nullable(),
+  /** Lifecycle status from the index entry's frontmatter (e.g. "shipped"); null when absent. */
+  docStatus: z.string().nullable(),
   /** The artifact type from the index entry; null when not indexed. */
   artifactType: artifactTypeSchema.nullable(),
   /** Human one-liner explaining a non-`ok` status (sanitized — relative path only). */

@@ -12,6 +12,7 @@ import {
   buildReportsView,
   EMPTY_FILTER,
   selectionKey,
+  stripFrontmatter,
   UNSET_FACET,
   type ReportsFilter,
 } from "../../src/ui/reports/reports-view-model.js";
@@ -84,5 +85,15 @@ describe("buildReportsView", () => {
     expect(selectionKey({ repo: "company", relPath: "a/b.md" })).toBe("company::a/b.md");
     expect(baseName("docs/specs/x.md")).toBe("x.md");
     expect(baseName("README.md")).toBe("README.md");
+  });
+
+  it("stripFrontmatter removes only a leading YAML block, never a mid-doc rule", () => {
+    expect(stripFrontmatter("---\ntitle: X\nstatus: shipped\n---\n# Body\n\ntext")).toBe("# Body\n\ntext");
+    expect(stripFrontmatter("---\r\na: 1\r\n---\r\nbody")).toBe("body"); // CRLF
+    // No frontmatter → unchanged.
+    expect(stripFrontmatter("# Just a heading\n\ntext")).toBe("# Just a heading\n\ntext");
+    // A mid-document horizontal rule is NOT stripped (only a start-anchored block).
+    const withRule = "# Title\n\npara\n\n---\n\nmore";
+    expect(stripFrontmatter(withRule)).toBe(withRule);
   });
 });
