@@ -321,6 +321,18 @@ describe("uninstall-cos-hooks.sh", () => {
     expect(existsSync(hook)).toBe(false);
   });
 
+  it("falls back to the JSON manifest when the TSV sidecar is absent (cross-version uninstall)", () => {
+    const repo = initRepo();
+    const hook = join(repo, ".git", "hooks", "post-commit");
+    sh(INSTALL, ["--company", COMPANY, "--repo", repo, "--node", NODE_BIN]);
+    // Simulate a manifest written before the TSV sidecar existed.
+    rmSync(join(HOME, ".config", "cos-company-os", "hooks-manifest.tsv"));
+    expect(existsSync(join(HOME, ".config", "cos-company-os", "hooks-manifest.json"))).toBe(true);
+    sh(UNINSTALL, []);
+    // The JSON fallback still found + removed the installer-created hook.
+    expect(existsSync(hook)).toBe(false);
+  });
+
   it("is NON-DESTRUCTIVE on a corrupted block (START present, END missing → tail preserved)", () => {
     const repo = initRepo();
     const hook = join(repo, ".git", "hooks", "post-commit");

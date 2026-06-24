@@ -75,11 +75,22 @@ strip_one() {
 echo "uninstall-cos-hooks: removing COS-0g board-refresh hooks"
 [ "$DRY_RUN" = "1" ] && echo "  (dry-run — no files will be written)"
 
-# 1. Manifest-recorded hooks (TSV: repo \t hookPath \t event \t created \t sha).
+# 1. Manifest-recorded hooks. Prefer the shell-readable TSV (no node); fall back
+#    to the JSON manifest (via node) for a manifest written before the TSV sidecar.
 if [ -r "$MANIFEST_TSV" ]; then
   while IFS=$'\t' read -r _repo hook_path _event created _sha; do
     [ -n "$hook_path" ] && strip_one "$hook_path" "$created"
   done <"$MANIFEST_TSV"
+elif [ -r "$MANIFEST_FILE" ] && command -v node >/dev/null 2>&1; then
+  while IFS=$'\t' read -r hook_path created; do
+    [ -n "$hook_path" ] && strip_one "$hook_path" "$created"
+  done < <(node -e '
+    const fs = require("node:fs");
+    try {
+      const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+      for (const h of m.hooks ?? []) process.stdout.write(`${h.hookPath}\t${h.created ? "true" : "false"}\n`);
+    } catch { /* unreadable manifest → nothing to strip from here */ }
+  ' "$MANIFEST_FILE")
 fi
 
 # 2. Any extra repos passed explicitly (treat as not-created → never delete file).
