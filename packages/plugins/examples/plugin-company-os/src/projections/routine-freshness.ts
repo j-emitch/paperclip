@@ -7,11 +7,12 @@
  * last-activity fold is lifted into `evaluateRoutine` (the per-routine core both
  * projections call). The routine-health tests stay green unchanged.
  *
- * Verdict ladder (against the cadence window W):
+ * Verdict ladder — ARTIFACT-centric (freshness is whether the EXPECTED ARTIFACT
+ * was produced recently, not merely whether the agent ran):
  *   never_ran — no artifact ever AND no last-run
- *   fresh     — newest activity within W
- *   stale     — newest activity within (W, 2W]
- *   missing   — newest activity older than 2W (overdue), or ran with no artifact
+ *   fresh     — newest ARTIFACT mtime within W
+ *   stale     — newest ARTIFACT mtime within (W, 2W]
+ *   missing   — newest ARTIFACT mtime older than 2W, OR a last-run with no artifact
  */
 
 import type { ArtifactSignal, RoutineSignal } from "../contracts/signals.js";

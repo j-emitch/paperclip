@@ -89,12 +89,12 @@ export type DocIndexV1 = z.infer<typeof docIndexV1Schema>;
  * projection (no hasher) must compute the SAME id for a main-checkout
  * `ArtifactSignal` as `DocsSource` does for its `DocSignal`, so the two dedup;
  * and `deriveOrientation` computes a routine report's id for its deep-link. The
- * `\u001f` (Unit Separator) delimiter never appears in a repo basename, a
- * `worktree:${hex}` checkoutId, or a path. The id is opaque to consumers — only
+ * JSON tuple encoding is unambiguous for ANY input — unlike a delimiter, no
+ * character can collide two distinct tuples (codex B P2). The id is opaque to consumers — only
  * equality + index-gated lookup matter (the relPath it embeds is already a field).
  */
 export function makeDocId(repoKey: string, checkoutId: string, relPath: string): string {
-  return `${repoKey}\u001f${checkoutId}\u001f${relPath}`;
+  return JSON.stringify([repoKey, checkoutId, relPath]);
 }
 
 /**

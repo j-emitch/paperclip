@@ -88,7 +88,7 @@ interface BranchWork {
   behind: number | null;
   mergeBase: string | null;
   conflictsWithTrunk: boolean | null;
-  lastCommitAt: string;
+  lastCommitAt: string | null;
   staleDays: number;
   recentCommits: CommitRef[];
   /** True when the budget was exhausted before this branch's expensive reads. */
@@ -139,10 +139,14 @@ async function collectRepo(
   const worktrees = parseWorktreeList(wtRes.stdout);
 
   // Map branch → its worktrees; collect detached/orphaned worktrees separately.
+  // A worktree whose branch ref no longer exists in `for-each-ref` (deleted while
+  // checked out) is an ORPHAN — emit it as a branch:null row, NEVER drop it
+  // (codex A P0: it would otherwise vanish from both wtByBranch and the row set).
+  const enumeratedBranches = new Set(branchRefs.map((b) => b.branch));
   const wtByBranch = new Map<string, Worktree[]>();
   const detached: Worktree[] = [];
   for (const wt of worktrees) {
-    if (wt.branch === null || wt.detached) {
+    if (wt.branch === null || wt.detached || !enumeratedBranches.has(wt.branch)) {
       detached.push(wt);
       continue;
     }
@@ -159,11 +163,11 @@ async function collectRepo(
 
   for (const br of branchRefs) {
     works.push(
-      await buildBranchWork(repo.repo, br.branch, br.headSha, br.committedAt, wtByBranch.get(br.branch) ?? [], trunk, ctx, nowMs, overBudget()),
+      await buildBranchWork(repo.repo, br.branch, br.headSha, br.committedAt, wtByBranch.get(br.branch) ?? [], trunk, ctx, nowMs, overBudget, errors),
     );
   }
   for (const wt of detached) {
-    works.push(await buildBranchWork(repo.repo, null, wt.head ?? "", null, [wt], trunk, ctx, nowMs, overBudget()));
+    works.push(await buildBranchWork(repo.repo, null, wt.head ?? "", null, [wt], trunk, ctx, nowMs, overBudget, errors));
   }
 
   // Conflict pass: only ahead-AND-behind branches with a merge-base, most-behind
@@ -180,7 +184,7 @@ async function collectRepo(
         capped = true;
         break; // remaining stay at provisional null → "conflict_not_evaluated"
       }
-      w.conflictsWithTrunk = await predictConflict(repo.repo, trunk.ref, w.mergeBase!, w.refForCompare, ctx);
+      w.conflictsWithTrunk = await predictConflict(repo.repo, trunk.ref, w.mergeBase!, w.refForCompare, ctx, errors);
       checks++;
     }
     if (capped) {
@@ -197,7 +201,13 @@ async function collectRepo(
   return { repoSignals, errors };
 }
 
-/** Build one branch (or detached-worktree) work record, respecting the budget. */
+/**
+ * Build one branch (or detached-worktree) work record, respecting the per-repo
+ * budget (checked BETWEEN the expensive steps, not just once — codex B P2, so a
+ * single slow branch can't blow past the budget) and recording per-branch git
+ * read failures as degraded `SignalError`s (codex A P1, so a failed read stales
+ * the repo instead of silently nulling fields while freshness stays live).
+ */
 async function buildBranchWork(
   repo: string,
   branch: string | null,
@@ -207,7 +217,8 @@ async function buildBranchWork(
   trunk: TrunkRef,
   ctx: CollectionContext,
   nowMs: number,
-  budgetGone: boolean,
+  overBudget: () => boolean,
+  errors: SignalError[],
 ): Promise<BranchWork> {
   const refForCompare = branch ?? headSha;
 
@@ -222,23 +233,23 @@ async function buildBranchWork(
     behind: null,
     mergeBase: null,
     conflictsWithTrunk: trunk.state === "ok" ? false : null,
-    lastCommitAt: committedAt ?? "",
+    lastCommitAt: committedAt ?? null,
     staleDays: committedAt ? staleDaysFrom(committedAt, nowMs) : 0,
     recentCommits: [],
     degraded: false,
   };
 
-  if (budgetGone || refForCompare === "") {
+  if (overBudget() || refForCompare === "") {
     // Budget exhausted before this branch — keep the skeleton, null the rest.
     base.comparison = "error";
     base.conflictsWithTrunk = null;
-    base.degraded = budgetGone;
-    base.worktrees = base.worktrees.map((wt) => ({ ...wt, dirtyFileCount: null }));
+    base.degraded = overBudget();
     return base;
   }
 
-  // Expensive per-branch reads.
-  const cmp = await computeComparison(repo, trunk, refForCompare, ctx);
+  // Expensive per-branch reads. `errors` collects degraded reads; budget is
+  // re-checked before each step so one slow branch stops early with a skeleton.
+  const cmp = await computeComparison(repo, trunk, refForCompare, ctx, errors);
   base.comparison = cmp.comparison;
   base.ahead = cmp.ahead;
   base.behind = cmp.behind;
@@ -249,15 +260,23 @@ async function buildBranchWork(
   else if ((cmp.ahead ?? 0) === 0 || (cmp.behind ?? 0) === 0) base.conflictsWithTrunk = false;
   else base.conflictsWithTrunk = null;
 
-  base.recentCommits = await readRecentCommits(repo, refForCompare, ctx);
-  if (base.lastCommitAt === "" && base.recentCommits.length > 0) {
+  if (overBudget()) {
+    base.degraded = true;
+    return base; // skeleton + comparison only; recentCommits/dirty nulled
+  }
+  base.recentCommits = await readRecentCommits(repo, refForCompare, ctx, errors);
+  if (!base.lastCommitAt && base.recentCommits.length > 0) {
     base.lastCommitAt = base.recentCommits[0].committedAt;
     base.staleDays = staleDaysFrom(base.lastCommitAt, nowMs);
   }
 
+  if (overBudget()) {
+    base.degraded = true;
+    return base; // dirty left null
+  }
   // Per-worktree dirty state — read-only `--no-optional-locks status --porcelain`.
   base.worktrees = await Promise.all(
-    base.worktrees.map(async (wt) => ({ ...wt, dirtyFileCount: await dirtyCount(repo, wt.path, ctx) })),
+    base.worktrees.map(async (wt) => ({ ...wt, dirtyFileCount: await dirtyCount(repo, wt.path, ctx, errors) })),
   );
 
   return base;
@@ -291,6 +310,7 @@ async function computeComparison(
   trunk: TrunkRef,
   ref: string,
   ctx: CollectionContext,
+  errors: SignalError[],
 ): Promise<{ comparison: BranchComparison; ahead: number | null; behind: number | null; mergeBase: string | null }> {
   if (trunk.state !== "ok" || trunk.ref === null) {
     return { comparison: "missing_trunk", ahead: null, behind: null, mergeBase: null };
@@ -300,18 +320,22 @@ async function computeComparison(
   if (mergeBase === "") return { comparison: "no_merge_base", ahead: null, behind: null, mergeBase: null };
 
   const rl = await ctx.git.run(repo, ["rev-list", "--left-right", "--count", `${trunk.ref}...${ref}`]);
-  if (rl.code !== 0) return { comparison: "error", ahead: null, behind: null, mergeBase };
+  if (rl.code !== 0) {
+    errors.push(signalError("subprocess_failed", `git rev-list failed for ${ref} (${repo})`));
+    return { comparison: "error", ahead: null, behind: null, mergeBase };
+  }
   // `--left-right --count A...B` → "<behind>\t<ahead>" (left = in A not B = behind).
   const [behindStr, aheadStr] = rl.stdout.trim().split(/\s+/);
   const behind = Number.parseInt(behindStr ?? "", 10);
   const ahead = Number.parseInt(aheadStr ?? "", 10);
   if (!Number.isFinite(behind) || !Number.isFinite(ahead)) {
+    errors.push(signalError("subprocess_failed", `git rev-list returned unparseable counts for ${ref} (${repo})`));
     return { comparison: "error", ahead: null, behind: null, mergeBase };
   }
   return { comparison: "ok", ahead, behind, mergeBase };
 }
 
-async function readRecentCommits(repo: string, ref: string, ctx: CollectionContext): Promise<CommitRef[]> {
+async function readRecentCommits(repo: string, ref: string, ctx: CollectionContext, errors: SignalError[]): Promise<CommitRef[]> {
   const res = await ctx.git.run(repo, [
     "log",
     "-n",
@@ -320,17 +344,23 @@ async function readRecentCommits(repo: string, ref: string, ctx: CollectionConte
     `--format=${BRANCH_LOG_FORMAT}`,
     ref,
   ]);
-  if (res.code !== 0) return [];
+  if (res.code !== 0) {
+    errors.push(signalError("subprocess_failed", `git log failed for ${ref} (${repo})`));
+    return [];
+  }
   return parseBranchCommits(res.stdout);
 }
 
 /** Per-worktree dirty count via the read-only global `--no-optional-locks status --porcelain`. */
-async function dirtyCount(repo: string, wtPath: string, ctx: CollectionContext): Promise<number | null> {
+async function dirtyCount(repo: string, wtPath: string, ctx: CollectionContext, errors: SignalError[]): Promise<number | null> {
   // The exact argv: `-C <path>` + `--no-optional-locks` are BOTH global flags
   // (before the `status` subcommand). `git status --no-optional-locks` is invalid
   // (the flag is global), so the order here is load-bearing.
   const res = await ctx.git.run(repo, ["-C", wtPath, "--no-optional-locks", "status", "--porcelain"]);
-  if (res.code !== 0) return null;
+  if (res.code !== 0) {
+    errors.push(signalError("subprocess_failed", `git status failed for a worktree of ${repo}`));
+    return null;
+  }
   return res.stdout.split(/\r?\n/).filter((l) => l.trim() !== "").length;
 }
 
@@ -341,9 +371,13 @@ async function predictConflict(
   mergeBase: string,
   ref: string,
   ctx: CollectionContext,
+  errors: SignalError[],
 ): Promise<boolean | null> {
   const res = await ctx.git.run(repo, ["merge-tree", mergeBase, trunkRef, ref]);
-  if (res.code !== 0) return null; // legacy form unavailable / errored → can't evaluate
+  if (res.code !== 0) {
+    errors.push(signalError("subprocess_failed", `git merge-tree failed for ${ref} (${repo})`));
+    return null; // legacy form unavailable / errored → can't evaluate
+  }
   return /<{7}/.test(res.stdout); // conflict markers present
 }
 

@@ -70,9 +70,14 @@ export const commitRefV1Schema = z.object({
 });
 export type CommitRefV1 = z.infer<typeof commitRefV1Schema>;
 
-/** One worktree of a branch — dirty state PER worktree (mirrors the signal `WorktreeRef`). */
+/**
+ * One worktree of a branch — dirty state PER worktree. Carries the worktree dir
+ * BASENAME (for display), never the absolute host path: the abs path stays inside
+ * `BranchSource` (for `git -C`) and never reaches the persisted contract / the UI
+ * (the key-only / no-absolute-path invariant; codex B P1).
+ */
 export const worktreeGitV1Schema = z.object({
-  path: z.string().min(1),
+  name: z.string().min(1),
   headSha: z.string().min(1),
   detached: z.boolean(),
   dirtyFileCount: z.number().int().nonnegative().nullable(),
@@ -89,7 +94,7 @@ export const branchGitV1Schema = z.object({
   ahead: z.number().int().nonnegative().nullable(),
   behind: z.number().int().nonnegative().nullable(),
   conflictsWithTrunk: z.boolean().nullable(),
-  lastCommitAt: z.string().min(1),
+  lastCommitAt: z.string().min(1).nullable(),
   staleDays: z.number().int().nonnegative(),
   recentCommits: z.array(commitRefV1Schema),
   statuses: z.array(branchStatusSchema),

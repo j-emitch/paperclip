@@ -35,6 +35,19 @@ export function deriveDocIndex(bundle: SignalBundle, nowMs: number, taxonomy: Pr
   const signals = bundle.batches.flatMap((b) => b.signals);
   const diagnostics: Diagnostic[] = [...taxonomy.diagnostics];
 
+  // Surface a DocsSource truncation (MAX_DOCS_PER_REPO cap) as an index diagnostic
+  // — it rides in RepoFreshness.errors as a NON-degraded "truncated" error, so the
+  // freshness-derived diagnostics never see it; make it visible here (codex B P2).
+  for (const batch of bundle.batches) {
+    for (const rf of batch.repoFreshness) {
+      for (const e of rf.errors) {
+        if (e.code === "truncated") {
+          diagnostics.push({ level: "warn", code: "doc_index_truncated", message: e.message, repo: rf.repo, source: batch.source });
+        }
+      }
+    }
+  }
+
   // Dedup by docId; an artifact main entry overwrites a DocsSource main dup.
   const byId = new Map<string, IndexedDoc>();
 

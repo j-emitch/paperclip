@@ -13,7 +13,7 @@
  * batch rather than failing the whole bundle.
  */
 
-import type { CollectionContext } from "./contracts/collection-context.js";
+import { reposResponsibleFor, signalError, type CollectionContext } from "./contracts/collection-context.js";
 import type { SignalBatch, SignalBundle, WorkSignalSource } from "./contracts/WorkSignalSource.js";
 import { DEFAULT_SOURCES } from "./sources/index.js";
 
@@ -36,9 +36,19 @@ export async function collect(
         return { batch: await source.collect(ctx), failed: false };
       } catch (err) {
         // A source MUST NOT throw (it should degrade internally). If one does,
-        // contain it: log, record, and contribute an empty batch.
+        // contain it: log + contribute an empty batch, but synthesize STALE
+        // repoFreshness for every repo it was responsible for — so a thrown source
+        // surfaces a stale badge / source_stale diagnostic on every projection
+        // (incl. Home) rather than a silent false "all clear" (Joe red-line; codex
+        // B / Opus review).
         ctx.logger.error(`source ${source.id} threw during collect`, { error: String(err) });
-        return { batch: { source: source.id, collectedAt, signals: [], repoFreshness: [] }, failed: true };
+        const repoFreshness = reposResponsibleFor(ctx).map((r) => ({
+          repo: r.repo,
+          freshness: "stale" as const,
+          lastOkAt: null,
+          errors: [signalError("subprocess_failed", `source ${source.id} threw during collect`)],
+        }));
+        return { batch: { source: source.id, collectedAt, signals: [], repoFreshness }, failed: true };
       }
     }),
   );

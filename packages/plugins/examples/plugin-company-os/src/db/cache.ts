@@ -142,13 +142,23 @@ export async function writeProjections(
   }
   // The five lockless secondaries upsert only AFTER the board fence passes (same
   // after-fence pattern COS-0 already uses for artifact-index + routine-health).
-  await upsertSnapshot(db, "cos_artifact_index", companyId, set.artifactIndex, ARTIFACT_INDEX_SCHEMA_VERSION, set.artifactIndex.derivedAt);
-  await upsertSnapshot(db, "cos_routine_health", companyId, set.routineHealth, ROUTINE_HEALTH_SCHEMA_VERSION, set.routineHealth.derivedAt);
-  await upsertSnapshot(db, "cos_orientation", companyId, set.orientation, ORIENTATION_SCHEMA_VERSION, set.orientation.derivedAt);
-  await upsertSnapshot(db, "cos_git_state", companyId, set.gitState, GIT_STATE_SCHEMA_VERSION, set.gitState.derivedAt);
-  await upsertSnapshot(db, "cos_doc_index", companyId, set.docIndex, DOC_INDEX_SCHEMA_VERSION, set.docIndex.derivedAt);
+  await upsertSnapshot(db, "cos_artifact_index", companyId, set.artifactIndex, ARTIFACT_INDEX_SCHEMA_VERSION, set.artifactIndex.derivedAt, owner);
+  await upsertSnapshot(db, "cos_routine_health", companyId, set.routineHealth, ROUTINE_HEALTH_SCHEMA_VERSION, set.routineHealth.derivedAt, owner);
+  await upsertSnapshot(db, "cos_orientation", companyId, set.orientation, ORIENTATION_SCHEMA_VERSION, set.orientation.derivedAt, owner);
+  await upsertSnapshot(db, "cos_git_state", companyId, set.gitState, GIT_STATE_SCHEMA_VERSION, set.gitState.derivedAt, owner);
+  await upsertSnapshot(db, "cos_doc_index", companyId, set.docIndex, DOC_INDEX_SCHEMA_VERSION, set.docIndex.derivedAt, owner);
 }
 
+/**
+ * Upsert a secondary projection snapshot, FENCED by lock ownership (codex B P1 /
+ * OI-6 folded): the `INSERT … SELECT … WHERE EXISTS (board row still owned by
+ * $owner)` gates BOTH the insert and the ON CONFLICT update (the conflict only
+ * fires when the guarded insert produced a row). So if the derive's lease was lost
+ * AFTER the board write but DURING the secondaries, the remaining upserts write 0
+ * rows — a newer derive's generation can never be partially overwritten. Closes
+ * the residual window the board-only fence left open (also hardens the two COS-0
+ * secondaries).
+ */
 async function upsertSnapshot(
   db: DbClient,
   table: string,
@@ -156,14 +166,16 @@ async function upsertSnapshot(
   snapshot: unknown,
   version: number,
   derivedAt: string,
+  owner: string,
 ): Promise<void> {
   await db.execute(
     `INSERT INTO ${NS}.${table} (company_id, snapshot, schema_version, derived_at, updated_at)
-       VALUES ($1, $2::jsonb, $3, $4, now())
+       SELECT $1, $2::jsonb, $3, $4, now()
+       WHERE EXISTS (SELECT 1 FROM ${NS}.cos_board_state WHERE company_id = $1 AND lock_owner = $5)
      ON CONFLICT (company_id) DO UPDATE
        SET snapshot = EXCLUDED.snapshot, schema_version = EXCLUDED.schema_version,
            derived_at = EXCLUDED.derived_at, updated_at = now()`,
-    [companyId, JSON.stringify(snapshot), version, derivedAt],
+    [companyId, JSON.stringify(snapshot), version, derivedAt, owner],
   );
 }
 

@@ -238,8 +238,9 @@ export interface BranchSignal extends SignalProvenance {
   readonly behind: number | null; // null unless comparison === "ok"
   /** merge-tree prediction; null when not evaluated OR comparison !== "ok". */
   readonly conflictsWithTrunk: boolean | null;
-  readonly lastCommitAt: string; // ISO-8601 of the tip
-  readonly staleDays: number; // age of the tip in days
+  /** ISO-8601 of the tip; null when unknown (e.g. an orphan worktree whose log read is empty/degraded). */
+  readonly lastCommitAt: string | null;
+  readonly staleDays: number; // age of the tip in days (0 when lastCommitAt unknown)
   readonly recentCommits: readonly CommitRef[]; // last N tip commits
   readonly statuses: readonly BranchStatus[]; // derived flags (§7)
 }

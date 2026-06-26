@@ -140,6 +140,44 @@ describe("BranchSource — git edge cases", () => {
     expect(branches[0]!.worktrees).toHaveLength(2);
     expect(branches[0]!.worktrees.map((w) => w.path)).toEqual(["/wt/a", "/wt/b"]);
   });
+
+  it("a worktree whose branch ref was deleted becomes a branch:null orphan row (never dropped)", async () => {
+    const handler: Handler = (_r, args) => {
+      switch (args[0]) {
+        case "rev-parse":
+          return args.includes("origin/main^{commit}") ? OK("trunksha") : FAIL("", 128);
+        case "for-each-ref":
+          return OK(forEachRef([["cos/COS-1", "abc1234", STALE_DATE]])); // "ghost" NOT enumerated
+        case "worktree":
+          return OK(
+            worktreeList([
+              worktreeBlock("/wt/cos", "abc1234", "cos/COS-1"),
+              worktreeBlock("/wt/ghost", "deadbee", "ghost"), // branch deleted while checked out
+            ]),
+          );
+        case "merge-base":
+          return OK("base");
+        case "rev-list":
+          return OK("0\t1");
+        default:
+          return OK("");
+      }
+    };
+    const { branches } = await run({ handler });
+    expect(branches).toHaveLength(2); // cos/COS-1 + the orphaned ghost worktree
+    const orphan = branches.find((b) => b.branch === null);
+    expect(orphan).toBeDefined();
+    expect(orphan!.statuses).toContain("orphaned_worktree");
+  });
+
+  it("per-branch git read failures degrade the repo freshness (never a silent live)", async () => {
+    const handler: Handler = (_r, args) =>
+      args[0] === "rev-list" ? FAIL("fatal: bad revision", 128) : happyHandler()(_r, args);
+    const { branches, batch } = await run({ handler });
+    expect(branches[0]!.comparison).toBe("error");
+    expect(batch.repoFreshness[0]!.freshness).toBe("stale");
+    expect(batch.repoFreshness[0]!.errors.length).toBeGreaterThan(0);
+  });
 });
 
 describe("BranchSource — availability tri-state", () => {

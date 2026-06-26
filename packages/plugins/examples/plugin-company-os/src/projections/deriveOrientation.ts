@@ -12,6 +12,7 @@ import type { SignalBundle } from "../contracts/WorkSignalSource.js";
 import {
   isArtifactSignal,
   isBranchSignal,
+  isRepoGitSignal,
   isRoutineSignal,
   isWorkSignal,
   type BranchSignal,
@@ -69,6 +70,7 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
   const routines = signals.filter(isRoutineSignal);
   const artifacts = signals.filter(isArtifactSignal);
   const branches = signals.filter(isBranchSignal);
+  const repoGits = signals.filter(isRepoGitSignal);
   const work = signals.filter(isWorkSignal);
   const proj = (repo: string): string => projectKeyForRepo(taxonomy, repo);
   const companyKey = taxonomy.groups.find((g) => g.kind === "company")?.key ?? taxonomy.groups[0]?.key ?? "company";
@@ -195,10 +197,12 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
   }
 
   // --- Metrics (current snapshot, directly from signals) ---
-  const openPrs = new Set<number>();
+  // PR numbers are repo-local, so key the open-PR set by repo#number — else
+  // juice-bar#12 and paperclip#12 collapse to one (codex A P1).
+  const openPrs = new Set<string>();
   const inProgress = new Set<string>();
   for (const w of work) {
-    if (typeof w.prNumber === "number" && w.state !== "shipped") openPrs.add(w.prNumber);
+    if (typeof w.prNumber === "number" && w.state !== "shipped") openPrs.add(`${w.repo}#${w.prNumber}`);
     if (w.state === "in_progress" && w.ticketId) inProgress.add(w.ticketId);
   }
   let dirtyWorktrees = 0;
@@ -222,7 +226,15 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
     recentWork,
     alerts,
     sources,
-    diagnostics: [...taxonomy.diagnostics, ...diagnosticsFromFreshness(sources)],
+    // Fold the per-repo git-header diagnostics (git budget exceeded / read failed)
+    // so a budget-exhausted repo is NEVER an invisible "all clear" on Home — its
+    // branches drop out of branchHealth (severity low), so without this the Home
+    // shows no alert, no badge, no diagnostic (Joe red-line; Opus review).
+    diagnostics: [
+      ...taxonomy.diagnostics,
+      ...repoGits.flatMap((rg) => rg.diagnostics.filter((d) => d.level === "error" || d.level === "warn")),
+      ...diagnosticsFromFreshness(sources),
+    ],
   };
 }
 

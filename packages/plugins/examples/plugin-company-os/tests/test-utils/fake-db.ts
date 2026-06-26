@@ -89,26 +89,13 @@ export class FakeDb implements DbClient {
       return { rowCount: 1 };
     }
 
-    if (s.includes("INSERT INTO") && s.includes("cos_artifact_index")) {
-      this.artifact.set(String(params[0]), { snapshot: JSON.parse(String(params[1])), schemaVersion: Number(params[2]) });
-      return { rowCount: 1 };
-    }
-    if (s.includes("INSERT INTO") && s.includes("cos_routine_health")) {
-      this.routine.set(String(params[0]), { snapshot: JSON.parse(String(params[1])), schemaVersion: Number(params[2]) });
-      return { rowCount: 1 };
-    }
-    if (s.includes("INSERT INTO") && s.includes("cos_orientation")) {
-      this.orientation.set(String(params[0]), { snapshot: JSON.parse(String(params[1])), schemaVersion: Number(params[2]) });
-      return { rowCount: 1 };
-    }
-    if (s.includes("INSERT INTO") && s.includes("cos_git_state")) {
-      this.gitState.set(String(params[0]), { snapshot: JSON.parse(String(params[1])), schemaVersion: Number(params[2]) });
-      return { rowCount: 1 };
-    }
-    if (s.includes("INSERT INTO") && s.includes("cos_doc_index")) {
-      this.docIndex.set(String(params[0]), { snapshot: JSON.parse(String(params[1])), schemaVersion: Number(params[2]) });
-      return { rowCount: 1 };
-    }
+    // The five secondary upserts are now lock-owner-fenced (INSERT … WHERE EXISTS
+    // board row owned by $5) — model the guard: write only if the lease is still held.
+    if (s.includes("INSERT INTO") && s.includes("cos_artifact_index")) return this.fencedUpsert(this.artifact, params);
+    if (s.includes("INSERT INTO") && s.includes("cos_routine_health")) return this.fencedUpsert(this.routine, params);
+    if (s.includes("INSERT INTO") && s.includes("cos_orientation")) return this.fencedUpsert(this.orientation, params);
+    if (s.includes("INSERT INTO") && s.includes("cos_git_state")) return this.fencedUpsert(this.gitState, params);
+    if (s.includes("INSERT INTO") && s.includes("cos_doc_index")) return this.fencedUpsert(this.docIndex, params);
     if (s.includes("DELETE FROM") && s.includes("cos_source_versions")) {
       const companyId = String(params[0]);
       const scopeRepo = params.length > 1 ? String(params[1]) : null; // scoped delete passes repo
@@ -138,6 +125,15 @@ export class FakeDb implements DbClient {
       return { rowCount: 1 };
     }
     throw new Error(`FakeDb.execute: unrecognized SQL: ${s.slice(0, 80)}`);
+  }
+
+  /** Model the lock-owner fence on a secondary upsert: write only if the lease ($5) is still held. */
+  private fencedUpsert(map: Map<string, SnapRow>, params: unknown[]): { rowCount: number } {
+    const companyId = String(params[0]);
+    const owner = String(params[4]);
+    if (this.board.get(companyId)?.lockOwner !== owner) return { rowCount: 0 }; // lease lost → guarded out
+    map.set(companyId, { snapshot: JSON.parse(String(params[1])), schemaVersion: Number(params[2]) });
+    return { rowCount: 1 };
   }
 
   async query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {

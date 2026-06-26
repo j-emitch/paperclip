@@ -110,7 +110,10 @@ export async function readDocContent(
       return parseReportContentV1(refusal(entry.repoKey, entry.relPath, "denied", entry, "That path is outside the workspace and can’t be read."));
     }
     if (/size cap/.test(raw)) {
-      return parseReportContentV1(refusal(entry.repoKey, entry.relPath, "too_large", entry, tooLargeMessage(0, maxBytes)));
+      const capMb = (maxBytes / 1_000_000).toFixed(1);
+      return parseReportContentV1(
+        refusal(entry.repoKey, entry.relPath, "too_large", entry, `This file exceeds the ${capMb} MB inline cap — open it in your editor.`),
+      );
     }
     return parseReportContentV1(refusal(entry.repoKey, entry.relPath, "not_found", entry, "That doc couldn’t be read — it may have moved or been removed."));
   }

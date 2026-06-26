@@ -62,11 +62,14 @@ export const docsSource: WorkSignalSource = {
     return collectPerRepo(DOCS_SOURCE_ID, ctx, async (repo, c): Promise<RepoReadResult> => {
       const signals: Signal[] = [];
       const errors: SignalError[] = [];
+      // MAX_DOCS_PER_REPO is a PER-REPO cap shared across the main checkout AND
+      // every worktree (codex A P1) — a repo with N worktrees can't emit N×cap.
+      const budget = { remaining: MAX_DOCS_PER_REPO };
       // Main checkout — keyed by the repoKey, walk-time-pruned of worktrees + the review mirror.
-      signals.push(...(await scanCheckout(c, repo.repo, repo.repo, "main", null, null, MAIN_EXCLUDE, errors)));
+      signals.push(...(await scanCheckout(c, repo.repo, repo.repo, "main", null, null, MAIN_EXCLUDE, errors, budget)));
       // Each worktree — its own root is the base, so no exclude is needed.
       for (const wt of worktreesByRepo.get(repo.repo) ?? []) {
-        signals.push(...(await scanCheckout(c, repo.repo, wt.key, wt.checkoutId, wt.name, wt.branch, undefined, errors)));
+        signals.push(...(await scanCheckout(c, repo.repo, wt.key, wt.checkoutId, wt.name, wt.branch, undefined, errors, budget)));
       }
       return { signals, errors };
     });
@@ -83,13 +86,14 @@ async function scanCheckout(
   branch: string | null,
   exclude: readonly string[] | undefined,
   errors: SignalError[],
+  budget: { remaining: number },
 ): Promise<DocSignal[]> {
   const files = await ctx.fs.list(checkoutKey, DOC_GLOBS, exclude ? { exclude } : undefined);
   const docs: DocSignal[] = [];
   let truncated = false;
 
   for (const file of files) {
-    if (docs.length >= MAX_DOCS_PER_REPO) {
+    if (budget.remaining <= 0) {
       truncated = true;
       break;
     }
@@ -124,6 +128,7 @@ async function scanCheckout(
       sizeBytes: file.sizeBytes,
       indexFingerprint,
     });
+    budget.remaining--;
   }
 
   if (truncated) {

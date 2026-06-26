@@ -44,7 +44,7 @@ describe("GitStateV1", () => {
                 {
                   branch: "cos/COS-1",
                   headSha: "abc1234",
-                  worktrees: [{ path: "/p/wt", headSha: "abc1234", detached: false, dirtyFileCount: 3 }],
+                  worktrees: [{ name: "wt", headSha: "abc1234", detached: false, dirtyFileCount: 3 }],
                   trunk: { ref: "origin/main", state: "ok" },
                   comparison: "ok",
                   ahead: 2,

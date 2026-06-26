@@ -113,7 +113,7 @@ function toBranchGitV1(b: BranchSignal): BranchGitV1 {
     branch: b.branch,
     headSha: b.headSha,
     worktrees: b.worktrees.map((w) => ({
-      path: w.path,
+      name: basenameOf(w.path), // basename only — never the abs host path (codex B P1)
       headSha: w.headSha,
       detached: w.detached,
       dirtyFileCount: w.dirtyFileCount,
@@ -139,4 +139,10 @@ function toBranchGitV1(b: BranchSignal): BranchGitV1 {
 /** Stable branch ordering: named branches first (alpha), detached worktrees last. */
 function branchSortKey(b: BranchGitV1): string {
   return b.branch ?? `~detached:${b.headSha}`;
+}
+
+/** The last non-empty path segment — the worktree dir basename (no abs path leaks). */
+function basenameOf(p: string): string {
+  const parts = p.split("/").filter(Boolean);
+  return parts.length > 0 ? parts[parts.length - 1] : p;
 }

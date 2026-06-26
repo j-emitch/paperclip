@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { deriveOrientation } from "../../src/projections/deriveOrientation.js";
 import { parseOrientationV1 } from "../../src/contracts/orientation.js";
-import { NOW, artifact, branchSignal, bundleOf, routine, work } from "../fixtures/signals.js";
+import { NOW, artifact, branchSignal, bundleOf, repoGitSignal, routine, work } from "../fixtures/signals.js";
 import { taxonomyFixture } from "../fixtures/taxonomy.js";
 
 const TAX = taxonomyFixture();
@@ -65,5 +65,20 @@ describe("deriveOrientation", () => {
     const alert = o.alerts.find((a) => a.kind === "routine_stale");
     expect(alert).toBeDefined();
     expect(alert!.deepLink.tab).toBe("docs"); // links to the rendered report
+  });
+
+  it("folds a budget-exhausted repo's diagnostic into Home (never an invisible all-clear)", () => {
+    // A budget-exceeded repo's branches drop out of branchHealth (severity low), so
+    // without folding the RepoGitSignal diagnostic Home would show a false all-clear.
+    const o = deriveOrientation(
+      bundleOf([
+        repoGitSignal("juice-bar", {
+          diagnostics: [{ level: "warn", code: "git_budget_exceeded", message: "budget", repo: "juice-bar", source: "branch" }],
+        }),
+      ]),
+      NOW,
+      TAX,
+    );
+    expect(o.diagnostics.some((d) => d.code === "git_budget_exceeded")).toBe(true);
   });
 });
