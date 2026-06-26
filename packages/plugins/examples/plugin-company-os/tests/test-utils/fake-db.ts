@@ -30,6 +30,9 @@ export class FakeDb implements DbClient {
   board = new Map<string, BoardRow>();
   artifact = new Map<string, SnapRow>();
   routine = new Map<string, SnapRow>();
+  orientation = new Map<string, SnapRow>();
+  gitState = new Map<string, SnapRow>();
+  docIndex = new Map<string, SnapRow>();
   sourceVersions = new Map<string, { companyId: string; source: string; repo: string; signals: unknown; freshness: string; lastOkAt: string | null }>();
   runs: Array<Record<string, unknown>> = [];
 
@@ -94,6 +97,18 @@ export class FakeDb implements DbClient {
       this.routine.set(String(params[0]), { snapshot: JSON.parse(String(params[1])), schemaVersion: Number(params[2]) });
       return { rowCount: 1 };
     }
+    if (s.includes("INSERT INTO") && s.includes("cos_orientation")) {
+      this.orientation.set(String(params[0]), { snapshot: JSON.parse(String(params[1])), schemaVersion: Number(params[2]) });
+      return { rowCount: 1 };
+    }
+    if (s.includes("INSERT INTO") && s.includes("cos_git_state")) {
+      this.gitState.set(String(params[0]), { snapshot: JSON.parse(String(params[1])), schemaVersion: Number(params[2]) });
+      return { rowCount: 1 };
+    }
+    if (s.includes("INSERT INTO") && s.includes("cos_doc_index")) {
+      this.docIndex.set(String(params[0]), { snapshot: JSON.parse(String(params[1])), schemaVersion: Number(params[2]) });
+      return { rowCount: 1 };
+    }
     if (s.includes("DELETE FROM") && s.includes("cos_source_versions")) {
       const companyId = String(params[0]);
       const scopeRepo = params.length > 1 ? String(params[1]) : null; // scoped delete passes repo
@@ -138,6 +153,9 @@ export class FakeDb implements DbClient {
     if (s.includes("FROM") && s.includes("cos_board_state")) return snap(this.board.get(id));
     if (s.includes("FROM") && s.includes("cos_artifact_index")) return snap(this.artifact.get(id));
     if (s.includes("FROM") && s.includes("cos_routine_health")) return snap(this.routine.get(id));
+    if (s.includes("FROM") && s.includes("cos_orientation")) return snap(this.orientation.get(id));
+    if (s.includes("FROM") && s.includes("cos_git_state")) return snap(this.gitState.get(id));
+    if (s.includes("FROM") && s.includes("cos_doc_index")) return snap(this.docIndex.get(id));
     if (s.includes("FROM") && s.includes("cos_source_versions")) {
       return [...this.sourceVersions.values()]
         .filter((v) => v.companyId === id) // mirror the real WHERE company_id = $1

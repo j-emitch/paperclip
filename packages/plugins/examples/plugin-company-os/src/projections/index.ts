@@ -2,4 +2,9 @@
 export * from "./deriveBoardState.js";
 export * from "./deriveArtifactIndex.js";
 export * from "./deriveRoutineHealth.js";
+// COS-1 daily-driver projections (taxonomy-parameterized)
+export * from "./routine-freshness.js";
+export * from "./deriveGitState.js";
+export * from "./deriveOrientation.js";
+export * from "./deriveDocIndex.js";
 export * from "./_shared.js";

@@ -61,6 +61,36 @@ const manifest: PaperclipPluginManifestV1 = {
         items: { type: "string" },
         default: [],
       },
+      // COS-1: OPTIONAL project-family grouping (PF-12). When omitted, a default
+      // taxonomy is derived from repo basenames — `repoRoots` is unchanged.
+      projects: {
+        type: "array",
+        title: "Project families (optional)",
+        description:
+          "Group repoRoots into project families. Each: {key, displayName, kind, repos:[{repoKey, role}], order, note?}. Omit to derive the default taxonomy from basenames.",
+        items: {
+          type: "object",
+          properties: {
+            key: { type: "string" },
+            displayName: { type: "string" },
+            kind: { type: "string", enum: ["company", "product", "side_project", "platform"] },
+            repos: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  repoKey: { type: "string" },
+                  role: { type: "string", enum: ["primary", "dependency"] },
+                },
+                required: ["repoKey", "role"],
+              },
+            },
+            order: { type: "number" },
+            note: { type: "string" },
+          },
+          required: ["key", "displayName", "kind", "repos", "order"],
+        },
+      },
     },
   },
   database: {

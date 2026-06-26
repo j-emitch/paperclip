@@ -14,6 +14,7 @@ import { collectAndProject } from "../../src/collect-and-project.js";
 import type { SourceVersion } from "../../src/db/scoped-merge.js";
 import { FakeDb } from "../test-utils/fake-db.js";
 import { NOW, bundleOf, taxon, work } from "../fixtures/signals.js";
+import { taxonomyFixture } from "../fixtures/taxonomy.js";
 
 const CO = "company-uuid";
 
@@ -61,6 +62,7 @@ describe("cache — projection write/read round-trip + version gate", () => {
   const projections = collectAndProject(
     bundleOf([taxon("COS", "Company OS", "Company", "Company-OS"), work("COS-0", "in_progress", "branch_path", { repo: "company" })]),
     NOW,
+    taxonomyFixture(),
   );
 
   async function acquired(db: FakeDb, owner: string): Promise<void> {

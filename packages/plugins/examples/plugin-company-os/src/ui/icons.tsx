@@ -196,7 +196,36 @@ export function CloseIcon({ size = 14, strokeWidth = 2 }: IconProps) {
   return svg(size, strokeWidth, <path d="M6 6l12 12M18 6 6 18" />);
 }
 
+// --- COS-1 daily-driver glyphs ----------------------------------------------
+
+export function HomeIcon({ size = 16, strokeWidth = 1.8 }: IconProps) {
+  // The orientation hero — a house: "where I land, what needs me."
+  return svg(size, strokeWidth, (
+    <>
+      <path d="M4 11.5 12 4l8 7.5" />
+      <path d="M6 10.5V20h12v-9.5" />
+      <path d="M10 20v-5h4v5" />
+    </>
+  ));
+}
+
+export function SourceIcon({ size = 16, strokeWidth = 1.8 }: IconProps) {
+  // A git-branch glyph — the working-tree-vs-main source surface.
+  return svg(size, strokeWidth, (
+    <>
+      <circle cx="6.5" cy="5" r="2.2" />
+      <circle cx="6.5" cy="19" r="2.2" />
+      <circle cx="17.5" cy="8" r="2.2" />
+      <path d="M6.5 7.2v9.6" />
+      <path d="M17.5 10.2c0 4-3.5 4.3-6.5 5.4" />
+    </>
+  ));
+}
+
 export const TAB_ICONS: Record<CompanyOsTabKey, (props: IconProps) => ReactElement> = {
+  // home + source are pre-wired in 1d.8; their visible tabs land in 1e/1f.
+  home: HomeIcon,
+  source: SourceIcon,
   board: BoardIcon,
   reports: ReportsIcon,
   routines: RoutinesIcon,

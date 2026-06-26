@@ -3,10 +3,20 @@ import { randomUUID } from "node:crypto";
 import { DERIVE_BOARD_JOB_KEY, PLUGIN_ID } from "./manifest.js";
 import { makeCollectionContext } from "./runtime/makeCollectionContext.js";
 import { absByKeyFromRoots, readContainedText } from "./runtime/workspace-fs.js";
+import { buildCheckoutKeyMap } from "./runtime/checkout-keys.js";
 import { deriveForCompany, type DeriveDeps } from "./derive.js";
 import { runDeriveBoardJob } from "./derive-job.js";
-import { readArtifactIndex, readBoardState, readRoutineHealth } from "./db/cache.js";
+import {
+  readArtifactIndex,
+  readBoardState,
+  readDocIndex,
+  readGitState,
+  readOrientation,
+  readRoutineHealth,
+} from "./db/cache.js";
 import { DOCS_VIEWER_MAX_BYTES, readReportContent } from "./report-content-read.js";
+import { readDocContent } from "./doc-content-read.js";
+import { projectGroupV1Schema, resolveTaxonomy, type ProjectGroupV1 } from "./contracts/projects.js";
 
 /**
  * Company OS cockpit worker — COS-0d/0g.
@@ -35,18 +45,39 @@ const plugin = definePlugin({
       return Array.isArray(raw) ? raw.filter((r): r is string => typeof r === "string") : [];
     };
 
+    // The optional `projects` config → validated ProjectGroupV1[] (undefined when
+    // absent or all-invalid → resolveTaxonomy derives the default taxonomy).
+    const readProjects = async (): Promise<ProjectGroupV1[] | undefined> => {
+      const config = await ctx.config.get();
+      const raw = (config as Record<string, unknown> | undefined)?.projects;
+      if (!Array.isArray(raw)) return undefined;
+      const groups: ProjectGroupV1[] = [];
+      for (const item of raw) {
+        const parsed = projectGroupV1Schema.safeParse(item);
+        if (parsed.success) groups.push(parsed.data);
+      }
+      return groups.length > 0 ? groups : undefined;
+    };
+
     const deps: DeriveDeps = {
       db: ctx.db,
       makeContext: async (scopeRepo) =>
         makeCollectionContext({ repoRoots: await readRepoRoots(), scopeRepo, logger: ctx.logger }),
       now: () => Date.now(),
       logger: ctx.logger,
+      // Resolve the taxonomy FRESH from raw config each derive (PF-5/v6) — raw
+      // repoRoots (not ctx.repos) so the dup-basename diagnostic survives (PF-7).
+      resolveTaxonomy: async () => resolveTaxonomy(await readRepoRoots(), await readProjects()),
     };
 
     // --- read-side data handlers (the UI's usePluginData reads these) ---
     ctx.data.register("board-state", async (params) => readBoardState(ctx.db, str(params.companyId)));
     ctx.data.register("artifact-index", async (params) => readArtifactIndex(ctx.db, str(params.companyId)));
     ctx.data.register("routine-health", async (params) => readRoutineHealth(ctx.db, str(params.companyId)));
+    // COS-1 daily-driver read handlers (Home / Source / Docs).
+    ctx.data.register("orientation", async (params) => readOrientation(ctx.db, str(params.companyId)));
+    ctx.data.register("git-state", async (params) => readGitState(ctx.db, str(params.companyId)));
+    ctx.data.register("doc-index", async (params) => readDocIndex(ctx.db, str(params.companyId)));
 
     // --- docs viewer: a LIVE, index-gated, containment-checked single-file read ---
     ctx.data.register("report-content", async (params) => {
@@ -66,6 +97,27 @@ const plugin = definePlugin({
         str(params.companyId),
         str(params.repo),
         str(params.relPath),
+      );
+    });
+
+    // --- docs viewer (worktree-aware): index-gated by docId → checkoutKey read ---
+    ctx.data.register("doc-content", async (params) => {
+      // Rebuild the SAME worktree-aware key map the derive used (PF-9) — it builds
+      // its own git runner, so no GitRunner to thread here.
+      const ckm = await buildCheckoutKeyMap(await readRepoRoots());
+      return readDocContent(
+        {
+          readIndex: (companyId) => readDocIndex(ctx.db, companyId),
+          readFile: async (checkoutKey, relPath) => {
+            const root = ckm.absByKey.get(checkoutKey);
+            if (!root) throw new Error(`unknown checkout ${checkoutKey}`);
+            const { content, stat } = await readContainedText(root, relPath, DOCS_VIEWER_MAX_BYTES);
+            return { content, sizeBytes: stat.sizeBytes, mtime: stat.mtime };
+          },
+          checkoutResolvable: (checkoutKey) => ckm.absByKey.has(checkoutKey),
+        },
+        str(params.companyId),
+        str(params.docId),
       );
     });
 

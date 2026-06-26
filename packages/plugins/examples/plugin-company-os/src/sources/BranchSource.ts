@@ -22,6 +22,7 @@
 
 import {
   reposResponsibleFor,
+  signalError,
   type CollectionContext,
   type RepoRoot,
 } from "../contracts/collection-context.js";
@@ -101,11 +102,15 @@ async function collectRepo(
   const errors: SignalError[] = [];
   const diagnostics: Diagnostic[] = [];
 
-  // 1. Reachability — an unavailable repo emits a single header signal, no branches.
+  // 1. Reachability — an unavailable repo emits a single header signal (carrying
+  //    the precise availability), no branches. Freshness is `stale` + a
+  //    `repo_unavailable` error, honoring the uniform "unavailable repo → stale
+  //    badge" contract every source upholds (safety.spec).
   if (!repo.available) {
     const availability = await probeUnavailable(repo.repo, ctx);
+    errors.push(signalError("repo_unavailable", `repo ${repo.repo} is not available this run`));
     return {
-      repoSignals: [repoGitSignal(repo.repo, availability, { ref: null, state: "missing" }, diagnostics, "live")],
+      repoSignals: [repoGitSignal(repo.repo, availability, { ref: null, state: "missing" }, diagnostics, "stale")],
       errors,
     };
   }

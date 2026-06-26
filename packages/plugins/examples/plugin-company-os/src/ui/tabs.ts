@@ -3,7 +3,12 @@
  * page tab bar and the route sidebar so they cannot drift. Adding the COS-1
  * Teaching / COS-2 Knowledge surfaces is a one-line change here.
  */
-export type CompanyOsTabKey = "board" | "reports" | "routines" | "hygiene" | "teaching" | "knowledge";
+// `home` + `source` are pre-wired in 1d.8 (union member + icon + app branch) but
+// NOT added to the visible COMPANY_OS_TABS array until their views land (1e/1f),
+// so the rail never renders a half-wired clickable tab. `docs` is NOT added here —
+// it's the `reports`→`docs` rename in 1h (adding it before then is an excess-property
+// error against the exhaustive TAB_ICONS Record).
+export type CompanyOsTabKey = "home" | "source" | "board" | "reports" | "routines" | "hygiene" | "teaching" | "knowledge";
 
 export interface CompanyOsTab {
   key: CompanyOsTabKey;

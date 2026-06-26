@@ -176,9 +176,25 @@ function TabPanel({
       return <Reports key={key} companyId={companyId} />;
     case "routines":
       return <Routines key={key} companyId={companyId} />;
+    // Pre-wired in 1d.8 (not yet in the visible COMPANY_OS_TABS); their real
+    // views (HomeView / SourceView) replace these placeholders in 1e/1f.
+    case "home":
+      return <BootingPanel key={key} label="Home" />;
+    case "source":
+      return <BootingPanel key={key} label="Source" />;
     default:
       return <PlaceholderPanel tab={tab} />;
   }
+}
+
+/** A minimal "warming up" panel for a pre-wired-but-not-yet-built surface (1d.8). */
+function BootingPanel({ label }: { label: string }) {
+  return (
+    <div role="tabpanel" style={{ display: "flex", flexDirection: "column", gap: 12, padding: "8px 0" }}>
+      <h2 style={{ margin: 0, fontSize: 17, fontWeight: 650 }}>{label}</h2>
+      <p style={{ margin: 0, fontSize: 14, color: tokens.muted }}>Warming up…</p>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------

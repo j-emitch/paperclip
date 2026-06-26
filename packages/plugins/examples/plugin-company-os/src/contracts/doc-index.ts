@@ -83,6 +83,32 @@ export const docIndexV1Schema = z.object({
 });
 export type DocIndexV1 = z.infer<typeof docIndexV1Schema>;
 
+/**
+ * The STABLE doc id = a deterministic composite of `(repoKey, checkoutId,
+ * relPath)`. Deliberately NOT a cryptographic hash: the pure `deriveDocIndex`
+ * projection (no hasher) must compute the SAME id for a main-checkout
+ * `ArtifactSignal` as `DocsSource` does for its `DocSignal`, so the two dedup;
+ * and `deriveOrientation` computes a routine report's id for its deep-link. The
+ * `\u001f` (Unit Separator) delimiter never appears in a repo basename, a
+ * `worktree:${hex}` checkoutId, or a path. The id is opaque to consumers — only
+ * equality + index-gated lookup matter (the relPath it embeds is already a field).
+ */
+export function makeDocId(repoKey: string, checkoutId: string, relPath: string): string {
+  return `${repoKey}\u001f${checkoutId}\u001f${relPath}`;
+}
+
+/**
+ * Map a main-checkout `ArtifactSignal` path → its `DocIndexType` bucket (§5.4):
+ * `reports/handoffs/**`→handoff, `reports/reviews/**` + any other `reports/**`→
+ * review, `specs/**` + `docs/superpowers/specs/**`→spec. Plans/backlog never
+ * come from `artifactSource` (those are `DocSignal`s).
+ */
+export function classifyArtifactToDocIndexType(relPath: string): DocIndexType {
+  if (/(^|\/)reports\/handoffs\//.test(relPath)) return "handoff";
+  if (/(^|\/)reports\//.test(relPath)) return "review";
+  return "spec";
+}
+
 /** Parse + validate (throws on malformed). Use on cache read. */
 export function parseDocIndexV1(input: unknown): DocIndexV1 {
   return docIndexV1Schema.parse(input);

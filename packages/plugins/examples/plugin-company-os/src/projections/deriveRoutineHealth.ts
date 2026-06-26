@@ -12,27 +12,20 @@
  */
 
 import type { SignalBundle } from "../contracts/WorkSignalSource.js";
-import { isArtifactSignal, isRoutineSignal, type ArtifactSignal } from "../contracts/signals.js";
+import { isArtifactSignal, isRoutineSignal } from "../contracts/signals.js";
 import {
   ROUTINE_HEALTH_SCHEMA_VERSION,
   type RoutineHealthEntry,
   type RoutineHealthV1,
 } from "../contracts/routine-health.js";
 import type { RoutineVerdict } from "../contracts/vocab.js";
-import { matchesAnyGlob } from "../sources/glob.js";
 import { aggregateSourceFreshness, diagnosticsFromFreshness, isoFrom } from "./_shared.js";
+import { cadenceWindowMs, evaluateRoutine } from "./routine-freshness.js";
 
-const MS = { hour: 3_600_000, day: 86_400_000, week: 604_800_000, month: 2_592_000_000 };
-
-/** Cadence token → window in ms; null when uncomputable (a cron string). */
-export function cadenceWindowMs(cadence: string): number | null {
-  const c = cadence.trim().toLowerCase();
-  if (c === "hourly") return MS.hour;
-  if (c === "daily") return MS.day;
-  if (c === "weekly") return MS.week;
-  if (c === "monthly") return MS.month;
-  return null; // cron / unknown — verdict falls back to presence
-}
+// The cadence/verdict math now lives in `routine-freshness.ts` (shared with
+// `deriveOrientation`, PF-3a). Re-exported so existing importers (the
+// routine-health tests) keep working unchanged.
+export { cadenceWindowMs } from "./routine-freshness.js";
 
 export function deriveRoutineHealth(bundle: SignalBundle, nowMs: number): RoutineHealthV1 {
   const signals = bundle.batches.flatMap((b) => b.signals);
@@ -41,26 +34,9 @@ export function deriveRoutineHealth(bundle: SignalBundle, nowMs: number): Routin
 
   const entries: RoutineHealthEntry[] = routines
     .map((r) => {
-      // Artifacts whose repo-qualified path matches the routine's expected glob.
-      // The AGENTS glob is monorepo-parent-relative (`company/reports/...`) while
-      // an ArtifactSignal.relPath is repo-relative, so we match against `repo/relPath`.
-      const matching = artifacts
-        .filter((a) => matchesAnyGlob(`${a.repo}/${a.relPath}`, [r.expectedArtifactGlob]))
-        .sort((x, y) => artifactMs(y) - artifactMs(x));
-      const latest: ArtifactSignal | undefined = matching[0];
-
-      const lastRunMs = r.lastRunAt ? Date.parse(r.lastRunAt) : NaN;
-      const latestMs = latest ? artifactMs(latest) : NaN;
-      const hasArtifact = Number.isFinite(latestMs);
-      const lastActivity = Math.max(
-        Number.isFinite(lastRunMs) ? lastRunMs : -Infinity,
-        hasArtifact ? latestMs : -Infinity,
-      );
-      const hasActivity = lastActivity > -Infinity;
-
+      const { verdict, latest, lastActivity, present } = evaluateRoutine(r, artifacts, nowMs);
       const windowMs = cadenceWindowMs(r.cadence);
-      const verdict = computeVerdict(nowMs, latestMs, hasArtifact, hasActivity, windowMs);
-      const present = hasArtifact && (windowMs === null || nowMs - latestMs <= windowMs);
+      const hasActivity = lastActivity > -Infinity;
 
       return {
         routineKey: r.routineKey,
@@ -87,32 +63,6 @@ export function deriveRoutineHealth(bundle: SignalBundle, nowMs: number): Routin
     sources,
     diagnostics: diagnosticsFromFreshness(sources),
   };
-}
-
-function artifactMs(a: ArtifactSignal): number {
-  const t = a.mtime ? Date.parse(a.mtime) : NaN;
-  return Number.isFinite(t) ? t : 0;
-}
-
-/**
- * Artifact-centric verdict: freshness is about whether the EXPECTED ARTIFACT was
- * produced recently, not merely whether the agent ran. A recent `lastRunAt` with
- * no artifact is `missing` (ran, produced nothing), never `fresh`.
- */
-function computeVerdict(
-  nowMs: number,
-  latestArtifactMs: number,
-  hasArtifact: boolean,
-  hasActivity: boolean,
-  windowMs: number | null,
-): RoutineVerdict {
-  if (!hasActivity) return "never_ran";
-  if (windowMs === null) return hasArtifact ? "fresh" : "stale"; // cron: presence-only
-  if (!hasArtifact) return "missing"; // ran (lastRun) but never produced the artifact
-  const age = nowMs - latestArtifactMs;
-  if (age <= windowMs) return "fresh";
-  if (age <= 2 * windowMs) return "stale";
-  return "missing";
 }
 
 function detailFor(verdict: RoutineVerdict, cadence: string): string | null {

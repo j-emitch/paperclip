@@ -17,6 +17,7 @@ import type {
   WorkSignal,
 } from "../../src/contracts/signals.js";
 import type { WorkSignalPrecedence, WorkState } from "../../src/contracts/vocab.js";
+import { makeDocId } from "../../src/contracts/doc-index.js";
 
 export const NOW = Date.parse("2026-06-23T12:00:00.000Z");
 
@@ -187,7 +188,7 @@ export function docSignal(relPath: string, over: Partial<DocSignal> = {}): DocSi
     freshness: over.freshness ?? "live",
     errors: over.errors ?? [],
     docType: over.docType ?? "spec",
-    docId: over.docId ?? `doc:${repo}:${checkoutId}:${relPath}`,
+    docId: over.docId ?? makeDocId(repo, checkoutId, relPath),
     checkoutId,
     checkoutKey: over.checkoutKey ?? repo,
     worktreeName: over.worktreeName ?? null,

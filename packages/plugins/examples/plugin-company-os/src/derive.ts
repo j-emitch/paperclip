@@ -14,6 +14,7 @@
 import { collect } from "./collect.js";
 import { collectAndProject } from "./collect-and-project.js";
 import type { CollectionContext, SignalLogger } from "./contracts/collection-context.js";
+import type { ProjectTaxonomyV1 } from "./contracts/projects.js";
 import {
   acquireDeriveLock,
   assertNamespace,
@@ -36,6 +37,14 @@ export interface DeriveDeps {
   /** Wall clock (epoch ms) — injected so the derive's `derivedAt` is controllable. */
   readonly now: () => number;
   readonly logger: SignalLogger;
+  /**
+   * Resolve the project taxonomy FRESH from config (raw repoRoots + projects) —
+   * a worker-provided thunk (PF-5/v6). Keeps `derive.ts` config-read-free: it
+   * never touches `ctx.config`, just awaits this. Resolving from raw repoRoots
+   * (not `ctx.repos`, already basename-collapsed) preserves the dup-basename
+   * diagnostic (PF-7).
+   */
+  readonly resolveTaxonomy: () => Promise<ProjectTaxonomyV1>;
   /** Lock lease; a derive that crashes mid-flight is reclaimable after this. */
   readonly leaseMs?: number;
 }
@@ -75,7 +84,10 @@ export async function deriveForCompany(
     const merged =
       scopeRepo === null ? bundle : mergeScopedBundle(bundle, await loadSourceVersions(db, companyId), scopeRepo);
 
-    const projections = collectAndProject(merged, deps.now());
+    // Resolve the taxonomy fresh from config (the worker thunk), once, then thread
+    // it as the project-grouping lens to the three COS-1 projections (PF-5).
+    const taxonomy = await deps.resolveTaxonomy();
+    const projections = collectAndProject(merged, deps.now(), taxonomy);
     await writeProjections(db, companyId, projections, owner);
     // Persist the per-source last-good slices from the MERGED bundle so a future
     // scoped refresh of a different repo still has every other repo's last-good.

@@ -29,6 +29,24 @@ import {
   parseRoutineHealthV1,
   type RoutineHealthV1,
 } from "../contracts/routine-health.js";
+import {
+  ORIENTATION_SCHEMA_VERSION,
+  safeParseOrientationV1,
+  parseOrientationV1,
+  type OrientationV1,
+} from "../contracts/orientation.js";
+import {
+  GIT_STATE_SCHEMA_VERSION,
+  safeParseGitStateV1,
+  parseGitStateV1,
+  type GitStateV1,
+} from "../contracts/git-state.js";
+import {
+  DOC_INDEX_SCHEMA_VERSION,
+  safeParseDocIndexV1,
+  parseDocIndexV1,
+  type DocIndexV1,
+} from "../contracts/doc-index.js";
 import type { Diagnostic } from "../contracts/diagnostics.js";
 import { COS_DB_NAMESPACE } from "./namespace.js";
 import type { SourceVersion } from "./scoped-merge.js";
@@ -109,6 +127,9 @@ export async function writeProjections(
   parseBoardStateV1(set.board);
   parseArtifactIndexV1(set.artifactIndex);
   parseRoutineHealthV1(set.routineHealth);
+  parseOrientationV1(set.orientation);
+  parseGitStateV1(set.gitState);
+  parseDocIndexV1(set.docIndex);
 
   const { rowCount } = await db.execute(
     `UPDATE ${NS}.cos_board_state
@@ -119,8 +140,13 @@ export async function writeProjections(
   if (rowCount !== 1) {
     throw new Error(`derive lease lost for ${companyId} — aborting write (owner=${owner})`);
   }
+  // The five lockless secondaries upsert only AFTER the board fence passes (same
+  // after-fence pattern COS-0 already uses for artifact-index + routine-health).
   await upsertSnapshot(db, "cos_artifact_index", companyId, set.artifactIndex, ARTIFACT_INDEX_SCHEMA_VERSION, set.artifactIndex.derivedAt);
   await upsertSnapshot(db, "cos_routine_health", companyId, set.routineHealth, ROUTINE_HEALTH_SCHEMA_VERSION, set.routineHealth.derivedAt);
+  await upsertSnapshot(db, "cos_orientation", companyId, set.orientation, ORIENTATION_SCHEMA_VERSION, set.orientation.derivedAt);
+  await upsertSnapshot(db, "cos_git_state", companyId, set.gitState, GIT_STATE_SCHEMA_VERSION, set.gitState.derivedAt);
+  await upsertSnapshot(db, "cos_doc_index", companyId, set.docIndex, DOC_INDEX_SCHEMA_VERSION, set.docIndex.derivedAt);
 }
 
 async function upsertSnapshot(
@@ -172,6 +198,30 @@ export async function readRoutineHealth(db: DbClient, companyId: string): Promis
     [companyId],
   );
   return readSnapshot(rows, ROUTINE_HEALTH_SCHEMA_VERSION, (s) => safeParseRoutineHealthV1(s));
+}
+
+export async function readOrientation(db: DbClient, companyId: string): Promise<OrientationV1 | null> {
+  const rows = await db.query<SnapshotRow>(
+    `SELECT snapshot, schema_version FROM ${NS}.cos_orientation WHERE company_id = $1`,
+    [companyId],
+  );
+  return readSnapshot(rows, ORIENTATION_SCHEMA_VERSION, (s) => safeParseOrientationV1(s));
+}
+
+export async function readGitState(db: DbClient, companyId: string): Promise<GitStateV1 | null> {
+  const rows = await db.query<SnapshotRow>(
+    `SELECT snapshot, schema_version FROM ${NS}.cos_git_state WHERE company_id = $1`,
+    [companyId],
+  );
+  return readSnapshot(rows, GIT_STATE_SCHEMA_VERSION, (s) => safeParseGitStateV1(s));
+}
+
+export async function readDocIndex(db: DbClient, companyId: string): Promise<DocIndexV1 | null> {
+  const rows = await db.query<SnapshotRow>(
+    `SELECT snapshot, schema_version FROM ${NS}.cos_doc_index WHERE company_id = $1`,
+    [companyId],
+  );
+  return readSnapshot(rows, DOC_INDEX_SCHEMA_VERSION, (s) => safeParseDocIndexV1(s));
 }
 
 function readSnapshot<T>(

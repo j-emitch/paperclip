@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { deriveForCompany, type DeriveDeps } from "../../src/derive.js";
-import { acquireDeriveLock, ensureBoardRow, readBoardState } from "../../src/db/cache.js";
+import { acquireDeriveLock, ensureBoardRow, readBoardState, readGitState } from "../../src/db/cache.js";
+import { resolveTaxonomy } from "../../src/contracts/projects.js";
 import { FakeDb } from "../test-utils/fake-db.js";
 import { makeFixtureContext, gitTable, proc } from "../fixtures/context.js";
+import { taxonomyFixture } from "../fixtures/taxonomy.js";
 import type { CollectionContext } from "../../src/contracts/collection-context.js";
 
 const CO = "company-uuid";
@@ -29,6 +31,7 @@ function depsFor(db: FakeDb, nowMs = Date.parse("2026-06-23T12:00:00Z")): Derive
     makeContext: async (scopeRepo) => ctxFor(scopeRepo),
     now: () => nowMs,
     logger: { debug() {}, info() {}, warn() {}, error() {} },
+    resolveTaxonomy: async () => taxonomyFixture(),
   };
 }
 
@@ -64,5 +67,18 @@ describe("deriveForCompany", () => {
     expect(result.ok).toBe(false);
     expect(db.runs.at(-1)).toMatchObject({ ok: false });
     expect(await acquireDeriveLock(db, CO, "after", 120_000, Date.parse("2026-06-23T14:00:00Z"))).toBe(true);
+  });
+
+  it("threads the resolved taxonomy (incl. its raw-dup-basename diagnostic) into the projections (v5)", async () => {
+    const db = new FakeDb();
+    // resolveTaxonomy is given RAW roots (with a dup basename), proving the diagnostic
+    // survives — resolving from ctx.repos (basename-collapsed) would lose it.
+    const deps: DeriveDeps = {
+      ...depsFor(db),
+      resolveTaxonomy: async () => resolveTaxonomy(["/a/company", "/b/company", "/p/juice-bar"]),
+    };
+    await deriveForCompany(deps, CO, "schedule", null, "owner-d");
+    const gitState = await readGitState(db, CO);
+    expect(gitState?.taxonomy.diagnostics.some((d) => d.code === "duplicate_basename")).toBe(true);
   });
 });
