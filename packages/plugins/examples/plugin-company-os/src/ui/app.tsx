@@ -14,7 +14,7 @@ import { useIsMobile } from "./hooks/useMediaQuery.js";
 import { CompanyOsBoard } from "./board/CompanyOsBoard.js";
 import { Home } from "./home/Home.js";
 import { Source } from "./source/Source.js";
-import { Reports } from "./reports/Reports.js";
+import { Docs } from "./docs/Docs.js";
 import { Routines } from "./routines/Routines.js";
 
 // ---------------------------------------------------------------------------
@@ -179,8 +179,10 @@ function TabPanel({
   switch (tabKey) {
     case "board":
       return <CompanyOsBoard key={key} companyId={companyId} />;
+    // The Docs surface (COS-1g) lives on the existing `reports` key — the content
+    // swap; the `reports → docs` key rename happens atomically in 1h.
     case "reports":
-      return <Reports key={key} companyId={companyId} />;
+      return <Docs key={key} companyId={companyId} />;
     case "routines":
       return <Routines key={key} companyId={companyId} />;
     case "home":

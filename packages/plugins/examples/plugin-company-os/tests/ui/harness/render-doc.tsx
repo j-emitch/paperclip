@@ -17,6 +17,7 @@ import { RoutinesView } from "../../../src/ui/routines/RoutinesView.js";
 import { HomeView } from "../../../src/ui/home/HomeView.js";
 import { SourceView } from "../../../src/ui/source/SourceView.js";
 import { BranchRow } from "../../../src/ui/source/BranchRow.js";
+import { DocsView } from "../../../src/ui/docs/DocsView.js";
 import { CockpitMotionStyles } from "../../../src/ui/shared/cockpit-motion.js";
 import { EMPTY_FILTER } from "../../../src/ui/reports/reports-view-model.js";
 import type { BoardStateV1 } from "../../../src/contracts/index.js";
@@ -24,6 +25,7 @@ import { goldenBoard, staleBoard, zeroChipBoard, RENDER_NOW } from "../fixtures/
 import { goldenArtifactIndex, goldenRoutineHealth, okMarkdownContent, REPORTS_NOW } from "../fixtures/reports.js";
 import { goldenOrientation, emptyOrientation, HOME_NOW } from "../fixtures/home.js";
 import { goldenGitState, emptyGitState, SOURCE_NOW } from "../fixtures/source.js";
+import { goldenDocIndex, emptyDocIndex, dogfoodSpecDocId, DOCS_NOW } from "../fixtures/docs.js";
 import { NOW } from "../../fixtures/signals.js";
 
 const noop = () => {};
@@ -112,6 +114,25 @@ function source(isMobile: boolean, opts?: { empty?: boolean }): ReactElement {
   return <SourceView gitState={opts?.empty ? emptyGitState() : goldenGitState()} now={SOURCE_NOW} isMobile={isMobile} />;
 }
 
+function docs(isMobile: boolean, opts?: { empty?: boolean; selected?: boolean }): ReactElement {
+  const selectedDocId = opts?.selected ? dogfoodSpecDocId() : null;
+  const viewer = opts?.selected ? (
+    <ReportViewerPanel content={okMarkdownContent()} loading={false} error={null} now={DOCS_NOW} isMobile={isMobile} renderMarkdown={preMarkdown} typeLabel="Spec" />
+  ) : (
+    <ReportViewerPanel content={null} loading={false} error={null} now={DOCS_NOW} isMobile={isMobile} renderMarkdown={preMarkdown} />
+  );
+  return (
+    <DocsView
+      docIndex={opts?.empty ? emptyDocIndex() : goldenDocIndex()}
+      selectedDocId={selectedDocId}
+      onSelect={noop}
+      now={DOCS_NOW}
+      isMobile={isMobile}
+      viewer={viewer}
+    />
+  );
+}
+
 /** A single expanded BranchRow — proves the commit list renders (the harness is
  *  SSR-only with no hydration, so an open row is screenshotted via `defaultExpanded`,
  *  not a click). */
@@ -153,5 +174,9 @@ export function harnessDocs(): HarnessDoc[] {
     { name: "source-mobile", width: 390, html: document("Source · mobile", renderToStaticMarkup(source(true)), 390) },
     { name: "source-empty", width: 1180, html: document("Source · empty", renderToStaticMarkup(source(false, { empty: true })), 1180) },
     { name: "source-expanded", width: 760, html: document("Source · expanded branch", renderToStaticMarkup(sourceExpandedBranch()), 760) },
+    { name: "docs-desktop", width: 1180, html: document("Docs · populated", renderToStaticMarkup(docs(false)), 1180) },
+    { name: "docs-mobile", width: 390, html: document("Docs · mobile", renderToStaticMarkup(docs(true)), 390) },
+    { name: "docs-empty", width: 1180, html: document("Docs · empty", renderToStaticMarkup(docs(false, { empty: true })), 1180) },
+    { name: "docs-selected", width: 1180, html: document("Docs · doc open", renderToStaticMarkup(docs(false, { selected: true })), 1180) },
   ];
 }

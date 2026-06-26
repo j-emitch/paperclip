@@ -1,0 +1,78 @@
+/**
+ * Pure composite for the Docs tab: a header (count + freshness), the project →
+ * type → doc `DocTree`, and the detail viewer. The viewer is injected as a NODE
+ * so this stays bridge-free + SSR-screenshottable — production passes the
+ * data-connected viewer (host `<MarkdownBlock>`), the harness passes a pure
+ * `<ReportViewerPanel>` fed a `<pre>` renderer.
+ *
+ * Layout mirrors Reports: desktop = tree + viewer side-by-side; mobile = the tree
+ * until a doc is selected, then the viewer full-width (its back control clears it).
+ */
+
+import type { ReactNode } from "react";
+import type { DocIndexV1 } from "../../contracts/index.js";
+import { tokens } from "../tokens.js";
+import { CockpitSurfaceStyles } from "../shared/surface-styles.js";
+import { CockpitMotionStyles } from "../shared/cockpit-motion.js";
+import { ClockIcon } from "../icons.js";
+import { relativeTime } from "../shared/time.js";
+import { DocTree, type DocSelection } from "./DocTree.js";
+
+export interface DocsViewProps {
+  docIndex: DocIndexV1;
+  selectedDocId: string | null;
+  onSelect: (selection: DocSelection) => void;
+  now: number;
+  isMobile?: boolean;
+  /** The detail pane — connected viewer (live) or a pure one (harness). */
+  viewer: ReactNode;
+}
+
+function totalDocs(docIndex: DocIndexV1): number {
+  return docIndex.groups.reduce((sum, s) => sum + s.types.reduce((t, b) => t + b.docs.length, 0), 0);
+}
+
+export function DocsView({ docIndex, selectedDocId, onSelect, now, isMobile = false, viewer }: DocsViewProps) {
+  const total = totalDocs(docIndex);
+  const derivedAge = relativeTime(docIndex.derivedAt, now);
+  const showViewerOnly = isMobile && selectedDocId !== null;
+
+  return (
+    <div role="tabpanel" aria-label="Docs" style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+      <CockpitSurfaceStyles />
+      <CockpitMotionStyles />
+
+      {!showViewerOnly ? (
+        <header style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 650, color: tokens.fg }}>Docs</h2>
+          <span style={{ fontSize: 12.5, color: tokens.muted }}>
+            {total} document{total === 1 ? "" : "s"}
+          </span>
+          {derivedAge ? (
+            <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: tokens.muted }}>
+              <span aria-hidden="true" style={{ display: "inline-flex" }}>
+                <ClockIcon size={12} />
+              </span>
+              as of {derivedAge}
+            </span>
+          ) : null}
+        </header>
+      ) : null}
+
+      {isMobile ? (
+        showViewerOnly ? (
+          <div style={{ minWidth: 0 }}>{viewer}</div>
+        ) : (
+          <DocTree docIndex={docIndex} selectedDocId={selectedDocId} onSelect={onSelect} now={now} />
+        )
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 380px) minmax(0, 1fr)", gap: 18, alignItems: "start", minWidth: 0 }}>
+          <DocTree docIndex={docIndex} selectedDocId={selectedDocId} onSelect={onSelect} now={now} />
+          <div style={{ minWidth: 0, padding: 18, background: tokens.bg, border: `1px solid ${tokens.border}`, borderRadius: tokens.radius }}>
+            {viewer}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
