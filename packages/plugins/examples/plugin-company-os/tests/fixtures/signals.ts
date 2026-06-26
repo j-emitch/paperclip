@@ -7,6 +7,9 @@
 import type { SignalBatch, SignalBundle, RepoFreshness } from "../../src/contracts/WorkSignalSource.js";
 import type {
   ArtifactSignal,
+  BranchSignal,
+  DocSignal,
+  RepoGitSignal,
   ReviewSignal,
   RoutineSignal,
   Signal,
@@ -124,4 +127,77 @@ export function bundleOf(signals: Signal[], repoFreshness: RepoFreshness[] = [])
 /** Assemble a bundle from multiple labeled batches (for source-freshness tests). */
 export function bundleOfBatches(batches: SignalBatch[]): SignalBundle {
   return { collectedAt: NOW, batches };
+}
+
+// ---------------------------------------------------------------------------
+// COS-1 signal factories (git/source + docs). Carry `repo` (the repoKey) only —
+// projectKey is resolved at projection time (PF-5).
+// ---------------------------------------------------------------------------
+
+/** A `BranchSignal` (per-branch git state). `branch: null` = a detached/orphaned worktree row. */
+export function branchSignal(branch: string | null, over: Partial<BranchSignal> = {}): BranchSignal {
+  return {
+    kind: "branch",
+    source: over.source ?? "branch",
+    repo: over.repo ?? "juice-bar",
+    confidence: over.confidence ?? "high",
+    freshness: over.freshness ?? "live",
+    errors: over.errors ?? [],
+    branch,
+    headSha: over.headSha ?? "abc1234",
+    worktrees: over.worktrees ?? [],
+    trunk: over.trunk ?? { ref: "origin/main", state: "ok" },
+    comparison: over.comparison ?? "ok",
+    ahead: over.ahead ?? 0,
+    behind: over.behind ?? 0,
+    conflictsWithTrunk: over.conflictsWithTrunk ?? false,
+    lastCommitAt: over.lastCommitAt ?? "2026-06-23T10:00:00.000Z",
+    staleDays: over.staleDays ?? 1,
+    recentCommits: over.recentCommits ?? [],
+    statuses: over.statuses ?? [],
+    ...over,
+  };
+}
+
+/** A `RepoGitSignal` (per-configured-repo header — availability + trunk). */
+export function repoGitSignal(repo: string, over: Partial<RepoGitSignal> = {}): RepoGitSignal {
+  return {
+    kind: "repo_git",
+    source: over.source ?? "branch",
+    repo,
+    confidence: over.confidence ?? "high",
+    freshness: over.freshness ?? "live",
+    errors: over.errors ?? [],
+    availability: over.availability ?? "ok",
+    trunk: over.trunk ?? { ref: "origin/main", state: "ok" },
+    diagnostics: over.diagnostics ?? [],
+    ...over,
+  };
+}
+
+/** A `DocSignal` (a renderable doc, main or worktree). `checkoutKey` is the read key (PF-8). */
+export function docSignal(relPath: string, over: Partial<DocSignal> = {}): DocSignal {
+  const repo = over.repo ?? "company";
+  const checkoutId = over.checkoutId ?? "main";
+  return {
+    kind: "doc",
+    source: over.source ?? "docs",
+    repo,
+    confidence: over.confidence ?? "high",
+    freshness: over.freshness ?? "live",
+    errors: over.errors ?? [],
+    docType: over.docType ?? "spec",
+    docId: over.docId ?? `doc:${repo}:${checkoutId}:${relPath}`,
+    checkoutId,
+    checkoutKey: over.checkoutKey ?? repo,
+    worktreeName: over.worktreeName ?? null,
+    relPath,
+    branch: over.branch ?? null,
+    title: over.title ?? null,
+    status: over.status ?? null,
+    mtime: over.mtime ?? "2026-06-23T10:00:00.000Z",
+    sizeBytes: over.sizeBytes ?? 256,
+    indexFingerprint: over.indexFingerprint ?? "fp:abc",
+    ...over,
+  };
 }

@@ -153,6 +153,102 @@ export const COLLECTION_TRIGGERS = ["schedule", "hook", "manual"] as const;
 export type CollectionTrigger = (typeof COLLECTION_TRIGGERS)[number];
 
 // ---------------------------------------------------------------------------
+// COS-1 — Daily-Driver Cockpit: git/source + docs + project-taxonomy vocabularies
+//
+// Same single-source rule as above: each is an `as const` tuple here, every zod
+// enum in `orientation.ts` / `git-state.ts` / `doc-index.ts` / `projects.ts` is
+// built FROM these tuples, and a `Expect<AssertEqual<…>>` guard in each contract
+// proves the inferred union still matches — so a new branch-status or doc-type
+// can never drift between the type, the schema, and the runtime list.
+// ---------------------------------------------------------------------------
+
+/** Whether a configured repo root is a usable git repo at collection time (spec §5.2/§5.7). */
+export const REPO_AVAILABILITY = ["ok", "missing", "non_git"] as const;
+export type RepoAvailability = (typeof REPO_AVAILABILITY)[number];
+
+/**
+ * Whether ahead/behind/conflict could be computed for a branch vs its trunk
+ * (spec §5.1). `ok` is the only state that carries non-null ahead/behind; the
+ * other three gate those fields to `null`, so a missing trunk or an unrelated
+ * history is never rendered as a false "in sync".
+ */
+export const BRANCH_COMPARISONS = ["ok", "no_merge_base", "missing_trunk", "error"] as const;
+export type BranchComparison = (typeof BRANCH_COMPARISONS)[number];
+
+/**
+ * Derived branch-health flags (spec §7). A branch can carry several. Severity is
+ * assigned at projection time (§7 table). `ahead_clean` is informational, not an
+ * alert; `comparison_unavailable` / `conflict_not_evaluated` are neutral states —
+ * never a false "clean".
+ */
+export const BRANCH_STATUSES = [
+  "conflicting",
+  "behind",
+  "stale",
+  "dirty",
+  "unmerged_orphan",
+  "orphaned_worktree",
+  "comparison_unavailable",
+  "conflict_not_evaluated",
+  "ahead_clean",
+] as const;
+export type BranchStatus = (typeof BRANCH_STATUSES)[number];
+
+/** Severity grade for a branch-health entry (spec §7 — full grade incl. info/low). */
+export const HEALTH_SEVERITIES = ["high", "medium", "low", "info"] as const;
+export type HealthSeverity = (typeof HEALTH_SEVERITIES)[number];
+
+/** The severity an orientation alert can carry — alerts are only high/medium (spec §5.3/§7). */
+export const ALERT_SEVERITIES = ["high", "medium"] as const;
+export type AlertSeverity = (typeof ALERT_SEVERITIES)[number];
+
+/** Orientation alert kinds — the unified "needs attention" union (spec §5.3). */
+export const ORIENTATION_ALERT_KINDS = [
+  "routine_stale",
+  "routine_missing",
+  "branch_at_risk",
+  "work_stale",
+] as const;
+export type OrientationAlertKind = (typeof ORIENTATION_ALERT_KINDS)[number];
+
+/** Kinds of recent-work item on the Home cross-session glance (spec §5.3). */
+export const RECENT_WORK_KINDS = ["spec", "plan", "pr", "ticket"] as const;
+export type RecentWorkKind = (typeof RECENT_WORK_KINDS)[number];
+
+/** The typed deep-link target tabs (no string-URL guessing — spec §5.3). */
+export const DEEP_LINK_TABS = ["source", "docs", "board"] as const;
+export type DeepLinkTab = (typeof DEEP_LINK_TABS)[number];
+
+/** The doc kinds `DocsSource` emits (spec §5.4). The doc INDEX widens this with `"review"`. */
+export const DOC_TYPES = ["spec", "plan", "handoff", "backlog"] as const;
+export type DocType = (typeof DOC_TYPES)[number];
+
+/**
+ * The doc-index type buckets = `DocType ∪ "review"` (review reports are
+ * main-checkout-only, sourced from the existing `artifactSource` — spec §5.4).
+ * Spelled out (not a spread) so the literal tuple type is preserved for the
+ * drift guard in `doc-index.ts`.
+ */
+export const DOC_INDEX_TYPES = ["spec", "plan", "handoff", "backlog", "review"] as const;
+export type DocIndexType = (typeof DOC_INDEX_TYPES)[number];
+
+/** A doc's checkout provenance for the Docs tree badge (spec §5.4/§6.3). */
+export const DOC_PROVENANCES = ["main", "worktree"] as const;
+export type DocProvenance = (typeof DOC_PROVENANCES)[number];
+
+/** Project-family kind for the taxonomy grouping layer (spec §5.7). */
+export const PROJECT_KINDS = ["company", "product", "side_project", "platform"] as const;
+export type ProjectKind = (typeof PROJECT_KINDS)[number];
+
+/** A repo's role within its project family (spec §5.7). */
+export const PROJECT_REPO_ROLES = ["primary", "dependency"] as const;
+export type ProjectRepoRole = (typeof PROJECT_REPO_ROLES)[number];
+
+/** Provenance of a resolved taxonomy — drives the UI's "configured vs derived" hint (spec §5.7). */
+export const TAXONOMY_SOURCES = ["configured", "derived-default", "merged"] as const;
+export type TaxonomySource = (typeof TAXONOMY_SOURCES)[number];
+
+// ---------------------------------------------------------------------------
 // Compile-time guards — make vocabulary drift a type error, not a runtime bug
 // ---------------------------------------------------------------------------
 

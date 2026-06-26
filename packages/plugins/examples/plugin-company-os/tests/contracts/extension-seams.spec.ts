@@ -6,6 +6,9 @@ import {
   artifactTypeSchema,
   boardStateV1Schema,
   columnIdSchema,
+  isBranchSignal,
+  isDocSignal,
+  isRepoGitSignal,
   parseArtifactIndexV1,
   parseBoardStateV1,
   parseRoutineHealthV1,
@@ -15,6 +18,7 @@ import {
   type CollectionContext,
   type KnowledgeSource,
   type RepoRoot,
+  type Signal,
   type SignalBatch,
   type SignalBundle,
   type TeachingSignalSource,
@@ -23,6 +27,7 @@ import {
   reposResponsibleFor,
   reposReadableInScope,
 } from "../../src/contracts/index.js";
+import { branchSignal, docSignal, repoGitSignal } from "../fixtures/signals.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures — a minimal in-memory CollectionContext (no git/gh/fs touched).
@@ -282,5 +287,100 @@ describe("projection contracts validate", () => {
       diagnostics: [],
     });
     expect(health.routines).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// COS-1 git/doc signal kinds — compose through the seam + the never-guard
+// ---------------------------------------------------------------------------
+
+/**
+ * Exhaustive `switch (kind)` over ALL eight signal kinds. The `never` default is
+ * the guard: add a ninth kind to the union without a case here and this file
+ * stops compiling — so no projection fold can silently absorb a new kind.
+ */
+function kindOf(signal: Signal): Signal["kind"] {
+  switch (signal.kind) {
+    case "work":
+      return "work";
+    case "artifact":
+      return "artifact";
+    case "routine":
+      return "routine";
+    case "taxonomy":
+      return "taxonomy";
+    case "review":
+      return "review";
+    case "branch":
+      return "branch";
+    case "repo_git":
+      return "repo_git";
+    case "doc":
+      return "doc";
+    default: {
+      const _exhaustive: never = signal;
+      return _exhaustive;
+    }
+  }
+}
+
+describe("COS-1 signal kinds", () => {
+  it("a BranchSource-shaped source composes through the WorkSignalSource seam", async () => {
+    const source: WorkSignalSource = {
+      id: "branch",
+      async collect(ctx): Promise<SignalBatch> {
+        return {
+          source: "branch",
+          collectedAt: ctx.clock.now(),
+          signals: [
+            repoGitSignal("juice-bar"),
+            branchSignal("cos/COS-1", { repo: "juice-bar" }),
+            branchSignal(null, { repo: "juice-bar", headSha: "deadbee" }),
+          ],
+          repoFreshness: [{ repo: "juice-bar", freshness: "live", lastOkAt: null, errors: [] }],
+        };
+      },
+    };
+    const batch = await source.collect(fakeContext());
+    expect(batch.signals.map((s) => s.kind)).toEqual(["repo_git", "branch", "branch"]);
+    expect(batch.signals.filter(isBranchSignal)).toHaveLength(2);
+    expect(batch.signals.filter(isRepoGitSignal)).toHaveLength(1);
+  });
+
+  it("a DocsSource-shaped source composes through the same seam (checkoutKey + worktree provenance)", async () => {
+    const source: WorkSignalSource = {
+      id: "docs",
+      async collect(ctx): Promise<SignalBatch> {
+        return {
+          source: "docs",
+          collectedAt: ctx.clock.now(),
+          signals: [
+            docSignal("specs/COS-1.md", { repo: "company" }),
+            docSignal("docs/superpowers/plans/p.md", {
+              repo: "company",
+              docType: "plan",
+              checkoutId: "worktree:abc",
+              checkoutKey: "company::wt::abc",
+              worktreeName: "cos-COS-1",
+              branch: "docs/COS-1",
+            }),
+          ],
+          repoFreshness: [{ repo: "company", freshness: "live", lastOkAt: null, errors: [] }],
+        };
+      },
+    };
+    const batch = await source.collect(fakeContext());
+    expect(batch.signals.every(isDocSignal)).toBe(true);
+    const docs = batch.signals.filter(isDocSignal);
+    expect(docs[0]?.worktreeName).toBeNull();
+    expect(docs[1]?.worktreeName).toBe("cos-COS-1");
+    expect(docs[1]?.checkoutKey).toBe("company::wt::abc");
+  });
+
+  it("the kind switch is exhaustive over all eight kinds (compile-time never-guard)", () => {
+    const samples: Signal[] = [branchSignal("main"), repoGitSignal("company"), docSignal("specs/x.md")];
+    for (const s of samples) {
+      expect(kindOf(s)).toBe(s.kind);
+    }
   });
 });

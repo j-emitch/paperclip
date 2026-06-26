@@ -14,6 +14,10 @@
 
 import type {
   ArtifactType,
+  BranchComparison,
+  BranchStatus,
+  DocType,
+  RepoAvailability,
   ReviewReportKind,
   ReviewVerdict,
   SignalConfidence,
@@ -23,6 +27,7 @@ import type {
   WorkSignalPrecedence,
   WorkState,
 } from "./vocab.js";
+import type { Diagnostic } from "./diagnostics.js";
 
 /** A non-fatal problem attached to a single signal (sources record, never throw). */
 export interface SignalError {
@@ -57,7 +62,9 @@ export interface SignalProvenance {
 }
 
 // ---------------------------------------------------------------------------
-// The four signal kinds (discriminated by `kind`)
+// The signal kinds (discriminated by `kind`) — five COS-0 kinds below, three
+// COS-1 git/doc kinds further down. The `Signal` union + the narrowing helpers
+// at the bottom are the single branch point for all of them.
 // ---------------------------------------------------------------------------
 
 /** Places a ticket into a board column. The board's chips are projected from these. */
@@ -167,8 +174,131 @@ export interface ReviewSignal extends SignalProvenance {
   readonly branch?: string;
 }
 
+// ---------------------------------------------------------------------------
+// COS-1 — git/source signals (Branch + RepoGit) and the renderable doc signal
+//
+// Three additive union members. Per the plan's PF-5 refinement they carry only
+// `repo` (the repoKey, via SignalProvenance) — NOT a `projectKey`: project
+// grouping is resolved at PROJECTION time via `projectKeyForRepo(taxonomy,
+// repoKey)`, so the signals stay taxonomy-free and the sources stay repo-
+// oriented (no fixture/source coupling to the taxonomy).
+// ---------------------------------------------------------------------------
+
+/** `--shortstat` summary for one commit, parsed from the same `git log` call (spec §5.1). */
+export interface CommitStat {
+  readonly filesChanged: number;
+  readonly insertions: number;
+  readonly deletions: number;
+}
+
+/** One recent commit on a branch tip (spec §5.1/§6.2). */
+export interface CommitRef {
+  readonly sha: string; // abbreviated
+  readonly subject: string;
+  readonly author: string;
+  readonly committedAt: string; // ISO-8601
+  /** Optional `--shortstat` summary (files/+/−) from the SAME `git log` call (no extra git call). */
+  readonly stat?: CommitStat;
+}
+
+/** A live worktree of a branch — dirty state is tracked PER worktree (spec §5.1). */
+export interface WorktreeRef {
+  readonly path: string;
+  readonly headSha: string;
+  /** Worktree on a detached HEAD (no branch ref). */
+  readonly detached: boolean;
+  /** `git -C <path> --no-optional-locks status --porcelain` count; null = unknown/degraded. */
+  readonly dirtyFileCount: number | null;
+}
+
+/** The resolved trunk a branch is compared against (spec §5.1). */
+export interface TrunkRef {
+  readonly ref: string | null; // e.g. "origin/main"; null when none resolvable
+  readonly state: "ok" | "missing";
+}
+
+/**
+ * Per-branch git state for the Source + Home surfaces (spec §5.1/§5.2). One per
+ * local branch, plus one `branch: null` row per detached/orphaned worktree. A
+ * branch checked out in multiple worktrees yields ONE signal whose `worktrees[]`
+ * lists them all (dirty per worktree, never collapsed).
+ */
+export interface BranchSignal extends SignalProvenance {
+  readonly kind: "branch";
+  /** Local ref short name; null for a detached/orphaned worktree row. */
+  readonly branch: string | null;
+  /** Tip sha — always present (even when `branch` is null). */
+  readonly headSha: string;
+  /** 0..N live worktrees of this branch — dirty state PER worktree. */
+  readonly worktrees: readonly WorktreeRef[];
+  readonly trunk: TrunkRef;
+  /** Gates the three nullable comparison fields below. */
+  readonly comparison: BranchComparison;
+  readonly ahead: number | null; // null unless comparison === "ok"
+  readonly behind: number | null; // null unless comparison === "ok"
+  /** merge-tree prediction; null when not evaluated OR comparison !== "ok". */
+  readonly conflictsWithTrunk: boolean | null;
+  readonly lastCommitAt: string; // ISO-8601 of the tip
+  readonly staleDays: number; // age of the tip in days
+  readonly recentCommits: readonly CommitRef[]; // last N tip commits
+  readonly statuses: readonly BranchStatus[]; // derived flags (§7)
+}
+
+/**
+ * Per-configured-repo git header (spec §5.1/§5.2). Emitted ALWAYS — even for a
+ * missing/non-git root — so `deriveGitState` can render a configured-but-absent
+ * repo honestly (a pure projection can't tell "ok repo, 0 branches" from
+ * "missing repo" without it).
+ */
+export interface RepoGitSignal extends SignalProvenance {
+  readonly kind: "repo_git";
+  readonly availability: RepoAvailability;
+  readonly trunk: TrunkRef;
+  readonly diagnostics: readonly Diagnostic[]; // e.g. "git budget exceeded", "trunk missing"
+}
+
+/**
+ * A renderable doc (spec/plan/handoff/backlog) discovered across the main
+ * checkout AND every worktree (spec §5.4). A DISTINCT kind (not an
+ * `ArtifactSignal`) so worktree docs can never leak into the Board /
+ * routine-health artifact folds, which assume main-checkout semantics.
+ *
+ * Per the plan PF-8 refinement the read key is `checkoutKey` (an `absByKey`
+ * pseudo-key from the shared `buildCheckoutKeyMap`), NOT an absolute path — the
+ * worktree's absolute path survives only as `worktreeName` (basename) provenance.
+ */
+export interface DocSignal extends SignalProvenance {
+  readonly kind: "doc";
+  readonly docType: DocType;
+  /** STABLE id = hash(repoKey + checkoutId + relPath) — the render/fetch key. */
+  readonly docId: string;
+  /** "main" | `worktree:${hash(worktreePath-relative-to-repoRoot)}` — collision-safe. */
+  readonly checkoutId: string;
+  /** The `absByKey` key (main repoKey or a worktree pseudo-key) `doc-content` reads against (PF-8). */
+  readonly checkoutKey: string;
+  /** Worktree dir basename for the provenance badge; null = main checkout (abs path never leaks here). */
+  readonly worktreeName: string | null;
+  /** CHECKOUT-ROOT-relative path (relative to the worktree root when set, else the repo main root). */
+  readonly relPath: string;
+  readonly branch: string | null; // the checkout's branch
+  readonly title: string | null; // frontmatter title, else first H1 within the scanned head, else null
+  readonly status: string | null; // from frontmatter, when present
+  readonly mtime: string; // ISO-8601
+  readonly sizeBytes: number;
+  /** hash(mtime + sizeBytes + head-bytes) — change-detection/dedup; NOT a full-body hash. */
+  readonly indexFingerprint: string;
+}
+
 /** The discriminated union of everything a source can emit. */
-export type Signal = WorkSignal | ArtifactSignal | RoutineSignal | TaxonomySignal | ReviewSignal;
+export type Signal =
+  | WorkSignal
+  | ArtifactSignal
+  | RoutineSignal
+  | TaxonomySignal
+  | ReviewSignal
+  | BranchSignal
+  | RepoGitSignal
+  | DocSignal;
 
 /** Narrowing helpers — keep the `kind` discriminant the single branch point. */
 export const isWorkSignal = (s: Signal): s is WorkSignal => s.kind === "work";
@@ -176,3 +306,6 @@ export const isArtifactSignal = (s: Signal): s is ArtifactSignal => s.kind === "
 export const isRoutineSignal = (s: Signal): s is RoutineSignal => s.kind === "routine";
 export const isTaxonomySignal = (s: Signal): s is TaxonomySignal => s.kind === "taxonomy";
 export const isReviewSignal = (s: Signal): s is ReviewSignal => s.kind === "review";
+export const isBranchSignal = (s: Signal): s is BranchSignal => s.kind === "branch";
+export const isRepoGitSignal = (s: Signal): s is RepoGitSignal => s.kind === "repo_git";
+export const isDocSignal = (s: Signal): s is DocSignal => s.kind === "doc";

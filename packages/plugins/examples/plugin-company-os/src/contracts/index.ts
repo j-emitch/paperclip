@@ -27,6 +27,12 @@ export * from "./board-state.js";
 export * from "./artifact-index.js";
 export * from "./routine-health.js";
 
+// Layer 2 — COS-1 project taxonomy + daily-driver projection contracts
+export * from "./projects.js";
+export * from "./git-state.js";
+export * from "./orientation.js";
+export * from "./doc-index.js";
+
 // Layer 2 — the live docs-viewer payload contract (read per-request, not cached)
 export * from "./report-content.js";
 
