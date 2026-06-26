@@ -69,17 +69,35 @@ export function HomeView({
     </Panel>
   );
   const branches = (
-    <Panel index={3} title="Branches needing attention" count={orientation.branchHealth.length} isMobile={isMobile}>
-      <BranchHealthPanel branchHealth={orientation.branchHealth} taxonomy={orientation.taxonomy} onFollow={onFollow} />
+    <Panel
+      index={3}
+      title="Branches needing attention"
+      count={orientation.branchHealth.length}
+      isMobile={isMobile}
+      action={orientation.branchHealth.length > 0 ? <SeeAll label="Source" onClick={() => onNavigateTab?.("source")} /> : undefined}
+    >
+      <BranchHealthPanel branchHealth={orientation.branchHealth} taxonomy={orientation.taxonomy} isMobile={isMobile} onFollow={onFollow} />
     </Panel>
   );
   const work = (
-    <Panel index={4} title="Cross-session work" count={orientation.recentWork.length} isMobile={isMobile}>
-      <CrossSessionWork recentWork={orientation.recentWork} taxonomy={orientation.taxonomy} now={now} onFollow={onFollow} />
+    <Panel
+      index={4}
+      title="Cross-session work"
+      count={orientation.recentWork.length}
+      isMobile={isMobile}
+      action={orientation.recentWork.length > 0 ? <SeeAll label="Board" onClick={() => onNavigateTab?.("board")} /> : undefined}
+    >
+      <CrossSessionWork recentWork={orientation.recentWork} taxonomy={orientation.taxonomy} now={now} isMobile={isMobile} onFollow={onFollow} />
     </Panel>
   );
   const commits = (
-    <Panel index={5} title="Recent commits" count={orientation.recentCommits.length} isMobile={isMobile}>
+    <Panel
+      index={5}
+      title="Recent commits"
+      count={orientation.recentCommits.length}
+      isMobile={isMobile}
+      action={orientation.recentCommits.length > 0 ? <SeeAll label="Source" onClick={() => onNavigateTab?.("source")} /> : undefined}
+    >
       <RecentCommitsGlance recentCommits={orientation.recentCommits} now={now} />
     </Panel>
   );
@@ -144,12 +162,14 @@ function Panel({
   count,
   index,
   isMobile,
+  action,
   children,
 }: {
   title: string;
   count?: number;
   index: number;
   isMobile: boolean;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -164,9 +184,43 @@ function Panel({
         {typeof count === "number" && count > 0 ? (
           <span style={{ fontSize: 12, color: tokens.muted, fontVariantNumeric: "tabular-nums" }}>{count}</span>
         ) : null}
+        {action ? (
+          <>
+            <span style={{ flex: 1 }} />
+            {action}
+          </>
+        ) : null}
       </div>
       {children}
     </section>
+  );
+}
+
+/** A muted "see all → <tab>" panel affordance that switches tabs. */
+function SeeAll({ label, onClick }: { label: string; onClick?: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="cos-home-seeall"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "2px 8px",
+        borderRadius: 999,
+        background: "transparent",
+        border: "none",
+        color: tokens.muted,
+        font: "inherit",
+        fontSize: 12,
+        fontWeight: 550,
+        cursor: onClick ? "pointer" : "default",
+      }}
+    >
+      {label}
+      <span aria-hidden="true">→</span>
+    </button>
   );
 }
 

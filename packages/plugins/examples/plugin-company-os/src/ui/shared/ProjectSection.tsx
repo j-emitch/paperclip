@@ -27,6 +27,12 @@ export interface ProjectSectionProps {
   readonly isEmpty?: boolean;
   /** The 0-state copy (Joe's positive, non-empty-hostile framing). */
   readonly emptyLabel?: string;
+  /**
+   * Compact glance mode (Home): suppress the prose note + tighten the header,
+   * so the same project family repeated across Home panels doesn't re-print its
+   * one-liner. The full Source/Docs audit leaves this off to keep the context.
+   */
+  readonly compact?: boolean;
   readonly children?: ReactNode;
 }
 
@@ -36,12 +42,13 @@ export function ProjectSection({
   action,
   isEmpty = false,
   emptyLabel = "All clear here.",
+  compact = false,
   children,
 }: ProjectSectionProps) {
   return (
-    <section aria-label={group.displayName} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <section aria-label={group.displayName} style={{ display: "flex", flexDirection: "column", gap: compact ? 8 : 10 }}>
       <header style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 650, letterSpacing: -0.2, color: tokens.fg }}>
+        <h3 style={{ margin: 0, fontSize: compact ? 13.5 : 15, fontWeight: 650, letterSpacing: -0.2, color: tokens.fg }}>
           {group.displayName}
         </h3>
         <span
@@ -64,7 +71,9 @@ export function ProjectSection({
         <span style={{ flex: 1 }} />
         {action}
       </header>
-      {group.note ? <p style={{ margin: 0, fontSize: 12, color: tokens.muted, lineHeight: 1.4 }}>{group.note}</p> : null}
+      {group.note && !compact ? (
+        <p style={{ margin: 0, fontSize: 12, color: tokens.muted, lineHeight: 1.4 }}>{group.note}</p>
+      ) : null}
       {isEmpty ? (
         <p
           style={{

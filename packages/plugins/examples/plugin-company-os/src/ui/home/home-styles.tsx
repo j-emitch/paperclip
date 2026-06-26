@@ -28,6 +28,7 @@ const CSS = `
 @media (hover: hover) {
   .cos-home-card:hover { border-color: ${tokens.accentBorder}; transform: translateY(-2px); box-shadow: 0 8px 24px -16px rgba(0,0,0,0.55); }
 }
+.cos-home-card:not(:disabled):active { transform: translateY(0) scale(0.992); }
 .cos-home-card:focus-visible { outline: 2px solid ${tokens.accent}; outline-offset: 2px; }
 
 .cos-home-tile {
@@ -37,6 +38,7 @@ const CSS = `
   .cos-home-tile:hover { border-color: ${tokens.accentBorder}; transform: translateY(-2px); }
   .cos-home-tile:hover .cos-home-tile-arrow { opacity: 1; transform: translateX(0); }
 }
+.cos-home-tile:active { transform: translateY(0) scale(0.992); }
 .cos-home-tile:focus-visible { outline: 2px solid ${tokens.accent}; outline-offset: 2px; }
 .cos-home-tile-arrow { opacity: 0; transform: translateX(-3px); transition: opacity 160ms ease, transform 180ms cubic-bezier(0.2,0.8,0.2,1); }
 
@@ -45,8 +47,17 @@ const CSS = `
   .cos-home-row:hover { background: ${tokens.cardElevated}; border-color: ${tokens.accentBorder}; }
   .cos-home-row:hover .cos-home-row-go { opacity: 1; transform: translateX(0); }
 }
+.cos-home-row:active { transform: scale(0.994); }
 .cos-home-row:focus-visible { outline: 2px solid ${tokens.accent}; outline-offset: 1px; }
 .cos-home-row-go { opacity: 0; transform: translateX(-3px); transition: opacity 160ms ease, transform 180ms cubic-bezier(0.2,0.8,0.2,1); }
+
+.cos-home-seeall { transition: color 140ms ease, background-color 140ms ease; }
+@media (hover: hover) {
+  .cos-home-seeall:hover { color: ${tokens.accent}; background: ${withAlpha(tokens.accent, 0.12)}; }
+  .cos-home-seeall:hover span { transform: translateX(2px); }
+}
+.cos-home-seeall span { display: inline-block; transition: transform 180ms cubic-bezier(0.2,0.8,0.2,1); }
+.cos-home-seeall:focus-visible { outline: 2px solid ${tokens.accent}; outline-offset: 2px; }
 
 .cos-home-drawer { animation: cos-home-drawer-in 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .cos-home-scrim { animation: cos-home-fade-in 200ms ease both; }
@@ -54,8 +65,10 @@ const CSS = `
 
 @media (prefers-reduced-motion: reduce) {
   .cos-home-enter, .cos-home-drawer, .cos-home-scrim, .cos-home-pulse-dot { animation: none; }
-  .cos-home-card, .cos-home-tile, .cos-home-row { transition: none; }
-  .cos-home-card:hover, .cos-home-tile:hover, .cos-home-row:hover { transform: none; }
+  .cos-home-card, .cos-home-tile, .cos-home-row, .cos-home-seeall, .cos-home-seeall span { transition: none; }
+  .cos-home-card:hover, .cos-home-tile:hover, .cos-home-row:hover,
+  .cos-home-card:active, .cos-home-tile:active, .cos-home-row:active,
+  .cos-home-seeall:hover span { transform: none; }
   .cos-home-tile-arrow, .cos-home-row-go { opacity: 1; transform: none; }
 }
 `;

@@ -25,20 +25,21 @@ const MAX_STATUS_CHIPS = 3;
 export interface BranchHealthPanelProps {
   branchHealth: readonly BranchHealthEntryV1[];
   taxonomy: ProjectTaxonomyV1;
+  isMobile?: boolean;
   onFollow?: (link: DeepLink) => void;
 }
 
-export function BranchHealthPanel({ branchHealth, taxonomy, onFollow }: BranchHealthPanelProps) {
+export function BranchHealthPanel({ branchHealth, taxonomy, isMobile = false, onFollow }: BranchHealthPanelProps) {
   const grouped = groupByProject(taxonomy, branchHealth);
   if (grouped.length === 0) {
     return <CalmNote tone={statusColors.ship}>All branches healthy — nothing needs attention.</CalmNote>;
   }
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {grouped.map(({ group, items }) => (
-        <ProjectSection key={group.key} group={group} count={items.length}>
+        <ProjectSection key={group.key} group={group} count={items.length} compact>
           {sortByHealth(items).map((entry) => (
-            <BranchHealthRow key={`${entry.repo}:${entry.branch ?? "_detached"}`} entry={entry} onFollow={onFollow} />
+            <BranchHealthRow key={`${entry.repo}:${entry.branch ?? "_detached"}`} entry={entry} isMobile={isMobile} onFollow={onFollow} />
           ))}
         </ProjectSection>
       ))}
@@ -46,7 +47,7 @@ export function BranchHealthPanel({ branchHealth, taxonomy, onFollow }: BranchHe
   );
 }
 
-function BranchHealthRow({ entry, onFollow }: { entry: BranchHealthEntryV1; onFollow?: (link: DeepLink) => void }) {
+function BranchHealthRow({ entry, isMobile, onFollow }: { entry: BranchHealthEntryV1; isMobile: boolean; onFollow?: (link: DeepLink) => void }) {
   const tone = HEALTH_SEVERITY_TONES[entry.severity];
   const chips = entry.statuses.slice(0, MAX_STATUS_CHIPS);
   const overflow = entry.statuses.length - chips.length;
@@ -54,62 +55,95 @@ function BranchHealthRow({ entry, onFollow }: { entry: BranchHealthEntryV1; onFo
   if (entry.behind !== null && entry.behind > 0) magnitudes.push(`${entry.behind} behind`);
   if (entry.staleDays > 0) magnitudes.push(`${entry.staleDays}d stale`);
 
-  return (
-    <button
-      type="button"
-      className="cos-home-row"
-      onClick={onFollow ? () => onFollow(entry.deepLink) : undefined}
-      title={`Open ${entry.repo} · ${entry.branch ?? "detached"} in Source`}
+  const branchCode = (
+    <code
+      title={entry.branch ?? "detached HEAD"}
       style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "9px 11px",
-        textAlign: "left",
-        width: "100%",
-        minWidth: 0,
-        background: tokens.card,
-        border: `1px solid ${tokens.border}`,
-        borderLeft: `3px solid ${tone}`,
-        borderRadius: tokens.radiusSm,
+        fontFamily: tokens.mono,
+        fontSize: 12,
         color: tokens.fg,
-        font: "inherit",
-        cursor: onFollow ? "pointer" : "default",
+        fontWeight: 600,
+        flex: isMobile ? 1 : "0 1 auto",
+        minWidth: 0,
+        maxWidth: isMobile ? "none" : 200,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
       }}
     >
-      <Dot tone={tone} />
-      <code
-        title={entry.branch ?? "detached HEAD"}
-        style={{
-          fontFamily: tokens.mono,
-          fontSize: 12,
-          color: tokens.fg,
-          fontWeight: 600,
-          maxWidth: 200,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {entry.branch ?? "detached"}
-      </code>
-      <RepoBadge repo={entry.repo} />
-      <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", minWidth: 0 }}>
-        {chips.map((status) => (
-          <Pill key={status} label={BRANCH_STATUS_LABELS[status]} tone={tokens.muted} />
-        ))}
-        {overflow > 0 ? <span style={{ fontSize: 11, color: tokens.muted }}>+{overflow}</span> : null}
-      </div>
-      <span style={{ flex: 1 }} />
-      {magnitudes.length > 0 ? (
-        <span style={{ fontSize: 11.5, color: tokens.muted, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
-          {magnitudes.join(" · ")}
-        </span>
-      ) : null}
-      <Pill label={HEALTH_SEVERITY_LABELS[entry.severity]} tone={tone} soft />
-      <span aria-hidden="true" className="cos-home-row-go" style={{ color: tone, fontSize: 15, lineHeight: 1 }}>
-        →
+      {entry.branch ?? "detached"}
+    </code>
+  );
+  const statusChips = (
+    <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", minWidth: 0 }}>
+      {chips.map((status) => (
+        <Pill key={status} label={BRANCH_STATUS_LABELS[status]} tone={tokens.muted} />
+      ))}
+      {overflow > 0 ? <span style={{ fontSize: 11, color: tokens.muted }}>+{overflow}</span> : null}
+    </div>
+  );
+  const magnitudeText =
+    magnitudes.length > 0 ? (
+      <span style={{ fontSize: 11.5, color: tokens.muted, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+        {magnitudes.join(" · ")}
       </span>
+    ) : null;
+  const severityPill = <Pill label={HEALTH_SEVERITY_LABELS[entry.severity]} tone={tone} soft />;
+  const goArrow = (
+    <span aria-hidden="true" className="cos-home-row-go" style={{ color: tone, fontSize: 15, lineHeight: 1, flex: "0 0 auto" }}>
+      →
+    </span>
+  );
+
+  const baseStyle = {
+    padding: isMobile ? "10px 12px" : "9px 11px",
+    textAlign: "left" as const,
+    width: "100%",
+    minWidth: 0,
+    background: tokens.card,
+    border: `1px solid ${tokens.border}`,
+    borderLeft: `3px solid ${tone}`,
+    borderRadius: tokens.radiusSm,
+    color: tokens.fg,
+    font: "inherit",
+    cursor: onFollow ? "pointer" : "default",
+  };
+  const onClick = onFollow ? () => onFollow(entry.deepLink) : undefined;
+  const title = `Open ${entry.repo} · ${entry.branch ?? "detached"} in Source`;
+
+  // Mobile: a two-line stack so the branch name + chips + magnitudes never collide.
+  if (isMobile) {
+    return (
+      <button type="button" className="cos-home-row" onClick={onClick} title={title} style={{ ...baseStyle, display: "flex", flexDirection: "column", gap: 7 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          <Dot tone={tone} />
+          {branchCode}
+          {severityPill}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
+          <RepoBadge repo={entry.repo} />
+          {statusChips}
+          {magnitudeText ? (
+            <>
+              <span style={{ flex: 1 }} />
+              {magnitudeText}
+            </>
+          ) : null}
+        </div>
+      </button>
+    );
+  }
+
+  return (
+    <button type="button" className="cos-home-row" onClick={onClick} title={title} style={{ ...baseStyle, display: "flex", alignItems: "center", gap: 10 }}>
+      <Dot tone={tone} />
+      {branchCode}
+      <RepoBadge repo={entry.repo} />
+      {statusChips}
+      <span style={{ flex: 1 }} />
+      {magnitudeText}
+      {severityPill}
+      {goArrow}
     </button>
   );
 }
