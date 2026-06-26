@@ -38,6 +38,7 @@ export const SIGNAL_ERROR_CODES = [
   "containment_violation", // a path escaped the workspace root (traversal/symlink)
   "oversize", // a file exceeded the docs-viewer size cap
   "not_found", // an expected file/ref was absent
+  "truncated", // an index was capped (e.g. MAX_DOCS_PER_REPO) — partial, NOT a failed read (non-degraded)
 ] as const;
 export type SignalErrorCode = (typeof SIGNAL_ERROR_CODES)[number];
 

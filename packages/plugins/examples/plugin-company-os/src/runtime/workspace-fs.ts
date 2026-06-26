@@ -13,7 +13,7 @@
  * workspace` / `size cap`, so those phrases must stay stable.
  */
 
-import { readFile, lstat, realpath } from "node:fs/promises";
+import { readFile, lstat, open, realpath } from "node:fs/promises";
 import * as path from "node:path";
 import type { WorkspaceFileStat } from "../contracts/collection-context.js";
 
@@ -96,6 +96,42 @@ export async function readContainedText(
       isSymlink: st.isSymbolicLink(),
     },
   };
+}
+
+/**
+ * Read only the FIRST `maxBytes` of a workspace-relative file (containment-checked),
+ * TRUNCATING rather than throwing on an oversize file. The docs INDEX scans only
+ * the frontmatter head (≤4 KB) across hundreds of files, so this never pulls a
+ * whole body — `readContainedText` (whole-file, throw-on-oversize) is the body
+ * read. Same traversal/symlink defenses; `stat.sizeBytes` is the FULL file size.
+ */
+export async function readContainedTextHead(
+  root: string,
+  relPath: string,
+  maxBytes: number,
+): Promise<ContainedReadResult> {
+  const abs = containedResolve(root, relPath);
+  if (!abs) throw new Error(`path escapes workspace: ${relPath}`);
+  const real = await realpathContained(root, abs);
+  if (real === null) throw new Error(`path escapes workspace: ${relPath}`);
+  const st = await lstat(real);
+  const fh = await open(real, "r");
+  try {
+    const len = Math.max(0, Math.min(maxBytes, st.size));
+    const buf = Buffer.alloc(len);
+    const { bytesRead } = len > 0 ? await fh.read(buf, 0, len, 0) : { bytesRead: 0 };
+    return {
+      content: buf.subarray(0, bytesRead).toString("utf-8"),
+      stat: {
+        relPath: relPath.replace(/\\/g, "/"),
+        sizeBytes: st.size,
+        mtime: st.mtime.toISOString(),
+        isSymlink: st.isSymbolicLink(),
+      },
+    };
+  } finally {
+    await fh.close();
+  }
 }
 
 /** Stat a workspace-relative path (containment-checked); null when absent or escaping. */

@@ -43,12 +43,14 @@ function fakeContext(overrides: Partial<CollectionContext> = {}): CollectionCont
   };
   return {
     repos,
+    worktrees: [],
     scopeRepo: null,
     git: { run: notUsed },
     gh: { run: notUsed },
     fs: {
       list: async () => [],
       readText: async () => "",
+      readTextHead: async () => "",
       stat: async () => null,
     },
     clock: fixedClock,

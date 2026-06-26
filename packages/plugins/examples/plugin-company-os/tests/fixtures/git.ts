@@ -74,10 +74,11 @@ export function gitFixtureContext(opts: GitFixtureOpts): CollectionContext {
   };
   return {
     repos,
+    worktrees: [],
     scopeRepo: opts.scopeRepo ?? null,
     git: { run: (repo, args) => Promise.resolve(opts.handler(repo, args)) },
     gh: { run: notUsed },
-    fs: { list: async () => [], readText: async () => "", stat: async () => null },
+    fs: { list: async () => [], readText: async () => "", readTextHead: async () => "", stat: async () => null },
     clock,
     logger: { debug() {}, info() {}, warn() {}, error() {} },
     registry: { load: async () => ({ entries: [], errors: [] }) },

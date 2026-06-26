@@ -12,7 +12,7 @@
  */
 
 import type { CommitRef, CommitStat } from "../contracts/signals.js";
-import type { ReviewReportKind, ReviewVerdict, UnclassifiedReason } from "../contracts/vocab.js";
+import type { DocType, ReviewReportKind, ReviewVerdict, UnclassifiedReason } from "../contracts/vocab.js";
 
 // ---------------------------------------------------------------------------
 // Ticket ids — the canonical commit/branch grammar
@@ -383,6 +383,20 @@ export function parseBranchCommits(stdout: string): CommitRef[] {
     });
   }
   return out;
+}
+
+/**
+ * Classify a doc's checkout-relative path into its `DocType` with a FIXED
+ * precedence (handoff → backlog → plan → spec), so a path matching more than one
+ * glob yields exactly ONE stable type (spec §5.4). Handoffs live under a
+ * `handoffs/` dir anywhere; backlog under `backlog/`; plans under a `plans/` dir
+ * (`docs/superpowers/plans/`); everything else is a spec.
+ */
+export function classifyDocPath(relPath: string): DocType {
+  if (/(^|\/)handoffs\//.test(relPath)) return "handoff";
+  if (/(^|\/)backlog\//.test(relPath)) return "backlog";
+  if (/(^|\/)plans\//.test(relPath)) return "plan";
+  return "spec";
 }
 
 // ---------------------------------------------------------------------------

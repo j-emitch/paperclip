@@ -1,0 +1,124 @@
+import { describe, expect, it, vi } from "vitest";
+import { docsSource } from "../../src/sources/DocsSource.js";
+import { isArtifactSignal, isDocSignal, type DocSignal } from "../../src/contracts/signals.js";
+import { MAX_DOCS_PER_REPO } from "../../src/contracts/doc-index.js";
+import { makeFixtureContext, type FixtureFs } from "../fixtures/context.js";
+import type { WorktreeCheckout } from "../../src/contracts/collection-context.js";
+
+const WT_AAA: WorktreeCheckout = { key: "company::wt::aaa", checkoutId: "worktree:aaa", parentRepoKey: "company", branch: "docs/COS-1", name: "cos-COS-1" };
+const WT_BBB: WorktreeCheckout = { key: "company::wt::bbb", checkoutId: "worktree:bbb", parentRepoKey: "company", branch: "feat/x", name: "codex-wt" };
+
+function fixtureFiles(): FixtureFs {
+  return {
+    company: {
+      "specs/main.md": { content: "---\ntitle: Main Spec\nstatus: shipped\n---\n# Body" },
+      "docs/superpowers/plans/2026-06-25-p.md": { content: "---\ntitle: A Plan\n---\n# Plan body" },
+      "company/reports/handoffs/h.md": { content: "# A Handoff" },
+      "backlog/b.md": { content: "# Backlog item" },
+      // A handoff UNDER .claude/worktrees — must be pruned from the MAIN scan (it
+      // belongs to the worktree checkout, never checkoutId:"main").
+      ".claude/worktrees/cos-COS-1/handoffs/leak.md": { content: "# leak" },
+      // The interim review mirror — must be excluded.
+      "docs/review/cos-1/handoffs/mirror.md": { content: "# mirror" },
+    },
+    "company::wt::aaa": {
+      "specs/main.md": { content: "---\ntitle: Worktree Spec\n---\n# Body" },
+      "handoffs/wt-handoff.md": { content: "# Worktree Handoff" },
+    },
+    "company::wt::bbb": {
+      "specs/oor.md": { content: "# Out-of-root Spec" },
+    },
+  };
+}
+
+function run(files: FixtureFs, worktrees: WorktreeCheckout[] = [WT_AAA, WT_BBB]) {
+  const ctx = makeFixtureContext({ repos: [{ repo: "company", available: true }], worktrees, files });
+  return { ctx, collect: () => docsSource.collect(ctx) };
+}
+
+describe("DocsSource", () => {
+  it("emits DocSignals (not ArtifactSignals) across main + worktrees with distinct provenance", async () => {
+    const { collect } = run(fixtureFiles());
+    const batch = await collect();
+    const docs = batch.signals.filter(isDocSignal) as DocSignal[];
+
+    expect(batch.signals.some(isArtifactSignal)).toBe(false); // a distinct kind, never an artifact
+    expect(docs.every((d) => d.repo === "company")).toBe(true);
+    expect(docs.every((d) => !("projectKey" in d))).toBe(true); // resolved at projection time (PF-5)
+
+    const byCheckout = new Map<string, DocSignal[]>();
+    for (const d of docs) byCheckout.set(d.checkoutId, [...(byCheckout.get(d.checkoutId) ?? []), d]);
+    expect([...byCheckout.keys()].sort()).toEqual(["main", "worktree:aaa", "worktree:bbb"]);
+
+    // Main vs each worktree → distinct checkoutKey + docId for the same relPath.
+    const mainSpec = docs.find((d) => d.checkoutId === "main" && d.relPath === "specs/main.md")!;
+    const wtSpec = docs.find((d) => d.checkoutId === "worktree:aaa" && d.relPath === "specs/main.md")!;
+    expect(mainSpec.checkoutKey).toBe("company");
+    expect(wtSpec.checkoutKey).toBe("company::wt::aaa");
+    expect(mainSpec.docId).not.toBe(wtSpec.docId);
+    expect(mainSpec.worktreeName).toBeNull();
+    expect(wtSpec.worktreeName).toBe("cos-COS-1"); // basename, never an abs path
+    expect(wtSpec.branch).toBe("docs/COS-1");
+  });
+
+  it("indexes the OUT-of-root worktree", async () => {
+    const { collect } = run(fixtureFiles());
+    const docs = (await collect()).signals.filter(isDocSignal) as DocSignal[];
+    const oor = docs.find((d) => d.checkoutId === "worktree:bbb");
+    expect(oor?.relPath).toBe("specs/oor.md");
+    expect(oor?.worktreeName).toBe("codex-wt");
+  });
+
+  it("the MAIN scan walk-time-prunes .claude/worktrees + docs/review (no checkoutId:main leak)", async () => {
+    const { collect } = run(fixtureFiles());
+    const docs = (await collect()).signals.filter(isDocSignal) as DocSignal[];
+    // The leaked + mirror handoffs must NEVER appear as a main-checkout doc.
+    expect(docs.some((d) => d.checkoutId === "main" && d.relPath.includes(".claude/worktrees"))).toBe(false);
+    expect(docs.some((d) => d.checkoutId === "main" && d.relPath.includes("docs/review"))).toBe(false);
+    // The worktree's OWN handoff is found under the worktree checkout.
+    expect(docs.some((d) => d.checkoutId === "worktree:aaa" && d.relPath === "handoffs/wt-handoff.md")).toBe(true);
+  });
+
+  it("classifies doc types by precedence + reads title from the frontmatter head", async () => {
+    const { collect } = run(fixtureFiles(), []); // main only
+    const docs = (await collect()).signals.filter(isDocSignal) as DocSignal[];
+    const byPath = (p: string) => docs.find((d) => d.relPath === p)!;
+    expect(byPath("specs/main.md").docType).toBe("spec");
+    expect(byPath("specs/main.md").title).toBe("Main Spec");
+    expect(byPath("specs/main.md").status).toBe("shipped");
+    expect(byPath("docs/superpowers/plans/2026-06-25-p.md").docType).toBe("plan");
+    expect(byPath("company/reports/handoffs/h.md").docType).toBe("handoff");
+    expect(byPath("company/reports/handoffs/h.md").title).toBe("A Handoff"); // first H1 (no frontmatter)
+    expect(byPath("backlog/b.md").docType).toBe("backlog");
+  });
+
+  it("reads HEAD-only (readTextHead, never the whole-file readText)", async () => {
+    const { ctx, collect } = run(fixtureFiles(), []);
+    const headSpy = vi.spyOn(ctx.fs, "readTextHead");
+    const textSpy = vi.spyOn(ctx.fs, "readText");
+    await collect();
+    expect(headSpy).toHaveBeenCalled();
+    expect(textSpy).not.toHaveBeenCalled();
+  });
+
+  it("records a degraded read without throwing", async () => {
+    const { ctx, collect } = run(fixtureFiles(), []);
+    vi.spyOn(ctx.fs, "readTextHead").mockRejectedValueOnce(new Error("path escapes workspace: specs/main.md"));
+    const batch = await collect();
+    const docs = batch.signals.filter(isDocSignal) as DocSignal[];
+    expect(docs.length).toBeGreaterThan(0); // other docs still indexed
+    expect(batch.repoFreshness[0]!.errors.length).toBeGreaterThan(0);
+    expect(batch.repoFreshness[0]!.freshness).toBe("stale");
+  });
+
+  it("caps at MAX_DOCS_PER_REPO with a 'truncated' diagnostic (no silent drop)", async () => {
+    const many: Record<string, { content: string }> = {};
+    for (let i = 0; i < MAX_DOCS_PER_REPO + 5; i++) many[`specs/s${i}.md`] = { content: `# Spec ${i}` };
+    const { collect } = run({ company: many }, []);
+    const batch = await collect();
+    const docs = batch.signals.filter(isDocSignal) as DocSignal[];
+    expect(docs).toHaveLength(MAX_DOCS_PER_REPO);
+    expect(batch.repoFreshness[0]!.errors.some((e) => e.code === "truncated")).toBe(true);
+    expect(batch.repoFreshness[0]!.freshness).toBe("live"); // truncation is non-degraded
+  });
+});

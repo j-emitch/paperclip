@@ -14,6 +14,7 @@ import type {
   SubprocessResult,
   WorkspaceFileStat,
   WorkspaceReader,
+  WorktreeCheckout,
 } from "../../src/contracts/collection-context.js";
 import type { RegistryEntry, RegistryLoadResult, RegistryLoader } from "../../src/contracts/registry.js";
 import { matchesAnyGlob } from "../../src/sources/glob.js";
@@ -54,6 +55,7 @@ export type ProcResponder = (repo: string, args: readonly string[]) => Subproces
 
 export interface FixtureOptions {
   repos?: RepoRoot[];
+  worktrees?: WorktreeCheckout[];
   scopeRepo?: string | null;
   git?: ProcResponder;
   gh?: ProcResponder;
@@ -79,10 +81,12 @@ function makeFs(files: FixtureFs): WorkspaceReader {
     };
   };
   return {
-    async list(repo, globs) {
+    async list(repo, globs, opts) {
       const repoFiles = files[repo] ?? {};
+      const exclude = opts?.exclude ?? [];
+      const excluded = (rel: string) => exclude.some((e) => rel === e || rel.startsWith(`${e}/`));
       return Object.keys(repoFiles)
-        .filter((rel) => matchesAnyGlob(rel, globs))
+        .filter((rel) => matchesAnyGlob(rel, globs) && !excluded(rel))
         .sort()
         .map((rel) => statOf(repo, rel)!);
     },
@@ -90,6 +94,11 @@ function makeFs(files: FixtureFs): WorkspaceReader {
       const f = files[repo]?.[relPath];
       if (!f) throw new Error(`fixture: no file ${repo}:${relPath}`);
       return f.content;
+    },
+    async readTextHead(repo, relPath, maxBytes) {
+      const f = files[repo]?.[relPath];
+      if (!f) throw new Error(`fixture: no file ${repo}:${relPath}`);
+      return f.content.slice(0, maxBytes);
     },
     async stat(repo, relPath) {
       return statOf(repo, relPath);
@@ -109,6 +118,7 @@ export function makeFixtureContext(opts: FixtureOptions = {}): CollectionContext
   };
   return {
     repos: opts.repos ?? DEFAULT_REPOS,
+    worktrees: opts.worktrees ?? [],
     scopeRepo: opts.scopeRepo ?? null,
     git,
     gh,

@@ -74,18 +74,53 @@ export interface WorkspaceFileStat {
   readonly isSymlink: boolean;
 }
 
+/** Options for `WorkspaceReader.list`. */
+export interface WorkspaceListOptions {
+  /**
+   * Directory names pruned at WALK time, in addition to the default ignore set
+   * (e.g. `.claude/worktrees`, `docs/review`). A prune at traversal — NOT a
+   * post-filter — so an unbounded recursive handoffs glob never descends into a
+   * worktree subtree the caller scans separately (spec §5.4, plan PF-8).
+   */
+  readonly exclude?: readonly string[];
+}
+
 /**
  * Containment-checked filesystem reads. Every method rejects `..`, absolute
  * paths, and symlink escape (spec §7 docs-viewer safety) — the browser only
- * ever receives workspace-relative paths + content.
+ * ever receives workspace-relative paths + content. `repo` is any registered key:
+ * a main repoKey OR a worktree pseudo-key (`WorktreeCheckout.key`).
  */
 export interface WorkspaceReader {
-  /** List files under workspace-relative globs within `repo`. */
-  list(repo: string, globs: readonly string[]): Promise<readonly WorkspaceFileStat[]>;
+  /** List files under workspace-relative globs within `repo`; `opts.exclude` prunes dirs at walk time. */
+  list(repo: string, globs: readonly string[], opts?: WorkspaceListOptions): Promise<readonly WorkspaceFileStat[]>;
   /** Read a UTF-8 file by workspace-relative path; rejects traversal/symlink/oversize. */
   readText(repo: string, relPath: string): Promise<string>;
+  /**
+   * Read only the first `maxBytes` of a file (TRUNCATES, never throws on oversize)
+   * — the head-only read the docs index uses to scan frontmatter cheaply (§5.4).
+   */
+  readTextHead(repo: string, relPath: string, maxBytes: number): Promise<string>;
   /** Stat a workspace-relative path; null when absent. */
   stat(repo: string, relPath: string): Promise<WorkspaceFileStat | null>;
+}
+
+/**
+ * A non-primary git worktree of a configured repo, registered as an `absByKey`
+ * PSEUDO-KEY so a source reads its docs through the SAME contained reader
+ * (key-only — the abs path never leaks). Covers worktrees that live OUTSIDE the
+ * repo root (e.g. codex-cli worktrees under `<repo>/.git/worktrees/…`) — PF-8.
+ */
+export interface WorktreeCheckout {
+  /** The `absByKey` pseudo-key `${parentRepoKey}::wt::${hash(absPath)}` — the read key. */
+  readonly key: string;
+  /** The stable `checkoutId` (`worktree:${hash}`) for the docId / index, derived from `key`. */
+  readonly checkoutId: string;
+  readonly parentRepoKey: string;
+  /** The worktree's branch (short name), or null when detached. */
+  readonly branch: string | null;
+  /** The worktree dir basename (for the provenance badge — NEVER the abs path). */
+  readonly name: string;
 }
 
 /**
@@ -118,6 +153,12 @@ export type ContentHasher = (input: string) => string;
 export interface CollectionContext {
   /** All resolved repo roots (available or not). Sources skip unavailable repos with a stale signal. */
   readonly repos: readonly RepoRoot[];
+  /**
+   * The non-primary git worktrees of the configured repos, each a contained
+   * read key (`WorktreeCheckout.key`) into `fs` (PF-8). `DocsSource` reads every
+   * worktree's docs through these; other sources ignore them.
+   */
+  readonly worktrees: readonly WorktreeCheckout[];
   /** Scoped collect: null = full sweep; else only this repo key (the hook fast-path). */
   readonly scopeRepo: string | null;
   readonly git: GitRunner;

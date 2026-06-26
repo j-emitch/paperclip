@@ -18,7 +18,8 @@ import type { Dirent } from "node:fs";
 import { readdir, lstat } from "node:fs/promises";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
-import { readContainedText, repoKey, statContained } from "./workspace-fs.js";
+import { readContainedText, readContainedTextHead, statContained } from "./workspace-fs.js";
+import { buildCheckoutKeyMap } from "./checkout-keys.js";
 
 import type {
   Clock,
@@ -115,14 +116,18 @@ export async function makeCollectionContext(deps: AdapterDeps): Promise<Collecti
   const clock: Clock = deps.clock ?? { now: () => Date.now() };
   const logger = deps.logger;
 
-  // repo key → absolute path (kept HERE; sources only ever see keys).
-  const absByKey = new Map<string, string>();
-  const repos: RepoRoot[] = [];
-  for (const root of deps.repoRoots) {
-    const key = repoKey(root);
-    absByKey.set(key, root);
-    repos.push({ repo: key, available: await isGitRepo(root) });
-  }
+  // repo key → absolute path, PLUS worktree pseudo-keys (kept HERE; sources see
+  // keys only). The shared builder also dedups dup-basename roots (PF-7) and
+  // enumerates each repo's non-primary worktrees (PF-8), so collection-time and
+  // render-time (`doc-content`) resolve the identical `absByKey`.
+  const checkoutKeys = await buildCheckoutKeyMap(deps.repoRoots);
+  const absByKey = checkoutKeys.absByKey;
+  const repos: RepoRoot[] = await Promise.all(
+    checkoutKeys.mainRoots.map(async ({ repoKey: key, absPath }) => ({
+      repo: key,
+      available: await isGitRepo(absPath),
+    })),
+  );
 
   const git: GitRunner = {
     run: (repo, args) => {
@@ -152,6 +157,7 @@ export async function makeCollectionContext(deps: AdapterDeps): Promise<Collecti
 
   return {
     repos,
+    worktrees: checkoutKeys.worktrees,
     scopeRepo: deps.scopeRepo,
     git,
     gh,
@@ -189,7 +195,7 @@ function makeWorkspaceReader(
   const rootFor = (repo: string): string | null => absByKey.get(repo) ?? null;
 
   return {
-    async list(repo, globs) {
+    async list(repo, globs, listOpts) {
       const root = rootFor(repo);
       if (!root) return [];
       const out: WorkspaceFileStat[] = [];
@@ -197,7 +203,10 @@ function makeWorkspaceReader(
       // win vs walking a whole repo for `specs/**`); "*" means a glob could
       // touch any root, so fall back to a full walk.
       const roots = globRootDirs(globs);
-      await walk(root, "", globs, opts, out, logger, roots.has("*") ? null : roots);
+      // Per-call walk-time excludes (e.g. `.claude/worktrees`, `docs/review`) —
+      // pruned at traversal so a recursive glob never descends into them (PF-8).
+      const exclude = new Set(listOpts?.exclude ?? []);
+      await walk(root, "", globs, opts, out, logger, roots.has("*") ? null : roots, exclude);
       out.sort((a, b) => a.relPath.localeCompare(b.relPath));
       return out;
     },
@@ -207,6 +216,13 @@ function makeWorkspaceReader(
       if (!root) throw new Error(`unknown repo ${repo}`);
       // Single audited containment path (traversal/symlink/oversize) — see workspace-fs.
       const { content } = await readContainedText(root, relPath, opts.maxFileBytes);
+      return content;
+    },
+
+    async readTextHead(repo, relPath, maxBytes) {
+      const root = rootFor(repo);
+      if (!root) throw new Error(`unknown repo ${repo}`);
+      const { content } = await readContainedTextHead(root, relPath, maxBytes);
       return content;
     },
 
@@ -222,6 +238,8 @@ function makeWorkspaceReader(
  * Recursively collect files matching any glob, pruning ignored + escaping dirs.
  * `topLevelRoots`, when non-null, limits the FIRST level to those directory
  * names (the glob-root optimization); null = walk every top-level dir.
+ * `excludePaths` prunes a directory at traversal when its rel path OR its name
+ * is in the set (the per-call walk-time exclude — `.claude/worktrees` etc.).
  */
 async function walk(
   root: string,
@@ -231,6 +249,7 @@ async function walk(
   out: WorkspaceFileStat[],
   logger: SignalLogger,
   topLevelRoots: ReadonlySet<string> | null,
+  excludePaths: ReadonlySet<string>,
 ): Promise<void> {
   const absDir = path.join(root, relDir);
   let entries: Dirent<string>[];
@@ -245,8 +264,9 @@ async function walk(
     const rel = relDir === "" ? entry.name : `${relDir}/${entry.name}`;
     if (entry.isDirectory()) {
       if (opts.ignoreDirs.includes(entry.name)) continue;
+      if (excludePaths.has(rel) || excludePaths.has(entry.name)) continue; // walk-time exclude prune (PF-8)
       if (relDir === "" && topLevelRoots && !topLevelRoots.has(entry.name)) continue; // glob-root prune
-      await walk(root, rel, globs, opts, out, logger, topLevelRoots);
+      await walk(root, rel, globs, opts, out, logger, topLevelRoots, excludePaths);
     } else if (entry.isFile() && matchesAnyGlob(rel, globs)) {
       try {
         const st = await lstat(path.join(root, rel));
