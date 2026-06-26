@@ -49,7 +49,7 @@ function BriefingCard({ card, now, onOpen }: { card: BriefingCardV1; now: number
   return (
     <button
       type="button"
-      className="cos-home-card"
+      className="cos-fx-card"
       disabled={!openable}
       onClick={openable ? () => onOpen?.(card) : undefined}
       title={openable ? `Open ${card.displayName}` : `${card.displayName} — no report on this machine yet`}

@@ -13,6 +13,7 @@ import { useActiveTab } from "./active-tab-store.js";
 import { useIsMobile } from "./hooks/useMediaQuery.js";
 import { CompanyOsBoard } from "./board/CompanyOsBoard.js";
 import { Home } from "./home/Home.js";
+import { Source } from "./source/Source.js";
 import { Reports } from "./reports/Reports.js";
 import { Routines } from "./routines/Routines.js";
 
@@ -123,6 +124,7 @@ export function CompanyOsPage({ context }: PluginPageProps) {
   // The live surfaces own their own panel chrome; placeholders sit inside a card.
   const isLive =
     current.key === "home" ||
+    current.key === "source" ||
     current.key === "board" ||
     current.key === "reports" ||
     current.key === "routines";
@@ -183,23 +185,11 @@ function TabPanel({
       return <Routines key={key} companyId={companyId} />;
     case "home":
       return <Home key={key} companyId={companyId} />;
-    // Pre-wired in 1d.8 (not yet in the visible COMPANY_OS_TABS); its real
-    // view (SourceView) replaces this placeholder in 1f.
     case "source":
-      return <BootingPanel key={key} label="Source" />;
+      return <Source key={key} companyId={companyId} />;
     default:
       return <PlaceholderPanel tab={tab} />;
   }
-}
-
-/** A minimal "warming up" panel for a pre-wired-but-not-yet-built surface (1d.8). */
-function BootingPanel({ label }: { label: string }) {
-  return (
-    <div role="tabpanel" style={{ display: "flex", flexDirection: "column", gap: 12, padding: "8px 0" }}>
-      <h2 style={{ margin: 0, fontSize: 17, fontWeight: 650 }}>{label}</h2>
-      <p style={{ margin: 0, fontSize: 14, color: tokens.muted }}>Warming up…</p>
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------

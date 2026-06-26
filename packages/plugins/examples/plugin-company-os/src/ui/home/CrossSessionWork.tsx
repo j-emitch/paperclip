@@ -89,7 +89,7 @@ function WorkRow({ item, now, isMobile, onFollow }: { item: RecentWorkV1; now: n
 
   if (isMobile) {
     return (
-      <button type="button" className="cos-home-row" onClick={onClick} title={item.title} style={{ ...baseStyle, display: "flex", flexDirection: "column", gap: 7 }}>
+      <button type="button" className="cos-fx-row" onClick={onClick} title={item.title} style={{ ...baseStyle, display: "flex", flexDirection: "column", gap: 7 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           {kindPill}
           {titleText}
@@ -100,11 +100,11 @@ function WorkRow({ item, now, isMobile, onFollow }: { item: RecentWorkV1; now: n
   }
 
   return (
-    <button type="button" className="cos-home-row" onClick={onClick} title={item.title} style={{ ...baseStyle, display: "flex", alignItems: "center", gap: 10 }}>
+    <button type="button" className="cos-fx-row" onClick={onClick} title={item.title} style={{ ...baseStyle, display: "flex", alignItems: "center", gap: 10 }}>
       {kindPill}
       {titleText}
       {meta}
-      <span aria-hidden="true" className="cos-home-row-go" style={{ color: tone, fontSize: 15, lineHeight: 1, flex: "0 0 auto" }}>
+      <span aria-hidden="true" className="cos-fx-row-go" style={{ color: tone, fontSize: 15, lineHeight: 1, flex: "0 0 auto" }}>
         →
       </span>
     </button>

@@ -10,7 +10,6 @@
 import type { ProjectGroupV1, ProjectTaxonomyV1 } from "../../contracts/projects.js";
 import type {
   AlertSeverity,
-  BranchStatus,
   HealthSeverity,
   OrientationAlertKind,
   RecentWorkKind,
@@ -20,6 +19,10 @@ import { statusColors, tokens } from "../tokens.js";
 // Re-export the cross-surface verdict palette so briefing cards (which carry a
 // `RoutineVerdict`) read identically to the Routines tab — one source of truth.
 export { VERDICT_LABELS as BRIEFING_VERDICT_LABELS, VERDICT_TONES as BRIEFING_VERDICT_TONES } from "../routines/routines-view-model.js";
+// The branch-health flag labels are shared git vocabulary (Source + Home) — one
+// source of truth in `shared/git-labels`. Re-exported so the Home panels that
+// already import it from here keep working.
+export { BRANCH_STATUS_LABELS } from "../shared/git-labels.js";
 
 /** Branch-health severity → tone (color cue). Pair with the LABEL for the non-color cue. */
 export const HEALTH_SEVERITY_TONES: Record<HealthSeverity, string> = {
@@ -75,19 +78,6 @@ export const RECENT_WORK_KIND_TONES: Record<RecentWorkKind, string> = {
   plan: statusColors.reviewUnknown,
   pr: statusColors.ship,
   ticket: tokens.muted,
-};
-
-/** Derived branch-health flags → terse chip labels (spec §7). */
-export const BRANCH_STATUS_LABELS: Record<BranchStatus, string> = {
-  conflicting: "conflicts",
-  behind: "behind",
-  stale: "stale",
-  dirty: "dirty",
-  unmerged_orphan: "unmerged",
-  orphaned_worktree: "orphaned worktree",
-  comparison_unavailable: "compare unavailable",
-  conflict_not_evaluated: "conflict not checked",
-  ahead_clean: "ahead",
 };
 
 /** One project family paired with the items that belong to it (taxonomy order). */

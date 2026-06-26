@@ -74,7 +74,7 @@ function MetricTile({
           {value}
         </span>
         {clickable ? (
-          <span aria-hidden="true" className="cos-home-tile-arrow" style={{ marginLeft: "auto", color: tile.tone, fontSize: 15, lineHeight: 1 }}>
+          <span aria-hidden="true" className="cos-fx-tile-arrow" style={{ marginLeft: "auto", color: tile.tone, fontSize: 15, lineHeight: 1 }}>
             →
           </span>
         ) : null}
@@ -102,7 +102,7 @@ function MetricTile({
     return (
       <button
         type="button"
-        className="cos-home-tile"
+        className="cos-fx-tile"
         onClick={() => onNavigateTab?.(tile.to!)}
         title={`Go to ${tile.label}`}
         style={{ ...baseStyle, cursor: "pointer" }}

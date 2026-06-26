@@ -10,14 +10,14 @@
  */
 
 import type { CSSProperties, ReactNode } from "react";
-import type { BriefingCardV1, DeepLink, OrientationV1, SourceFreshness } from "../../contracts/index.js";
+import type { BriefingCardV1, DeepLink, OrientationV1 } from "../../contracts/index.js";
 import type { CompanyOsTabKey } from "../tabs.js";
 import { tokens } from "../tokens.js";
-import { Pill } from "../shared/badges.js";
 import { CockpitSurfaceStyles } from "../shared/surface-styles.js";
+import { StaleSourcePills } from "../shared/freshness.js";
 import { ClockIcon, CloseIcon } from "../icons.js";
 import { relativeTime } from "../shared/time.js";
-import { HomeSurfaceStyles } from "./home-styles.js";
+import { CockpitMotionStyles } from "../shared/cockpit-motion.js";
 import { MetricsStrip } from "./MetricsStrip.js";
 import { PinnedBriefing } from "./PinnedBriefing.js";
 import { BranchHealthPanel } from "./BranchHealthPanel.js";
@@ -50,7 +50,6 @@ export function HomeView({
   drawerTitle,
   onCloseDrawer,
 }: HomeViewProps) {
-  const staleSources = orientation.sources.filter((s) => s.freshness !== "live");
   const derivedAge = relativeTime(orientation.derivedAt, now);
 
   const snapshot = (
@@ -105,7 +104,7 @@ export function HomeView({
   return (
     <div role="tabpanel" aria-label="Home" style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
       <CockpitSurfaceStyles />
-      <HomeSurfaceStyles />
+      <CockpitMotionStyles />
 
       <header style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 650, color: tokens.fg }}>Orientation</h2>
@@ -117,13 +116,7 @@ export function HomeView({
             as of {derivedAge}
           </span>
         ) : null}
-        {staleSources.length > 0 ? (
-          <div style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {staleSources.map((s) => (
-              <StalePill key={`${s.source}:${s.repo}`} source={s} />
-            ))}
-          </div>
-        ) : null}
+        <StaleSourcePills sources={orientation.sources} />
       </header>
 
       {snapshot}
@@ -175,7 +168,7 @@ function Panel({
   return (
     <section
       aria-label={title}
-      className="cos-home-enter"
+      className="cos-fx-enter"
       style={{ display: "flex", flexDirection: "column", gap: 11, minWidth: 0, animationDelay: `${index * 70}ms` }}
     >
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
@@ -202,7 +195,7 @@ function SeeAll({ label, onClick }: { label: string; onClick?: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="cos-home-seeall"
+      className="cos-fx-seeall"
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -260,8 +253,8 @@ function BriefingDrawer({
   };
   return (
     <div role="dialog" aria-modal="true" aria-label={title ?? "Briefing"}>
-      <button type="button" aria-label="Close" className="cos-home-scrim" style={scrim} onClick={onClose} />
-      <div className="cos-home-drawer" style={panel}>
+      <button type="button" aria-label="Close" className="cos-fx-scrim" style={scrim} onClick={onClose} />
+      <div className="cos-fx-drawer" style={panel}>
         <header
           style={{
             display: "flex",
@@ -301,16 +294,5 @@ function BriefingDrawer({
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: isMobile ? 16 : 22 }}>{children}</div>
       </div>
     </div>
-  );
-}
-
-function StalePill({ source }: { source: SourceFreshness }) {
-  return (
-    <Pill
-      label={`${source.source} ${source.freshness}`}
-      tone={tokens.muted}
-      withDot
-      title={source.message ?? `${source.source} · ${source.repo} is ${source.freshness}`}
-    />
   );
 }

@@ -15,11 +15,15 @@ import { ReportsView } from "../../../src/ui/reports/ReportsView.js";
 import { ReportViewerPanel } from "../../../src/ui/reports/ReportViewerPanel.js";
 import { RoutinesView } from "../../../src/ui/routines/RoutinesView.js";
 import { HomeView } from "../../../src/ui/home/HomeView.js";
+import { SourceView } from "../../../src/ui/source/SourceView.js";
+import { BranchRow } from "../../../src/ui/source/BranchRow.js";
+import { CockpitMotionStyles } from "../../../src/ui/shared/cockpit-motion.js";
 import { EMPTY_FILTER } from "../../../src/ui/reports/reports-view-model.js";
 import type { BoardStateV1 } from "../../../src/contracts/index.js";
 import { goldenBoard, staleBoard, zeroChipBoard, RENDER_NOW } from "../fixtures/board.js";
 import { goldenArtifactIndex, goldenRoutineHealth, okMarkdownContent, REPORTS_NOW } from "../fixtures/reports.js";
 import { goldenOrientation, emptyOrientation, HOME_NOW } from "../fixtures/home.js";
+import { goldenGitState, emptyGitState, SOURCE_NOW } from "../fixtures/source.js";
 import { NOW } from "../../fixtures/signals.js";
 
 const noop = () => {};
@@ -104,6 +108,23 @@ function home(isMobile: boolean, opts?: { empty?: boolean; drawer?: boolean }): 
   );
 }
 
+function source(isMobile: boolean, opts?: { empty?: boolean }): ReactElement {
+  return <SourceView gitState={opts?.empty ? emptyGitState() : goldenGitState()} now={SOURCE_NOW} isMobile={isMobile} />;
+}
+
+/** A single expanded BranchRow — proves the commit list renders (the harness is
+ *  SSR-only with no hydration, so an open row is screenshotted via `defaultExpanded`,
+ *  not a click). */
+function sourceExpandedBranch(): ReactElement {
+  const branch = goldenGitState().groups[0].repos[0].branches[0]; // company/main, has commits
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+      <CockpitMotionStyles />
+      <BranchRow branch={branch} now={SOURCE_NOW} defaultExpanded />
+    </div>
+  );
+}
+
 export interface HarnessDoc {
   name: string;
   width: number;
@@ -128,5 +149,9 @@ export function harnessDocs(): HarnessDoc[] {
     { name: "home-mobile", width: 390, html: document("Home · mobile", renderToStaticMarkup(home(true)), 390) },
     { name: "home-empty", width: 1180, html: document("Home · empty (all 0-states)", renderToStaticMarkup(home(false, { empty: true })), 1180) },
     { name: "home-drawer", width: 1180, html: document("Home · briefing drawer", renderToStaticMarkup(home(false, { drawer: true })), 1180) },
+    { name: "source-desktop", width: 1180, html: document("Source · populated", renderToStaticMarkup(source(false)), 1180) },
+    { name: "source-mobile", width: 390, html: document("Source · mobile", renderToStaticMarkup(source(true)), 390) },
+    { name: "source-empty", width: 1180, html: document("Source · empty", renderToStaticMarkup(source(false, { empty: true })), 1180) },
+    { name: "source-expanded", width: 760, html: document("Source · expanded branch", renderToStaticMarkup(sourceExpandedBranch()), 760) },
   ];
 }

@@ -90,7 +90,7 @@ function BranchHealthRow({ entry, isMobile, onFollow }: { entry: BranchHealthEnt
     ) : null;
   const severityPill = <Pill label={HEALTH_SEVERITY_LABELS[entry.severity]} tone={tone} soft />;
   const goArrow = (
-    <span aria-hidden="true" className="cos-home-row-go" style={{ color: tone, fontSize: 15, lineHeight: 1, flex: "0 0 auto" }}>
+    <span aria-hidden="true" className="cos-fx-row-go" style={{ color: tone, fontSize: 15, lineHeight: 1, flex: "0 0 auto" }}>
       →
     </span>
   );
@@ -114,7 +114,7 @@ function BranchHealthRow({ entry, isMobile, onFollow }: { entry: BranchHealthEnt
   // Mobile: a two-line stack so the branch name + chips + magnitudes never collide.
   if (isMobile) {
     return (
-      <button type="button" className="cos-home-row" onClick={onClick} title={title} style={{ ...baseStyle, display: "flex", flexDirection: "column", gap: 7 }}>
+      <button type="button" className="cos-fx-row" onClick={onClick} title={title} style={{ ...baseStyle, display: "flex", flexDirection: "column", gap: 7 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <Dot tone={tone} />
           {branchCode}
@@ -135,7 +135,7 @@ function BranchHealthRow({ entry, isMobile, onFollow }: { entry: BranchHealthEnt
   }
 
   return (
-    <button type="button" className="cos-home-row" onClick={onClick} title={title} style={{ ...baseStyle, display: "flex", alignItems: "center", gap: 10 }}>
+    <button type="button" className="cos-fx-row" onClick={onClick} title={title} style={{ ...baseStyle, display: "flex", alignItems: "center", gap: 10 }}>
       <Dot tone={tone} />
       {branchCode}
       <RepoBadge repo={entry.repo} />

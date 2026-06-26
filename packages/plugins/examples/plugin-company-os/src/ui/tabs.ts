@@ -34,6 +34,12 @@ export const COMPANY_OS_TABS: readonly CompanyOsTab[] = [
     liveIn: "COS-0e",
   },
   {
+    key: "source",
+    label: "Source",
+    description: "Per-branch working-tree-vs-trunk state across every repo + worktree — ahead/behind, dirty, stale, conflicts.",
+    liveIn: "COS-1f",
+  },
+  {
     key: "reports",
     label: "Reports",
     description: "Specs, handoffs, and review reports — rendered in place.",

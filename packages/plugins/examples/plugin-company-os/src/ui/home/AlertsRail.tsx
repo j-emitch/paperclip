@@ -47,7 +47,7 @@ function AlertCard({ alert, pulse, onFollow }: { alert: OrientationAlertV1; puls
   return (
     <button
       type="button"
-      className="cos-home-row"
+      className="cos-fx-row"
       onClick={onFollow ? () => onFollow(alert.deepLink) : undefined}
       title={alert.detail}
       style={{
@@ -70,12 +70,12 @@ function AlertCard({ alert, pulse, onFollow }: { alert: OrientationAlertV1; puls
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span
           aria-hidden="true"
-          className={pulse ? "cos-home-pulse-dot" : undefined}
+          className={pulse ? "cos-fx-pulse-dot" : undefined}
           style={{ width: 8, height: 8, borderRadius: 999, background: tone, flex: "0 0 auto" }}
         />
         <Pill label={ALERT_KIND_LABELS[alert.kind]} tone={tone} />
         <span style={{ flex: 1 }} />
-        <span aria-hidden="true" className="cos-home-row-go" style={{ color: tone, fontSize: 15, lineHeight: 1 }}>
+        <span aria-hidden="true" className="cos-fx-row-go" style={{ color: tone, fontSize: 15, lineHeight: 1 }}>
           →
         </span>
       </div>
