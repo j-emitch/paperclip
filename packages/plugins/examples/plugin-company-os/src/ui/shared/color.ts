@@ -10,10 +10,23 @@
  */
 
 const FUNCTIONAL_COLOR = /^(oklch|oklab|hsl|hwb|lab|lch|rgb)\(([^)]*)\)$/;
+// `var(--name, <functional-fallback>)` — apply the alpha to the fallback so a
+// token like `tokens.muted` (a CSS var with an oklch fallback) doesn't silently
+// degrade to a SOLID fill behind a `soft` pill (codex B). If there is no parseable
+// fallback we return the var unchanged (the caller still gets a valid color).
+const VAR_WITH_FALLBACK = /^var\(\s*(--[^,]+),\s*(.+)\)$/s;
 
 export function withAlpha(tone: string, alpha: number): string {
-  const m = FUNCTIONAL_COLOR.exec(tone.trim());
-  if (!m) return tone;
-  const inner = m[2].includes("/") ? m[2].slice(0, m[2].indexOf("/")).trim() : m[2].trim();
-  return `${m[1]}(${inner} / ${alpha})`;
+  const trimmed = tone.trim();
+  const m = FUNCTIONAL_COLOR.exec(trimmed);
+  if (m) {
+    const inner = m[2].includes("/") ? m[2].slice(0, m[2].indexOf("/")).trim() : m[2].trim();
+    return `${m[1]}(${inner} / ${alpha})`;
+  }
+  const v = VAR_WITH_FALLBACK.exec(trimmed);
+  if (v) {
+    const faded = withAlpha(v[2].trim(), alpha);
+    return `var(${v[1].trim()}, ${faded})`;
+  }
+  return tone;
 }

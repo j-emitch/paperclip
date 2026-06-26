@@ -65,7 +65,8 @@ function MetricTile({
   onNavigateTab?: (key: CompanyOsTabKey) => void;
 }) {
   const flagged = tile.attention && value > 0;
-  const clickable = tile.to !== undefined && onNavigateTab !== undefined;
+  const to = tile.to;
+  const clickable = to !== undefined && onNavigateTab !== undefined;
   const body = (
     <>
       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
@@ -98,12 +99,12 @@ function MetricTile({
     font: "inherit",
   };
 
-  if (clickable) {
+  if (to !== undefined && onNavigateTab !== undefined) {
     return (
       <button
         type="button"
         className="cos-fx-tile"
-        onClick={() => onNavigateTab?.(tile.to!)}
+        onClick={() => onNavigateTab(to)}
         title={`Go to ${tile.label}`}
         style={{ ...baseStyle, cursor: "pointer" }}
       >

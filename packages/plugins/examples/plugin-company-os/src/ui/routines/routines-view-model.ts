@@ -19,19 +19,10 @@ import { statusColors } from "../tokens.js";
  */
 const OWNER_AGENT_ORDER = ["CEO", "COO", "CTO", "Librarian"] as const;
 
-export const VERDICT_LABELS: Record<RoutineVerdict, string> = {
-  fresh: "Fresh",
-  stale: "Stale",
-  missing: "Missing",
-  never_ran: "Never ran",
-};
-
-export const VERDICT_TONES: Record<RoutineVerdict, string> = {
-  fresh: statusColors.live,
-  stale: statusColors.cached,
-  missing: statusColors.danger,
-  never_ran: statusColors.reviewUnknown,
-};
+// The verdict label + tone maps are shared cockpit vocabulary (Routines + Home),
+// so they live in `shared/verdict-labels`; re-exported here so this view-model's
+// existing consumers (RoutinesView) keep importing them from one place.
+export { VERDICT_LABELS, VERDICT_TONES } from "../shared/verdict-labels.js";
 
 /** Worst-first severity — drives within-group sort + the summary order. */
 export const VERDICT_SEVERITY: Record<RoutineVerdict, number> = {

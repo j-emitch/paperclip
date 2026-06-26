@@ -10,7 +10,7 @@ import type { CommitGlanceV1 } from "../../contracts/index.js";
 import { tokens } from "../tokens.js";
 import { RepoBadge } from "../shared/badges.js";
 import { CalmNote } from "../shared/feedback.js";
-import { relativeTime } from "../shared/time.js";
+import { relativeTime, safeTime } from "../shared/time.js";
 
 const SHORT_SHA = 7;
 
@@ -23,7 +23,7 @@ export function RecentCommitsGlance({ recentCommits, now }: RecentCommitsGlanceP
   if (recentCommits.length === 0) {
     return <CalmNote>No commits in the recent window.</CalmNote>;
   }
-  const ordered = [...recentCommits].sort((a, b) => Date.parse(b.committedAt) - Date.parse(a.committedAt));
+  const ordered = [...recentCommits].sort((a, b) => safeTime(b.committedAt) - safeTime(a.committedAt));
   return (
     <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 2 }}>
       {ordered.map((commit, i) => (

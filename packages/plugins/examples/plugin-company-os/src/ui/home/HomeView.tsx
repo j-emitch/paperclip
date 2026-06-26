@@ -9,7 +9,7 @@
  * this renders identically under SSR (the Playwright harness) and live.
  */
 
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, ReactNode, Ref } from "react";
 import type { BriefingCardV1, DeepLink, OrientationV1 } from "../../contracts/index.js";
 import type { CompanyOsTabKey } from "../tabs.js";
 import { tokens } from "../tokens.js";
@@ -37,6 +37,8 @@ export interface HomeViewProps {
   /** Title for the open drawer (the briefing display name). */
   drawerTitle?: string | null;
   onCloseDrawer?: () => void;
+  /** Focus-trap ref from the connected `Home`, placed on the drawer panel. */
+  drawerRef?: Ref<HTMLDivElement>;
 }
 
 export function HomeView({
@@ -49,6 +51,7 @@ export function HomeView({
   drawer,
   drawerTitle,
   onCloseDrawer,
+  drawerRef,
 }: HomeViewProps) {
   const derivedAge = relativeTime(orientation.derivedAt, now);
 
@@ -142,7 +145,7 @@ export function HomeView({
       )}
 
       {drawer ? (
-        <BriefingDrawer title={drawerTitle ?? null} isMobile={isMobile} onClose={onCloseDrawer}>
+        <BriefingDrawer title={drawerTitle ?? null} isMobile={isMobile} onClose={onCloseDrawer} panelRef={drawerRef}>
           {drawer}
         </BriefingDrawer>
       ) : null}
@@ -174,7 +177,7 @@ function Panel({
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
         <span aria-hidden="true" style={{ width: 3, height: 14, borderRadius: 2, background: tokens.accent, transform: "translateY(2px)" }} />
         <h3 style={{ margin: 0, fontSize: isMobile ? 13.5 : 14, fontWeight: 650, letterSpacing: -0.2, color: tokens.fg }}>{title}</h3>
-        {typeof count === "number" && count > 0 ? (
+        {typeof count === "number" ? (
           <span style={{ fontSize: 12, color: tokens.muted, fontVariantNumeric: "tabular-nums" }}>{count}</span>
         ) : null}
         {action ? (
@@ -222,11 +225,13 @@ function BriefingDrawer({
   title,
   isMobile,
   onClose,
+  panelRef,
   children,
 }: {
   title: string | null;
   isMobile: boolean;
   onClose?: () => void;
+  panelRef?: Ref<HTMLDivElement>;
   children: ReactNode;
 }) {
   const scrim: CSSProperties = {
@@ -254,7 +259,7 @@ function BriefingDrawer({
   return (
     <div role="dialog" aria-modal="true" aria-label={title ?? "Briefing"}>
       <button type="button" aria-label="Close" className="cos-fx-scrim" style={scrim} onClick={onClose} />
-      <div className="cos-fx-drawer" style={panel}>
+      <div ref={panelRef} className="cos-fx-drawer" style={panel}>
         <header
           style={{
             display: "flex",

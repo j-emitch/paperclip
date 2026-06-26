@@ -36,8 +36,8 @@ describe("Home SSR", () => {
     // Alerts rail
     expect(html).toContain("Needs attention");
     expect(html).toContain("SSF-04 branch conflicts with main");
-    // Honest degradation — a stale source pill in the header
-    expect(html).toContain("pull-request stale");
+    // Honest degradation — a stale source pill in the header (repo-distinguished)
+    expect(html).toContain("pull-request · juice-bar stale");
   });
 
   it("renders every calm 0-state from the empty orientation (show-0-counts, never a crash)", () => {

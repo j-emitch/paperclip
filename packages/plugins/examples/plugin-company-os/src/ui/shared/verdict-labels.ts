@@ -1,0 +1,24 @@
+/**
+ * Shared routine-verdict display vocabulary (keyed off the contract `RoutineVerdict`
+ * tuple). Both the Routines tab AND the Home pinned-briefing render a routine's
+ * SLO verdict, so the label + tone maps live here — neither surface depends on the
+ * other (closes a Home→Routines view-model coupling, codex B), and a "fresh"
+ * verdict reads the same green on both. Tones map onto the shared status palette.
+ */
+
+import type { RoutineVerdict } from "../../contracts/index.js";
+import { statusColors } from "../tokens.js";
+
+export const VERDICT_LABELS: Record<RoutineVerdict, string> = {
+  fresh: "Fresh",
+  stale: "Stale",
+  missing: "Missing",
+  never_ran: "Never ran",
+};
+
+export const VERDICT_TONES: Record<RoutineVerdict, string> = {
+  fresh: statusColors.live,
+  stale: statusColors.cached,
+  missing: statusColors.danger,
+  never_ran: statusColors.reviewUnknown,
+};

@@ -10,7 +10,7 @@
  * screenshot an open row) — pure + SSR-faithful, like the board's lanes.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { BranchGitV1 } from "../../contracts/index.js";
 import { tokens } from "../tokens.js";
 import { Pill } from "../shared/badges.js";
@@ -29,7 +29,17 @@ export interface BranchRowProps {
 
 export function BranchRow({ branch, now, isMobile = false, defaultExpanded = false }: BranchRowProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const inSync = branch.comparison === "ok" && (branch.ahead ?? 0) === 0 && (branch.behind ?? 0) === 0;
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  // When this row is the target of a consumed deep-link (defaultExpanded), bring
+  // it into view on mount. `block:"center"` (no smooth) is reduced-motion-safe.
+  // Mount-only by design — the deep-link is a one-shot, consumed once.
+  useEffect(() => {
+    if (defaultExpanded) rootRef.current?.scrollIntoView({ block: "center" });
+  }, [defaultExpanded]);
+  // "in sync" only when there's genuinely nothing to flag — a dirty/stale branch
+  // at ahead=0/behind=0 must still show its status chips, not collapse to a calm
+  // "in sync" pill (codex B).
+  const inSync = branch.comparison === "ok" && (branch.ahead ?? 0) === 0 && (branch.behind ?? 0) === 0 && branch.statuses.length === 0;
   const lastCommitAge = relativeTime(branch.lastCommitAt, now);
 
   const caret = (
@@ -114,7 +124,7 @@ export function BranchRow({ branch, now, isMobile = false, defaultExpanded = fal
   };
 
   return (
-    <div style={{ border: `1px solid ${tokens.border}`, borderRadius: tokens.radiusSm, background: tokens.card, overflow: "hidden" }}>
+    <div ref={rootRef} style={{ border: `1px solid ${tokens.border}`, borderRadius: tokens.radiusSm, background: tokens.card, overflow: "hidden" }}>
       {isMobile ? (
         // Mobile: header line (caret + name + magnitudes) over a chips line, so the
         // branch name + flags + ahead/behind never collide on a narrow viewport.

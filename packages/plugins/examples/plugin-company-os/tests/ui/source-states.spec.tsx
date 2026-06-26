@@ -34,8 +34,8 @@ describe("Source SSR", () => {
     // Absent repo renders an honest 0-row, never vanishes
     expect(html).toContain("Viacava Arts");
     expect(html).toContain("not found on disk");
-    // Honest degradation pill
-    expect(html).toContain("branch stale");
+    // Honest degradation pill (repo-distinguished)
+    expect(html).toContain("branch · viacava-arts stale");
   });
 
   it("renders the empty git state as a calm 0-state, never a crash", () => {

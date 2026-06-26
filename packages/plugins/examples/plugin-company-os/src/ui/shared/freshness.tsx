@@ -18,7 +18,9 @@ export function StaleSourcePills({ sources }: { sources: readonly SourceFreshnes
       {stale.map((s) => (
         <Pill
           key={`${s.source}:${s.repo}`}
-          label={`${s.source} ${s.freshness}`}
+          // Include the repo so multiple stale repos don't collapse into identical
+          // labels (codex B).
+          label={`${s.source} · ${s.repo} ${s.freshness}`}
           tone={tokens.muted}
           withDot
           title={s.message ?? `${s.source} · ${s.repo} is ${s.freshness}`}

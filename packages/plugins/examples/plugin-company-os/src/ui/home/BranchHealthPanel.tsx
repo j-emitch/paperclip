@@ -38,8 +38,8 @@ export function BranchHealthPanel({ branchHealth, taxonomy, isMobile = false, on
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {grouped.map(({ group, items }) => (
         <ProjectSection key={group.key} group={group} count={items.length} compact>
-          {sortByHealth(items).map((entry) => (
-            <BranchHealthRow key={`${entry.repo}:${entry.branch ?? "_detached"}`} entry={entry} isMobile={isMobile} onFollow={onFollow} />
+          {sortByHealth(items).map((entry, i) => (
+            <BranchHealthRow key={`${entry.repo}:${entry.branch ?? `_detached:${i}`}`} entry={entry} isMobile={isMobile} onFollow={onFollow} />
           ))}
         </ProjectSection>
       ))}

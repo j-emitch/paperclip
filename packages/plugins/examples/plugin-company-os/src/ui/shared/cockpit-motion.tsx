@@ -69,7 +69,8 @@ const CSS = `
 
 @media (prefers-reduced-motion: reduce) {
   .cos-fx-enter, .cos-fx-drawer, .cos-fx-scrim, .cos-fx-fade, .cos-fx-pulse-dot { animation: none; }
-  .cos-fx-card, .cos-fx-tile, .cos-fx-row, .cos-fx-seeall, .cos-fx-seeall span, .cos-fx-caret { transition: none; }
+  .cos-fx-card, .cos-fx-tile, .cos-fx-row, .cos-fx-seeall, .cos-fx-seeall span, .cos-fx-caret,
+  .cos-fx-tile-arrow, .cos-fx-row-go { transition: none; }
   .cos-fx-card:hover, .cos-fx-tile:hover, .cos-fx-row:hover,
   .cos-fx-card:active, .cos-fx-tile:active, .cos-fx-row:active,
   .cos-fx-seeall:hover span { transform: none; }

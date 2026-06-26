@@ -18,7 +18,7 @@ import { CockpitMotionStyles } from "../shared/cockpit-motion.js";
 import { ProjectSection } from "../shared/ProjectSection.js";
 import { StaleSourcePills } from "../shared/freshness.js";
 import { ClockIcon } from "../icons.js";
-import { relativeTime } from "../shared/time.js";
+import { relativeTime, safeTime } from "../shared/time.js";
 import { REPO_AVAILABILITY_LABELS, REPO_AVAILABILITY_TONES } from "../shared/git-labels.js";
 import { BranchRow } from "./BranchRow.js";
 
@@ -26,13 +26,20 @@ export interface SourceViewProps {
   gitState: GitStateV1;
   now: number;
   isMobile?: boolean;
+  /** A `branchExpandKey(repoKey, branch)` to auto-expand (a consumed deep-link). */
+  expandKey?: string | null;
+}
+
+/** The stable key used to match a deep-link's target branch to its row. */
+export function branchExpandKey(repoKey: string, branch: string | null): string {
+  return `${repoKey}::${branch ?? "_detached"}`;
 }
 
 function branchCount(section: ProjectGitSectionV1): number {
   return section.repos.reduce((sum, r) => sum + r.branches.length, 0);
 }
 
-export function SourceView({ gitState, now, isMobile = false }: SourceViewProps) {
+export function SourceView({ gitState, now, isMobile = false, expandKey = null }: SourceViewProps) {
   const derivedAge = relativeTime(gitState.derivedAt, now);
   const hasAnyRepo = gitState.groups.some((g) => g.repos.length > 0);
 
@@ -71,6 +78,7 @@ export function SourceView({ gitState, now, isMobile = false }: SourceViewProps)
                       isDisplayPrimary={section.displayPrimaryRepoKey === repo.repoKey}
                       now={now}
                       isMobile={isMobile}
+                      expandKey={expandKey}
                     />
                   ))
                 )}
@@ -83,14 +91,22 @@ export function SourceView({ gitState, now, isMobile = false }: SourceViewProps)
   );
 }
 
-function RepoSection({ repo, isDisplayPrimary, now, isMobile }: { repo: RepoGitStateV1; isDisplayPrimary: boolean; now: number; isMobile: boolean }) {
+function RepoSection({
+  repo,
+  isDisplayPrimary,
+  now,
+  isMobile,
+  expandKey,
+}: {
+  repo: RepoGitStateV1;
+  isDisplayPrimary: boolean;
+  now: number;
+  isMobile: boolean;
+  expandKey: string | null;
+}) {
   const available = repo.availability === "ok";
-  // Most-recently-active branches first; unknown tip dates sort last.
-  const branches = [...repo.branches].sort((a, b) => {
-    const at = a.lastCommitAt ? Date.parse(a.lastCommitAt) : -Infinity;
-    const bt = b.lastCommitAt ? Date.parse(b.lastCommitAt) : -Infinity;
-    return bt - at;
-  });
+  // Most-recently-active branches first; unknown/unparseable tip dates sort last.
+  const branches = [...repo.branches].sort((a, b) => safeTime(b.lastCommitAt) - safeTime(a.lastCommitAt));
 
   return (
     <section aria-label={repo.repoKey} style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
@@ -119,7 +135,13 @@ function RepoSection({ repo, isDisplayPrimary, now, isMobile }: { repo: RepoGitS
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {branches.map((branch) => (
-            <BranchRow key={branch.branch ?? `_detached:${branch.headSha}`} branch={branch} now={now} isMobile={isMobile} />
+            <BranchRow
+              key={branch.branch ?? `_detached:${branch.headSha}`}
+              branch={branch}
+              now={now}
+              isMobile={isMobile}
+              defaultExpanded={expandKey === branchExpandKey(repo.repoKey, branch.branch)}
+            />
           ))}
         </div>
       )}

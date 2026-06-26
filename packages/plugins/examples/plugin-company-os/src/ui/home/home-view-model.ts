@@ -16,9 +16,10 @@ import type {
 } from "../../contracts/vocab.js";
 import { statusColors, tokens } from "../tokens.js";
 
-// Re-export the cross-surface verdict palette so briefing cards (which carry a
-// `RoutineVerdict`) read identically to the Routines tab — one source of truth.
-export { VERDICT_LABELS as BRIEFING_VERDICT_LABELS, VERDICT_TONES as BRIEFING_VERDICT_TONES } from "../routines/routines-view-model.js";
+// The cross-surface verdict palette lives in `shared/verdict-labels` (keyed off
+// the contract vocabulary), so briefing cards read identically to the Routines
+// tab WITHOUT a Home→Routines coupling (codex B).
+export { VERDICT_LABELS as BRIEFING_VERDICT_LABELS, VERDICT_TONES as BRIEFING_VERDICT_TONES } from "../shared/verdict-labels.js";
 // The branch-health flag labels are shared git vocabulary (Source + Home) — one
 // source of truth in `shared/git-labels`. Re-exported so the Home panels that
 // already import it from here keep working.
@@ -108,9 +109,31 @@ export function groupByProject<T extends { projectKey: string }>(
   }
   const ordered = [...taxonomy.groups].sort((a, b) => a.order - b.order);
   const result: ProjectGrouped<T>[] = [];
+  const claimed = new Set<string>();
   for (const group of ordered) {
+    claimed.add(group.key);
     const bucket = byKey.get(group.key);
     if (bucket && bucket.length > 0) result.push({ group, items: bucket });
+  }
+  // Any item whose projectKey isn't in the taxonomy (shouldn't happen — the
+  // projection resolves keys) is collected into a synthetic fallback group so it
+  // NEVER silently vanishes while the panel count still includes it (codex A).
+  const orphans: T[] = [];
+  for (const [key, bucket] of byKey) {
+    if (!claimed.has(key)) orphans.push(...bucket);
+  }
+  if (orphans.length > 0) {
+    result.push({
+      group: {
+        key: "__unknown__",
+        displayName: "Unknown project",
+        kind: "product",
+        repos: [],
+        order: Number.MAX_SAFE_INTEGER,
+        note: "items whose project could not be resolved from the taxonomy",
+      },
+      items: orphans,
+    });
   }
   return result;
 }

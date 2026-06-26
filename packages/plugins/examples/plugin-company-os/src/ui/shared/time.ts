@@ -49,6 +49,18 @@ function magnitude(mins: number): string {
   return `${days}d`;
 }
 
+/**
+ * Parse an ISO timestamp to epoch-ms for SORTING — a malformed/empty string
+ * collapses to `-Infinity` (sorts oldest-last under a `b - a` descending compare)
+ * instead of `NaN`, which would make `Array.sort` order non-deterministic. Use
+ * this anywhere a contract timestamp feeds a comparator.
+ */
+export function safeTime(iso: string | null | undefined): number {
+  if (!iso) return -Infinity;
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? -Infinity : t;
+}
+
 /** Human file size ("just now"-style brevity): "812 B", "4.2 KB", "1.1 MB". */
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return "—";

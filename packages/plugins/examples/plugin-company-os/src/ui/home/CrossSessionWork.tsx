@@ -11,7 +11,7 @@ import { tokens } from "../tokens.js";
 import { Pill } from "../shared/badges.js";
 import { CalmNote } from "../shared/feedback.js";
 import { ProjectSection } from "../shared/ProjectSection.js";
-import { relativeTime } from "../shared/time.js";
+import { relativeTime, safeTime } from "../shared/time.js";
 import { RECENT_WORK_KIND_LABELS, RECENT_WORK_KIND_TONES, groupByProject } from "./home-view-model.js";
 
 export interface CrossSessionWorkProps {
@@ -32,7 +32,7 @@ export function CrossSessionWork({ recentWork, taxonomy, now, isMobile = false, 
       {grouped.map(({ group, items }) => (
         <ProjectSection key={group.key} group={group} count={items.length} compact>
           {[...items]
-            .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+            .sort((a, b) => safeTime(b.updatedAt) - safeTime(a.updatedAt))
             .map((item, i) => (
               <WorkRow key={`${item.kind}:${item.title}:${i}`} item={item} now={now} isMobile={isMobile} onFollow={onFollow} />
             ))}

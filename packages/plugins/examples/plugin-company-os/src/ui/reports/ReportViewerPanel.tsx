@@ -33,6 +33,12 @@ export interface ReportViewerPanelProps {
   onRetry?: () => void;
   /** Mobile: a back control to return to the list. */
   onClose?: () => void;
+  /**
+   * Override the type pill label. The Docs tab passes the INDEX-derived doc type
+   * (`DocEntryV1.type`) because `ReportContentV1.artifactType` is null for
+   * plan/backlog; Reports omits it and falls back to the artifact-type label.
+   */
+  typeLabel?: string;
 }
 
 export function ReportViewerPanel({
@@ -44,6 +50,7 @@ export function ReportViewerPanel({
   renderMarkdown,
   onRetry,
   onClose,
+  typeLabel,
 }: ReportViewerPanelProps) {
   if (!content && loading) {
     return (
@@ -116,7 +123,9 @@ export function ReportViewerPanel({
           ) : null}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          {content.artifactType ? (
+          {typeLabel ? (
+            <Pill label={typeLabel} tone={tokens.accent} soft />
+          ) : content.artifactType ? (
             <Pill label={ARTIFACT_TYPE_LABELS[content.artifactType]} tone={tokens.accent} soft />
           ) : null}
           {content.docStatus ? <Pill label={content.docStatus} tone={tokens.muted} /> : null}
