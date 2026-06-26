@@ -316,6 +316,15 @@ async function computeComparison(
     return { comparison: "missing_trunk", ahead: null, behind: null, mergeBase: null };
   }
   const mb = await ctx.git.run(repo, ["merge-base", trunk.ref, ref]);
+  // Exit 1 = legitimate "no common ancestor" (unrelated histories) — NOT a failure.
+  // A timeout or any other non-zero (fatal/bad-ref) IS a degraded read → record it
+  // so the repo stales, never a silent live (codex re-review residual P1).
+  if (mb.timedOut || (mb.code !== 0 && mb.code !== 1)) {
+    errors.push(
+      signalError(mb.timedOut ? "subprocess_timeout" : "subprocess_failed", `git merge-base failed for ${ref} (${repo})`),
+    );
+    return { comparison: "error", ahead: null, behind: null, mergeBase: null };
+  }
   const mergeBase = mb.code === 0 ? mb.stdout.trim() : "";
   if (mergeBase === "") return { comparison: "no_merge_base", ahead: null, behind: null, mergeBase: null };
 

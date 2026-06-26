@@ -101,6 +101,14 @@ describe("BranchSource — git edge cases", () => {
     expect(branches[0]!.conflictsWithTrunk).toBeNull();
   });
 
+  it("a merge-base SUBPROCESS failure (not exit 1) degrades → comparison 'error' + stale freshness", async () => {
+    const handler: Handler = (_r, args) =>
+      args[0] === "merge-base" ? FAIL("fatal: bad object", 128) : happyHandler()(_r, args);
+    const { branches, batch } = await run({ handler });
+    expect(branches[0]!.comparison).toBe("error"); // a real failure, NOT a false no_merge_base
+    expect(batch.repoFreshness[0]!.freshness).toBe("stale");
+  });
+
   it("a detached worktree becomes a branch:null signal flagged orphaned", async () => {
     const handler: Handler = (_r, args) => {
       switch (args[0]) {
