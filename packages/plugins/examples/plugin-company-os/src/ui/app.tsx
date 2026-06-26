@@ -12,6 +12,7 @@ import { TAB_ICONS, CompanyOsGlyph } from "./icons.js";
 import { useActiveTab } from "./active-tab-store.js";
 import { useIsMobile } from "./hooks/useMediaQuery.js";
 import { CompanyOsBoard } from "./board/CompanyOsBoard.js";
+import { Home } from "./home/Home.js";
 import { Reports } from "./reports/Reports.js";
 import { Routines } from "./routines/Routines.js";
 
@@ -120,7 +121,11 @@ export function CompanyOsPage({ context }: PluginPageProps) {
   const [activeTab, setTab] = useActiveTab();
   const current = COMPANY_OS_TABS.find((tab) => tab.key === activeTab) ?? COMPANY_OS_TABS[0];
   // The live surfaces own their own panel chrome; placeholders sit inside a card.
-  const isLive = current.key === "board" || current.key === "reports" || current.key === "routines";
+  const isLive =
+    current.key === "home" ||
+    current.key === "board" ||
+    current.key === "reports" ||
+    current.key === "routines";
 
   return (
     <main
@@ -176,10 +181,10 @@ function TabPanel({
       return <Reports key={key} companyId={companyId} />;
     case "routines":
       return <Routines key={key} companyId={companyId} />;
-    // Pre-wired in 1d.8 (not yet in the visible COMPANY_OS_TABS); their real
-    // views (HomeView / SourceView) replace these placeholders in 1e/1f.
     case "home":
-      return <BootingPanel key={key} label="Home" />;
+      return <Home key={key} companyId={companyId} />;
+    // Pre-wired in 1d.8 (not yet in the visible COMPANY_OS_TABS); its real
+    // view (SourceView) replaces this placeholder in 1f.
     case "source":
       return <BootingPanel key={key} label="Source" />;
     default:

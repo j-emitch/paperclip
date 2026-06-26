@@ -22,6 +22,12 @@ export interface CompanyOsTab {
 
 export const COMPANY_OS_TABS: readonly CompanyOsTab[] = [
   {
+    key: "home",
+    label: "Home",
+    description: "Your daily driver — briefing, branch health, and what needs attention, at a glance.",
+    liveIn: "COS-1e",
+  },
+  {
     key: "board",
     label: "Board",
     description: "Auto-updating Kanban across systems x spec-prefix families. Chips move themselves.",

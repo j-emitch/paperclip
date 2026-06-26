@@ -8,6 +8,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { tokens } from "../tokens.js";
+import { withAlpha } from "./color.js";
 
 /** A small status dot in an arbitrary tone. */
 export function Dot({ tone, size = 8 }: { tone: string; size?: number }) {
@@ -94,16 +95,3 @@ export function RepoBadge({ repo, title }: { repo: string; title?: string }) {
   );
 }
 
-/**
- * A translucent tint of a tone for soft pill fills. Rather than `color-mix` (which
- * has no graceful inline-style fallback if unsupported — it just yields an invalid
- * background), we inject an alpha into the functional color itself
- * (`oklch(L C H / a)` / `hsl(H S L / a)`), which every target renderer supports.
- * A color we can't parse falls back to the solid tone.
- */
-function withAlpha(tone: string, alpha: number): string {
-  const m = /^(oklch|oklab|hsl|hwb|lab|lch|rgb)\(([^)]*)\)$/.exec(tone.trim());
-  if (!m) return tone;
-  const inner = m[2].includes("/") ? m[2].slice(0, m[2].indexOf("/")).trim() : m[2].trim();
-  return `${m[1]}(${inner} / ${alpha})`;
-}

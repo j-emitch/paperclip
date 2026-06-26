@@ -55,6 +55,29 @@ export function Frame({ children, minHeight = 220 }: { children: ReactNode; minH
   );
 }
 
+/**
+ * The cockpit's calm 0-state note — a dashed, muted line that renders an empty
+ * slice as a positive "all clear" rather than hiding it (Joe's show-0-counts /
+ * positive-reinforcement rule). One shape so every glance panel's empty state
+ * reads identically. `tone` optionally tints the border/text for a success cue.
+ */
+export function CalmNote({ children, tone }: { children: ReactNode; tone?: string }) {
+  return (
+    <p
+      style={{
+        margin: 0,
+        fontSize: 13,
+        color: tone ?? tokens.muted,
+        padding: "12px 14px",
+        border: `1px dashed ${tone ?? tokens.border}`,
+        borderRadius: tokens.radiusSm,
+      }}
+    >
+      {children}
+    </p>
+  );
+}
+
 /** A rounded, tinted glyph badge for the panel frames. */
 export function Glyph({ children, tone = tokens.muted }: { children: ReactNode; tone?: string }) {
   return (

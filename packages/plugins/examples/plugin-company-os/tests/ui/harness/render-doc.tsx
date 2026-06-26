@@ -14,10 +14,12 @@ import { EmptyState, ErrorState, LoadingState } from "../../../src/ui/board/stat
 import { ReportsView } from "../../../src/ui/reports/ReportsView.js";
 import { ReportViewerPanel } from "../../../src/ui/reports/ReportViewerPanel.js";
 import { RoutinesView } from "../../../src/ui/routines/RoutinesView.js";
+import { HomeView } from "../../../src/ui/home/HomeView.js";
 import { EMPTY_FILTER } from "../../../src/ui/reports/reports-view-model.js";
 import type { BoardStateV1 } from "../../../src/contracts/index.js";
 import { goldenBoard, staleBoard, zeroChipBoard, RENDER_NOW } from "../fixtures/board.js";
 import { goldenArtifactIndex, goldenRoutineHealth, okMarkdownContent, REPORTS_NOW } from "../fixtures/reports.js";
+import { goldenOrientation, emptyOrientation, HOME_NOW } from "../fixtures/home.js";
 import { NOW } from "../../fixtures/signals.js";
 
 const noop = () => {};
@@ -83,6 +85,25 @@ function routines(isMobile: boolean): ReactElement {
   return <RoutinesView health={goldenRoutineHealth()} now={REPORTS_NOW} isMobile={isMobile} />;
 }
 
+function home(isMobile: boolean, opts?: { empty?: boolean; drawer?: boolean }): ReactElement {
+  const drawer = opts?.drawer ? (
+    <ReportViewerPanel content={okMarkdownContent()} loading={false} error={null} now={HOME_NOW} isMobile={isMobile} renderMarkdown={preMarkdown} />
+  ) : undefined;
+  return (
+    <HomeView
+      orientation={opts?.empty ? emptyOrientation() : goldenOrientation()}
+      now={HOME_NOW}
+      isMobile={isMobile}
+      onOpenBriefing={noop}
+      onFollow={noop}
+      onNavigateTab={noop}
+      drawer={drawer}
+      drawerTitle={opts?.drawer ? "Daily Standup — what moved overnight" : null}
+      onCloseDrawer={opts?.drawer ? noop : undefined}
+    />
+  );
+}
+
 export interface HarnessDoc {
   name: string;
   width: number;
@@ -103,5 +124,9 @@ export function harnessDocs(): HarnessDoc[] {
     { name: "reports-mobile", width: 390, html: document("Reports · mobile", renderToStaticMarkup(reports(true)), 390) },
     { name: "routines-desktop", width: 1180, html: document("Routines · populated", renderToStaticMarkup(routines(false)), 1180) },
     { name: "routines-mobile", width: 390, html: document("Routines · mobile", renderToStaticMarkup(routines(true)), 390) },
+    { name: "home-desktop", width: 1180, html: document("Home · populated", renderToStaticMarkup(home(false)), 1180) },
+    { name: "home-mobile", width: 390, html: document("Home · mobile", renderToStaticMarkup(home(true)), 390) },
+    { name: "home-empty", width: 1180, html: document("Home · empty (all 0-states)", renderToStaticMarkup(home(false, { empty: true })), 1180) },
+    { name: "home-drawer", width: 1180, html: document("Home · briefing drawer", renderToStaticMarkup(home(false, { drawer: true })), 1180) },
   ];
 }
