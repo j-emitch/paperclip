@@ -11,6 +11,7 @@
  * `company_os:` fenced-block subset parser, and review-report frontmatter.
  */
 
+import type { CommitRef, CommitStat } from "../contracts/signals.js";
 import type { ReviewReportKind, ReviewVerdict, UnclassifiedReason } from "../contracts/vocab.js";
 
 // ---------------------------------------------------------------------------
@@ -297,6 +298,89 @@ export function parseGitLogRecords(stdout: string): GitLogRecord[] {
     if (sha.trim() !== "") {
       out.push({ sha: sha.trim(), committedAt: committedAt.trim(), subject: subject.trim(), body: body.trim() });
     }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// BranchSource (COS-1): for-each-ref + per-branch log --shortstat parsing
+// ---------------------------------------------------------------------------
+
+/** A local branch ref from `for-each-ref` (name · tip · committer date). */
+export interface BranchRef {
+  readonly branch: string;
+  readonly headSha: string;
+  /** ISO-8601 committer date of the tip. */
+  readonly committedAt: string;
+}
+
+/**
+ * `git for-each-ref` format for the local-branch enumeration. Fields are
+ * separated by a literal US (`\x1f`) — passed verbatim through the no-shell argv
+ * runner — so branch names containing `/` or spaces never break the split.
+ */
+export const FOR_EACH_REF_FORMAT = "%(refname:short)\x1f%(objectname)\x1f%(committerdate:iso-strict)";
+
+/** Parse `git for-each-ref --format=FOR_EACH_REF_FORMAT refs/heads` (one line per branch). */
+export function parseForEachRef(stdout: string): BranchRef[] {
+  const out: BranchRef[] = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    if (line.trim() === "") continue;
+    const [branch = "", headSha = "", committedAt = ""] = line.split("\x1f");
+    if (branch.trim() !== "" && headSha.trim() !== "") {
+      out.push({ branch: branch.trim(), headSha: headSha.trim(), committedAt: committedAt.trim() });
+    }
+  }
+  return out;
+}
+
+/**
+ * `git log` format for the per-branch recent-commits scan. Each record is
+ * RS-prefixed (`\x1e`) so the optional `--shortstat` line(s) that follow a record
+ * stay attached to it; fields within the record are US-separated (`\x1f`). The
+ * subject (`%s`), author (`%an`) and date (`%cI`) are each single-line.
+ */
+export const BRANCH_LOG_FORMAT = "%x1e%H%x1f%s%x1f%an%x1f%cI";
+
+const SHORTSTAT_RE =
+  /(\d+)\s+files?\s+changed(?:,\s+(\d+)\s+insertions?\(\+\))?(?:,\s+(\d+)\s+deletions?\(-\))?/;
+
+/** Parse a `--shortstat` summary line into a `CommitStat`; null when no match. */
+export function parseShortstat(text: string): CommitStat | null {
+  const m = SHORTSTAT_RE.exec(text);
+  if (!m) return null;
+  return {
+    filesChanged: Number.parseInt(m[1] ?? "0", 10) || 0,
+    insertions: Number.parseInt(m[2] ?? "0", 10) || 0,
+    deletions: Number.parseInt(m[3] ?? "0", 10) || 0,
+  };
+}
+
+/**
+ * Parse `git log <ref> -n N --shortstat --format=BRANCH_LOG_FORMAT` into
+ * `CommitRef[]`. Splits on the RS record marker, reads the first line of each
+ * record as the US-separated fields, and scans the remaining lines for the
+ * optional `--shortstat` summary (absent for merge/empty commits → no `stat`).
+ */
+export function parseBranchCommits(stdout: string): CommitRef[] {
+  const out: CommitRef[] = [];
+  for (const chunk of stdout.split("\x1e")) {
+    const lines = chunk.replace(/^[\r\n]+/, "").split(/\r?\n/);
+    const head = lines[0] ?? "";
+    if (head.trim() === "") continue;
+    const [sha = "", subject = "", author = "", committedAt = ""] = head.split("\x1f");
+    if (sha.trim() === "") continue;
+    let stat: CommitStat | null = null;
+    for (let i = 1; i < lines.length && stat === null; i++) {
+      stat = parseShortstat(lines[i] ?? "");
+    }
+    out.push({
+      sha: sha.trim(),
+      subject: subject.trim(),
+      author: author.trim(),
+      committedAt: committedAt.trim(),
+      ...(stat ? { stat } : {}),
+    });
   }
   return out;
 }

@@ -32,11 +32,10 @@ import {
   type ShippedTicket,
 } from "./parse.js";
 import { collectPerRepo, errorFromSubprocess, type RepoReadResult } from "./_shared.js";
+import { TRUNK_CANDIDATES } from "./git-helpers.js";
 
 export const GIT_WORK_SOURCE_ID = "git-work";
 
-/** Trunk candidates probed (in order) for the Shipped column. */
-const SHIPPED_BASE_CANDIDATES = ["origin/main", "main", "lycaon", "master"] as const;
 /** How many trunk commits back the Shipped column scans (bounded for perf). */
 const SHIPPED_SCAN_LIMIT = 400;
 
@@ -159,7 +158,7 @@ async function collectShipped(
   ctx: CollectionContext,
   errors: SignalError[],
 ): Promise<WorkSignal[]> {
-  for (const base of SHIPPED_BASE_CANDIDATES) {
+  for (const base of TRUNK_CANDIDATES) {
     const log = await ctx.git.run(repo.repo, [
       "log",
       "--first-parent",
