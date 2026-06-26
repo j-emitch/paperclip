@@ -32,7 +32,7 @@ function branchCount(section: ProjectGitSectionV1): number {
   return section.repos.reduce((sum, r) => sum + r.branches.length, 0);
 }
 
-export function SourceView({ gitState, now }: SourceViewProps) {
+export function SourceView({ gitState, now, isMobile = false }: SourceViewProps) {
   const derivedAge = relativeTime(gitState.derivedAt, now);
   const hasAnyRepo = gitState.groups.some((g) => g.repos.length > 0);
 
@@ -58,21 +58,24 @@ export function SourceView({ gitState, now }: SourceViewProps) {
         <CalmNote>No repositories are configured yet — add roots to <code style={{ fontFamily: tokens.mono }}>repoRoots</code> and they appear here on the next derive.</CalmNote>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
-          {gitState.groups.map((section) => (
-            <ProjectSection key={section.group.key} group={section.group} count={branchCount(section)}>
-              {section.repos.length === 0 ? (
-                <CalmNote>No repositories in this project.</CalmNote>
-              ) : (
-                section.repos.map((repo) => (
-                  <RepoSection
-                    key={repo.repoKey}
-                    repo={repo}
-                    isDisplayPrimary={section.displayPrimaryRepoKey === repo.repoKey}
-                    now={now}
-                  />
-                ))
-              )}
-            </ProjectSection>
+          {gitState.groups.map((section, i) => (
+            <div key={section.group.key} className="cos-fx-enter" style={{ animationDelay: `${i * 70}ms` }}>
+              <ProjectSection group={section.group} count={branchCount(section)}>
+                {section.repos.length === 0 ? (
+                  <CalmNote>No repositories in this project.</CalmNote>
+                ) : (
+                  section.repos.map((repo) => (
+                    <RepoSection
+                      key={repo.repoKey}
+                      repo={repo}
+                      isDisplayPrimary={section.displayPrimaryRepoKey === repo.repoKey}
+                      now={now}
+                      isMobile={isMobile}
+                    />
+                  ))
+                )}
+              </ProjectSection>
+            </div>
           ))}
         </div>
       )}
@@ -80,7 +83,7 @@ export function SourceView({ gitState, now }: SourceViewProps) {
   );
 }
 
-function RepoSection({ repo, isDisplayPrimary, now }: { repo: RepoGitStateV1; isDisplayPrimary: boolean; now: number }) {
+function RepoSection({ repo, isDisplayPrimary, now, isMobile }: { repo: RepoGitStateV1; isDisplayPrimary: boolean; now: number; isMobile: boolean }) {
   const available = repo.availability === "ok";
   // Most-recently-active branches first; unknown tip dates sort last.
   const branches = [...repo.branches].sort((a, b) => {
@@ -116,7 +119,7 @@ function RepoSection({ repo, isDisplayPrimary, now }: { repo: RepoGitStateV1; is
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {branches.map((branch) => (
-            <BranchRow key={branch.branch ?? `_detached:${branch.headSha}`} branch={branch} now={now} />
+            <BranchRow key={branch.branch ?? `_detached:${branch.headSha}`} branch={branch} now={now} isMobile={isMobile} />
           ))}
         </div>
       )}

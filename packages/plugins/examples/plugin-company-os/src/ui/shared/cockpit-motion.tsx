@@ -64,10 +64,11 @@ const CSS = `
 
 .cos-fx-drawer { animation: cos-fx-drawer-in 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .cos-fx-scrim { animation: cos-fx-fade-in 200ms ease both; }
+.cos-fx-fade { animation: cos-fx-fade-in 220ms ease both; }
 .cos-fx-pulse-dot { animation: cos-fx-pulse 2200ms ease-in-out infinite; }
 
 @media (prefers-reduced-motion: reduce) {
-  .cos-fx-enter, .cos-fx-drawer, .cos-fx-scrim, .cos-fx-pulse-dot { animation: none; }
+  .cos-fx-enter, .cos-fx-drawer, .cos-fx-scrim, .cos-fx-fade, .cos-fx-pulse-dot { animation: none; }
   .cos-fx-card, .cos-fx-tile, .cos-fx-row, .cos-fx-seeall, .cos-fx-seeall span, .cos-fx-caret { transition: none; }
   .cos-fx-card:hover, .cos-fx-tile:hover, .cos-fx-row:hover,
   .cos-fx-card:active, .cos-fx-tile:active, .cos-fx-row:active,
