@@ -177,6 +177,18 @@ describe("deriveAgentSystem", () => {
           displayName: "Technical Analysis",
           freshnessKind: "artifact",
         }),
+        routine("technical-analysis", "daily", "company-copy/reports/analysis/*.md", {
+          repo: "company-copy",
+          freshness: "cached",
+          ownerAgent: "CTO",
+          displayName: "Technical Analysis",
+          freshnessKind: "artifact",
+        }),
+        artifact("reports/analysis/2026-06-23.md", {
+          repo: "company",
+          mtime: "2026-06-23T10:00:00.000Z",
+          createdBy: "CTO",
+        }),
       ]),
       NOW,
     );
@@ -188,7 +200,13 @@ describe("deriveAgentSystem", () => {
       duties: [{ id: "technical-analysis", surface: "company/reports/analysis", kind: "duty" }],
     });
     expect(system.agents[0]?.ownedRoutines).toHaveLength(1);
+    expect(system.agents[0]?.ownedRoutines[0]).toMatchObject({
+      routineKey: "technical-analysis",
+      latestArtifactPath: "reports/analysis/2026-06-23.md",
+      verdict: "fresh",
+    });
     expect(system.vitals.agentCount).toBe(1);
+    expect(system.vitals.verdictCounts).toEqual({ fresh: 1, stale: 0, missing: 0, never_ran: 0 });
     expect(system.vitals.budgetMonthlyCentsTotal).toBe(8000);
   });
 });

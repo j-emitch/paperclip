@@ -17,7 +17,7 @@ import {
   type RoutineSloEntryV1,
   type VerdictCountsV1,
 } from "../contracts/agent-system.js";
-import { isAgentSignal, isRoutineSignal, type AgentSignal } from "../contracts/signals.js";
+import { isAgentSignal, isRoutineSignal, type AgentSignal, type RoutineSignal } from "../contracts/signals.js";
 import { OWNER_AGENTS, type OwnerAgent, type RoutineVerdict } from "../contracts/vocab.js";
 import { deriveRoutineHealth } from "./deriveRoutineHealth.js";
 import { aggregateSourceFreshness, isoFrom } from "./_shared.js";
@@ -69,8 +69,8 @@ const OVERLAP_RESOLUTIONS: readonly OverlapResolution[] = [
 export function deriveAgentSystem(bundle: SignalBundle, nowMs: number): AgentSystemV1 {
   const signals = bundle.batches.flatMap((b) => b.signals);
   const agentSignals = uniqueAgentSignals(signals.filter(isAgentSignal));
-  const routineSignals = signals.filter(isRoutineSignal);
-  const routineHealth = deriveRoutineHealth(bundle, nowMs);
+  const routineSignals = uniqueRoutineSignals(signals.filter(isRoutineSignal));
+  const routineHealth = deriveRoutineHealth(bundleWithUniqueRoutineSignals(bundle, routineSignals), nowMs);
   const diagnostics: AgentDiagnosticV1[] = [];
 
   const agentsByName = new Map<OwnerAgent, AgentSignal>(agentSignals.map((a) => [a.displayName, a]));
@@ -315,23 +315,66 @@ function uniqueAgentSignals(agentSignals: readonly AgentSignal[]): AgentSignal[]
   const byOwner = new Map<OwnerAgent, AgentSignal>();
   for (const agent of [...agentSignals].sort(agentOrder)) {
     const incumbent = byOwner.get(agent.displayName);
-    if (!incumbent || isBetterAgentSource(agent, incumbent)) {
+    if (!incumbent || isBetterSignalSource(agent, incumbent)) {
       byOwner.set(agent.displayName, agent);
     }
   }
   return [...byOwner.values()].sort(agentOrder);
 }
 
-function isBetterAgentSource(candidate: AgentSignal, incumbent: AgentSignal): boolean {
-  const qualityDelta = agentSourceQuality(candidate) - agentSourceQuality(incumbent);
+function uniqueRoutineSignals(routineSignals: readonly RoutineSignal[]): RoutineSignal[] {
+  const byOwnerRoutine = new Map<string, RoutineSignal>();
+  for (const routine of [...routineSignals].sort(routineOrder)) {
+    const key = `${routine.ownerAgent}\0${routine.routineKey}`;
+    const incumbent = byOwnerRoutine.get(key);
+    if (!incumbent || isBetterSignalSource(routine, incumbent)) {
+      byOwnerRoutine.set(key, routine);
+    }
+  }
+  return [...byOwnerRoutine.values()].sort(routineOrder);
+}
+
+function bundleWithUniqueRoutineSignals(bundle: SignalBundle, routineSignals: readonly RoutineSignal[]): SignalBundle {
+  let inserted = false;
+  return {
+    ...bundle,
+    batches: bundle.batches.map((batch) => {
+      const nonRoutineSignals = batch.signals.filter((signal) => !isRoutineSignal(signal));
+      if (inserted) return { ...batch, signals: nonRoutineSignals };
+      inserted = true;
+      return { ...batch, signals: [...nonRoutineSignals, ...routineSignals] };
+    }),
+  };
+}
+
+function routineOrder(a: RoutineSignal, b: RoutineSignal): number {
+  return ownerSortValue(a.ownerAgent) - ownerSortValue(b.ownerAgent)
+    || a.ownerAgent.localeCompare(b.ownerAgent)
+    || a.routineKey.localeCompare(b.routineKey)
+    || a.repo.localeCompare(b.repo);
+}
+
+interface SourceQualityInput {
+  readonly repo: string;
+  readonly freshness: AgentSignal["freshness"];
+  readonly errors: AgentSignal["errors"];
+}
+
+function isBetterSignalSource(candidate: SourceQualityInput, incumbent: SourceQualityInput): boolean {
+  const qualityDelta = signalSourceQuality(candidate) - signalSourceQuality(incumbent);
   if (qualityDelta !== 0) return qualityDelta < 0;
   return candidate.repo.localeCompare(incumbent.repo) < 0;
 }
 
-function agentSourceQuality(agent: AgentSignal): number {
-  const freshnessRank = agent.freshness === "live" ? 0 : agent.freshness === "cached" ? 1 : 2;
-  const degradedErrors = agent.errors.filter((error) => error.degraded).length;
-  return freshnessRank * 100 + degradedErrors * 10 + agent.errors.length;
+function signalSourceQuality(input: SourceQualityInput): number {
+  const freshnessRank = input.freshness === "live" ? 0 : input.freshness === "cached" ? 1 : 2;
+  const degradedErrors = input.errors.filter((error) => error.degraded).length;
+  return freshnessRank * 100 + degradedErrors * 10 + input.errors.length;
+}
+
+function ownerSortValue(ownerAgent: string): number {
+  const rank = OWNER_AGENTS.indexOf(ownerAgent as OwnerAgent);
+  return rank === -1 ? OWNER_AGENTS.length : rank;
 }
 
 function ownerRank(a: OwnerAgent, b?: OwnerAgent): number {
