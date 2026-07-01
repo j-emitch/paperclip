@@ -59,6 +59,12 @@ import {
   parseAgentSystemV1,
   type AgentSystemV1,
 } from "../contracts/agent-system.js";
+import {
+  BUILD_ATLAS_SCHEMA_VERSION,
+  safeParseBuildAtlasV1,
+  parseBuildAtlasV1,
+  type BuildAtlasV1,
+} from "../contracts/build-atlas.js";
 import type { Diagnostic } from "../contracts/diagnostics.js";
 import { COS_DB_NAMESPACE } from "./namespace.js";
 import type { SourceVersion } from "./scoped-merge.js";
@@ -144,6 +150,7 @@ export async function writeProjections(
   parseDocIndexV1(set.docIndex);
   parseSkillsCatalogV1(set.skillsCatalog);
   parseAgentSystemV1(set.agentSystem);
+  parseBuildAtlasV1(set.buildAtlas);
 
   const { rowCount } = await db.execute(
     `UPDATE ${NS}.cos_board_state
@@ -154,7 +161,7 @@ export async function writeProjections(
   if (rowCount !== 1) {
     throw new Error(`derive lease lost for ${companyId} — aborting write (owner=${owner})`);
   }
-  // The seven lockless secondaries upsert only AFTER the board fence passes (same
+  // The eight lockless secondaries upsert only AFTER the board fence passes (same
   // after-fence pattern COS-0 already uses for artifact-index + routine-health).
   await upsertSnapshot(db, "cos_artifact_index", companyId, set.artifactIndex, ARTIFACT_INDEX_SCHEMA_VERSION, set.artifactIndex.derivedAt, owner);
   await upsertSnapshot(db, "cos_routine_health", companyId, set.routineHealth, ROUTINE_HEALTH_SCHEMA_VERSION, set.routineHealth.derivedAt, owner);
@@ -163,6 +170,7 @@ export async function writeProjections(
   await upsertSnapshot(db, "cos_doc_index", companyId, set.docIndex, DOC_INDEX_SCHEMA_VERSION, set.docIndex.derivedAt, owner);
   await upsertSnapshot(db, "cos_skills_catalog", companyId, set.skillsCatalog, SKILLS_CATALOG_SCHEMA_VERSION, set.skillsCatalog.derivedAt, owner);
   await upsertSnapshot(db, "cos_agent_system", companyId, set.agentSystem, AGENT_SYSTEM_SCHEMA_VERSION, set.agentSystem.derivedAt, owner);
+  await upsertSnapshot(db, "cos_build_atlas", companyId, set.buildAtlas, BUILD_ATLAS_SCHEMA_VERSION, set.buildAtlas.derivedAt, owner);
 }
 
 /**
@@ -269,6 +277,14 @@ export async function readAgentSystem(db: DbClient, companyId: string): Promise<
     [companyId],
   );
   return readSnapshot(rows, AGENT_SYSTEM_SCHEMA_VERSION, (s) => safeParseAgentSystemV1(s));
+}
+
+export async function readBuildAtlas(db: DbClient, companyId: string): Promise<BuildAtlasV1 | null> {
+  const rows = await db.query<SnapshotRow>(
+    `SELECT snapshot, schema_version FROM ${NS}.cos_build_atlas WHERE company_id = $1`,
+    [companyId],
+  );
+  return readSnapshot(rows, BUILD_ATLAS_SCHEMA_VERSION, (s) => safeParseBuildAtlasV1(s));
 }
 
 function readSnapshot<T>(

@@ -6,12 +6,14 @@ import {
   loadSourceVersions,
   readAgentSystem,
   readBoardState,
+  readBuildAtlas,
   readOrientation,
   readRoutineHealth,
   releaseDeriveLock,
   replaceSourceVersions,
   writeProjections,
 } from "../../src/db/cache.js";
+import { BUILD_ATLAS_SCHEMA_VERSION } from "../../src/contracts/build-atlas.js";
 import { COS_DB_NAMESPACE } from "../../src/db/namespace.js";
 import { collectAndProject } from "../../src/collect-and-project.js";
 import type { SourceVersion } from "../../src/db/scoped-merge.js";
@@ -147,6 +149,48 @@ describe("cache — projection write/read round-trip + version gate", () => {
 
   it("missing row reads as null", async () => {
     expect(await readBoardState(new FakeDb(), "absent")).toBeNull();
+  });
+});
+
+describe("cache — COS-1R + COS-5 sibling snapshots (§8.1 both-append merge contract)", () => {
+  // One derive must persist BOTH the COS-1R agent-system (mig 004) AND the COS-5
+  // build-atlas (mig 005) secondary snapshots — the merge contract that guards
+  // against either phase's after-fence upsert clobbering the other's row.
+  const projections = collectAndProject(
+    bundleOf([
+      taxon("COS", "Company OS", "Company", "Company-OS"),
+      work("COS-0", "shipped", "commit_scope", { repo: "company" }),
+    ]),
+    NOW,
+    taxonomyFixture(),
+  );
+
+  it("round-trips both agent-system and build-atlas through one writeProjections", async () => {
+    const db = new FakeDb();
+    await ensureBoardRow(db, CO);
+    await acquireDeriveLock(db, CO, "A", 120_000, NOW);
+    await writeProjections(db, CO, projections, "A");
+
+    // Both sibling rows exist and read back validated (neither clobbered the other).
+    const agentSystem = await readAgentSystem(db, CO);
+    const buildAtlas = await readBuildAtlas(db, CO);
+    expect(agentSystem).not.toBeNull();
+    expect(buildAtlas).not.toBeNull();
+    // The build-atlas carries the COS family folded from the bundle.
+    expect(buildAtlas?.families.some((f) => f.prefix === "COS")).toBe(true);
+    expect(buildAtlas?.schemaVersion).toBe(BUILD_ATLAS_SCHEMA_VERSION);
+    expect(db.buildAtlas.get(CO)?.schemaVersion).toBe(BUILD_ATLAS_SCHEMA_VERSION);
+  });
+
+  it("a wrong-schema-version build-atlas row reads as null (forces re-derive)", async () => {
+    const db = new FakeDb();
+    await ensureBoardRow(db, CO);
+    await acquireDeriveLock(db, CO, "A", 120_000, NOW);
+    await writeProjections(db, CO, projections, "A");
+    db.buildAtlas.get(CO)!.schemaVersion = 99;
+    expect(await readBuildAtlas(db, CO)).toBeNull();
+    // Its COS-1R sibling is unaffected by the build-atlas version bump.
+    expect(await readAgentSystem(db, CO)).not.toBeNull();
   });
 });
 

@@ -17,6 +17,7 @@ import type { GitStateV1 } from "./contracts/git-state.js";
 import type { DocIndexV1 } from "./contracts/doc-index.js";
 import type { SkillsCatalogV1 } from "./contracts/skills-catalog.js";
 import type { AgentSystemV1 } from "./contracts/agent-system.js";
+import type { BuildAtlasV1 } from "./contracts/build-atlas.js";
 import { deriveBoardState } from "./projections/deriveBoardState.js";
 import { deriveArtifactIndex } from "./projections/deriveArtifactIndex.js";
 import { deriveRoutineHealth } from "./projections/deriveRoutineHealth.js";
@@ -25,6 +26,7 @@ import { deriveGitState } from "./projections/deriveGitState.js";
 import { deriveDocIndex } from "./projections/deriveDocIndex.js";
 import { deriveSkillsCatalog } from "./projections/deriveSkillsCatalog.js";
 import { deriveAgentSystem } from "./projections/deriveAgentSystem.js";
+import { deriveBuildAtlas } from "./projections/deriveBuildAtlas.js";
 
 /** The full set of projections one derive produces — what the worker persists per company. */
 export interface ProjectionSet {
@@ -36,6 +38,7 @@ export interface ProjectionSet {
   readonly docIndex: DocIndexV1;
   readonly skillsCatalog: SkillsCatalogV1;
   readonly agentSystem: AgentSystemV1;
+  readonly buildAtlas: BuildAtlasV1;
 }
 
 /**
@@ -58,5 +61,9 @@ export function collectAndProject(bundle: SignalBundle, nowMs: number, taxonomy:
     skillsCatalog: deriveSkillsCatalog(bundle, nowMs),
     // Agents are company-global, like Skills they do not take the project taxonomy lens.
     agentSystem: deriveAgentSystem(bundle, nowMs),
+    // The Build Atlas resolves its own prefix grouping internally (buildPrefixGrouping,
+    // COS-5g) rather than taking the repo-project taxonomy lens — the family axis is
+    // the ticket-prefix registry, not the repo→project map.
+    buildAtlas: deriveBuildAtlas(bundle, nowMs),
   };
 }
