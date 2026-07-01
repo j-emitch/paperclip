@@ -28,6 +28,10 @@ import type {
   WorkState,
 } from "./vocab.js";
 import type { Diagnostic } from "./diagnostics.js";
+// Type-only (erased at compile time) — no runtime dependency, so no cycle even
+// though `skills-catalog.ts` carries zod schemas. Mirrors how the doc signal
+// borrows `DocType` from the vocab: the origin enum's home is the skills contract.
+import type { SkillOrigin } from "./skills-catalog.js";
 
 /** A non-fatal problem attached to a single signal (sources record, never throw). */
 export interface SignalError {
@@ -290,6 +294,40 @@ export interface DocSignal extends SignalProvenance {
   readonly indexFingerprint: string;
 }
 
+/**
+ * A discovered Claude/Codex skill (a SKILL.md) — the currency of the Skills
+ * catalog (COS-1h). A DISTINCT kind (not an `ArtifactSignal`/`DocSignal`) so
+ * skills never leak into the Board/doc folds. Head-only at index time: `name` +
+ * `summary` come from the frontmatter head; the full body is fetched on demand by
+ * `skill-content`, keyed by `skillId` → `checkoutKey` + `relPath` (a contained
+ * read, mirroring `DocSignal`). The read key is `checkoutKey` (an `absByKey` key —
+ * the `company` repo key for workspace skills, or a plugin-root key for installed
+ * plugins), NEVER an absolute host path.
+ */
+export interface SkillSignal extends SignalProvenance {
+  readonly kind: "skill";
+  /** STABLE id = makeSkillId(checkoutKey, relPath) — the render/fetch key. */
+  readonly skillId: string;
+  /** "company" (workspace skills) | "plugins" (installed marketplace skills). */
+  readonly origin: SkillOrigin;
+  /** Sub-grouping within the origin: "design"/"core" for company, a plugin slug for plugins. */
+  readonly collection: string;
+  /** The `absByKey` key `skill-content` reads the body against (repo key or plugin-root key). */
+  readonly checkoutKey: string;
+  /** Root-relative path to the SKILL.md. */
+  readonly relPath: string;
+  /** The skill's directory basename — its slug within a collection. */
+  readonly slug: string;
+  /** Frontmatter `name`, else the slug. */
+  readonly name: string;
+  /** Frontmatter `description` — the list summary; null when absent. */
+  readonly summary: string | null;
+  readonly mtime: string; // ISO-8601
+  readonly sizeBytes: number;
+  /** hash(mtime + sizeBytes + head-bytes) — change-detection/dedup; NOT a full-body hash. */
+  readonly indexFingerprint: string;
+}
+
 /** The discriminated union of everything a source can emit. */
 export type Signal =
   | WorkSignal
@@ -299,7 +337,8 @@ export type Signal =
   | ReviewSignal
   | BranchSignal
   | RepoGitSignal
-  | DocSignal;
+  | DocSignal
+  | SkillSignal;
 
 /** Narrowing helpers — keep the `kind` discriminant the single branch point. */
 export const isWorkSignal = (s: Signal): s is WorkSignal => s.kind === "work";
@@ -310,3 +349,4 @@ export const isReviewSignal = (s: Signal): s is ReviewSignal => s.kind === "revi
 export const isBranchSignal = (s: Signal): s is BranchSignal => s.kind === "branch";
 export const isRepoGitSignal = (s: Signal): s is RepoGitSignal => s.kind === "repo_git";
 export const isDocSignal = (s: Signal): s is DocSignal => s.kind === "doc";
+export const isSkillSignal = (s: Signal): s is SkillSignal => s.kind === "skill";

@@ -59,10 +59,25 @@ const DEFAULTS = {
   ignoreDirs: [".git", "node_modules", "dist", ".next", "coverage", ".turbo", "vendor"],
 } satisfies Required<AdapterOptions>;
 
+/** An extra, out-of-workspace read-root scanned for skills (e.g. `~/.claude/plugins/cache`). */
+export interface SkillRootInput {
+  /** Stable read-KEY (namespaced to avoid colliding with a repo key). */
+  readonly key: string;
+  /** Absolute directory the key resolves to (containment-checked on read). */
+  readonly absPath: string;
+}
+
 /** Inputs the worker resolves before constructing the context. */
 export interface AdapterDeps {
   /** Absolute paths to the product repos (instanceConfigSchema.repoRoots). */
   readonly repoRoots: readonly string[];
+  /**
+   * Optional extra read-roots for installed-plugin skills (COS-1h). Each is merged
+   * into the read-key map (so `fs.list`/`readTextHead` resolve it) and surfaced as
+   * a `ctx.skillRoots` key — but NOT added to `ctx.repos`/`ctx.worktrees`, so only
+   * `SkillsSource` reads them; every other source ignores them.
+   */
+  readonly skillRoots?: readonly SkillRootInput[];
   /** Scoped collect (a single repo key) or null for a full sweep. */
   readonly scopeRepo: string | null;
   readonly logger: SignalLogger;
@@ -122,6 +137,20 @@ export async function makeCollectionContext(deps: AdapterDeps): Promise<Collecti
   // render-time (`doc-content`) resolve the identical `absByKey`.
   const checkoutKeys = await buildCheckoutKeyMap(deps.repoRoots);
   const absByKey = checkoutKeys.absByKey;
+  // Merge the optional plugin skill roots into the read-key map so `fs` can list +
+  // read them (contained), WITHOUT adding them to `repos`/`worktrees` — only
+  // `SkillsSource` consumes `ctx.skillRoots`; every other source stays unaffected.
+  // A skill-root key that collides with an existing repo/worktree key is skipped
+  // (the workspace always wins) and logged, so a stray config can't shadow a repo.
+  const skillRootKeys: string[] = [];
+  for (const root of deps.skillRoots ?? []) {
+    if (absByKey.has(root.key)) {
+      logger.warn("skill root key collides with an existing read key — skipped", { key: root.key });
+      continue;
+    }
+    absByKey.set(root.key, root.absPath);
+    skillRootKeys.push(root.key);
+  }
   const repos: RepoRoot[] = await Promise.all(
     checkoutKeys.mainRoots.map(async ({ repoKey: key, absPath }) => ({
       repo: key,
@@ -158,6 +187,7 @@ export async function makeCollectionContext(deps: AdapterDeps): Promise<Collecti
   return {
     repos,
     worktrees: checkoutKeys.worktrees,
+    skillRoots: skillRootKeys,
     scopeRepo: deps.scopeRepo,
     git,
     gh,

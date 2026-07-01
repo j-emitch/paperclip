@@ -47,6 +47,12 @@ import {
   parseDocIndexV1,
   type DocIndexV1,
 } from "../contracts/doc-index.js";
+import {
+  SKILLS_CATALOG_SCHEMA_VERSION,
+  safeParseSkillsCatalogV1,
+  parseSkillsCatalogV1,
+  type SkillsCatalogV1,
+} from "../contracts/skills-catalog.js";
 import type { Diagnostic } from "../contracts/diagnostics.js";
 import { COS_DB_NAMESPACE } from "./namespace.js";
 import type { SourceVersion } from "./scoped-merge.js";
@@ -130,6 +136,7 @@ export async function writeProjections(
   parseOrientationV1(set.orientation);
   parseGitStateV1(set.gitState);
   parseDocIndexV1(set.docIndex);
+  parseSkillsCatalogV1(set.skillsCatalog);
 
   const { rowCount } = await db.execute(
     `UPDATE ${NS}.cos_board_state
@@ -147,6 +154,7 @@ export async function writeProjections(
   await upsertSnapshot(db, "cos_orientation", companyId, set.orientation, ORIENTATION_SCHEMA_VERSION, set.orientation.derivedAt, owner);
   await upsertSnapshot(db, "cos_git_state", companyId, set.gitState, GIT_STATE_SCHEMA_VERSION, set.gitState.derivedAt, owner);
   await upsertSnapshot(db, "cos_doc_index", companyId, set.docIndex, DOC_INDEX_SCHEMA_VERSION, set.docIndex.derivedAt, owner);
+  await upsertSnapshot(db, "cos_skills_catalog", companyId, set.skillsCatalog, SKILLS_CATALOG_SCHEMA_VERSION, set.skillsCatalog.derivedAt, owner);
 }
 
 /**
@@ -234,6 +242,14 @@ export async function readDocIndex(db: DbClient, companyId: string): Promise<Doc
     [companyId],
   );
   return readSnapshot(rows, DOC_INDEX_SCHEMA_VERSION, (s) => safeParseDocIndexV1(s));
+}
+
+export async function readSkillsCatalog(db: DbClient, companyId: string): Promise<SkillsCatalogV1 | null> {
+  const rows = await db.query<SnapshotRow>(
+    `SELECT snapshot, schema_version FROM ${NS}.cos_skills_catalog WHERE company_id = $1`,
+    [companyId],
+  );
+  return readSnapshot(rows, SKILLS_CATALOG_SCHEMA_VERSION, (s) => safeParseSkillsCatalogV1(s));
 }
 
 function readSnapshot<T>(

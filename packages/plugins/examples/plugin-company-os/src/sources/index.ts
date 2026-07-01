@@ -15,6 +15,7 @@ import { artifactSource } from "./ArtifactSource.js";
 import { prefixRegistrySource } from "./PrefixRegistrySource.js";
 import { branchSource } from "./BranchSource.js";
 import { docsSource } from "./DocsSource.js";
+import { skillsSource } from "./SkillsSource.js";
 
 export const DEFAULT_SOURCES: readonly WorkSignalSource[] = [
   gitWorkSource,
@@ -27,6 +28,8 @@ export const DEFAULT_SOURCES: readonly WorkSignalSource[] = [
   // COS-1 daily-driver sources (additive — appended so existing order is stable).
   branchSource,
   docsSource,
+  // COS-1h skills catalog (additive — appended last).
+  skillsSource,
 ];
 
 export * from "./GitWorkSource.js";
@@ -38,4 +41,5 @@ export * from "./ArtifactSource.js";
 export * from "./PrefixRegistrySource.js";
 export * from "./BranchSource.js";
 export * from "./DocsSource.js";
+export * from "./SkillsSource.js";
 export * from "./parse.js";

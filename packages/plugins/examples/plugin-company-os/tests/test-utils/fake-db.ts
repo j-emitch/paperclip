@@ -33,6 +33,7 @@ export class FakeDb implements DbClient {
   orientation = new Map<string, SnapRow>();
   gitState = new Map<string, SnapRow>();
   docIndex = new Map<string, SnapRow>();
+  skillsCatalog = new Map<string, SnapRow>();
   sourceVersions = new Map<string, { companyId: string; source: string; repo: string; signals: unknown; freshness: string; lastOkAt: string | null }>();
   runs: Array<Record<string, unknown>> = [];
 
@@ -96,6 +97,7 @@ export class FakeDb implements DbClient {
     if (s.includes("INSERT INTO") && s.includes("cos_orientation")) return this.fencedUpsert(this.orientation, params);
     if (s.includes("INSERT INTO") && s.includes("cos_git_state")) return this.fencedUpsert(this.gitState, params);
     if (s.includes("INSERT INTO") && s.includes("cos_doc_index")) return this.fencedUpsert(this.docIndex, params);
+    if (s.includes("INSERT INTO") && s.includes("cos_skills_catalog")) return this.fencedUpsert(this.skillsCatalog, params);
     if (s.includes("DELETE FROM") && s.includes("cos_source_versions")) {
       const companyId = String(params[0]);
       const scopeRepo = params.length > 1 ? String(params[1]) : null; // scoped delete passes repo
@@ -152,6 +154,7 @@ export class FakeDb implements DbClient {
     if (s.includes("FROM") && s.includes("cos_orientation")) return snap(this.orientation.get(id));
     if (s.includes("FROM") && s.includes("cos_git_state")) return snap(this.gitState.get(id));
     if (s.includes("FROM") && s.includes("cos_doc_index")) return snap(this.docIndex.get(id));
+    if (s.includes("FROM") && s.includes("cos_skills_catalog")) return snap(this.skillsCatalog.get(id));
     if (s.includes("FROM") && s.includes("cos_source_versions")) {
       return [...this.sourceVersions.values()]
         .filter((v) => v.companyId === id) // mirror the real WHERE company_id = $1

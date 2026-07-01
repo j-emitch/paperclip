@@ -297,8 +297,8 @@ describe("projection contracts validate", () => {
 // ---------------------------------------------------------------------------
 
 /**
- * Exhaustive `switch (kind)` over ALL eight signal kinds. The `never` default is
- * the guard: add a ninth kind to the union without a case here and this file
+ * Exhaustive `switch (kind)` over ALL nine signal kinds. The `never` default is
+ * the guard: add a tenth kind to the union without a case here and this file
  * stops compiling — so no projection fold can silently absorb a new kind.
  */
 function kindOf(signal: Signal): Signal["kind"] {
@@ -319,6 +319,8 @@ function kindOf(signal: Signal): Signal["kind"] {
       return "repo_git";
     case "doc":
       return "doc";
+    case "skill":
+      return "skill";
     default: {
       const _exhaustive: never = signal;
       return _exhaustive;

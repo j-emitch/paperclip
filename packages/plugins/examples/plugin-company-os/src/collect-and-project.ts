@@ -15,12 +15,14 @@ import type { ProjectTaxonomyV1 } from "./contracts/projects.js";
 import type { OrientationV1 } from "./contracts/orientation.js";
 import type { GitStateV1 } from "./contracts/git-state.js";
 import type { DocIndexV1 } from "./contracts/doc-index.js";
+import type { SkillsCatalogV1 } from "./contracts/skills-catalog.js";
 import { deriveBoardState } from "./projections/deriveBoardState.js";
 import { deriveArtifactIndex } from "./projections/deriveArtifactIndex.js";
 import { deriveRoutineHealth } from "./projections/deriveRoutineHealth.js";
 import { deriveOrientation } from "./projections/deriveOrientation.js";
 import { deriveGitState } from "./projections/deriveGitState.js";
 import { deriveDocIndex } from "./projections/deriveDocIndex.js";
+import { deriveSkillsCatalog } from "./projections/deriveSkillsCatalog.js";
 
 /** The full set of projections one derive produces — what the worker persists per company. */
 export interface ProjectionSet {
@@ -30,13 +32,15 @@ export interface ProjectionSet {
   readonly orientation: OrientationV1;
   readonly gitState: GitStateV1;
   readonly docIndex: DocIndexV1;
+  readonly skillsCatalog: SkillsCatalogV1;
 }
 
 /**
- * Fold a collected (+ optionally scope-merged) bundle into all six projections.
- * The COS-0 three keep their `(bundle, nowMs)` signature; the COS-1 three receive
- * the `taxonomy` (resolved once in `derive.ts`, PF-5) as the project-grouping lens
- * — a REQUIRED param (a default would silently mis-group).
+ * Fold a collected (+ optionally scope-merged) bundle into all seven projections.
+ * The COS-0 three keep their `(bundle, nowMs)` signature; the COS-1 doc/git/home
+ * three receive the `taxonomy` (resolved once in `derive.ts`, PF-5) as the
+ * project-grouping lens — a REQUIRED param (a default would silently mis-group);
+ * the COS-1h skills catalog groups by origin, so it takes only `(bundle, nowMs)`.
  */
 export function collectAndProject(bundle: SignalBundle, nowMs: number, taxonomy: ProjectTaxonomyV1): ProjectionSet {
   return {
@@ -46,5 +50,7 @@ export function collectAndProject(bundle: SignalBundle, nowMs: number, taxonomy:
     orientation: deriveOrientation(bundle, nowMs, taxonomy),
     gitState: deriveGitState(bundle, nowMs, taxonomy),
     docIndex: deriveDocIndex(bundle, nowMs, taxonomy),
+    // Skills group by origin (company vs plugins), not by project — no taxonomy lens.
+    skillsCatalog: deriveSkillsCatalog(bundle, nowMs),
   };
 }

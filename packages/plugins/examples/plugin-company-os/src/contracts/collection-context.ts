@@ -159,6 +159,15 @@ export interface CollectionContext {
    * worktree's docs through these; other sources ignore them.
    */
   readonly worktrees: readonly WorktreeCheckout[];
+  /**
+   * Optional extra READ-KEYS (already resolvable in `fs`) pointing at installed-
+   * plugin skill roots OUTSIDE the workspace (e.g. `~/.claude/plugins/cache`).
+   * `SkillsSource` scans each for `**​/SKILL.md` as `origin: "plugins"`; every other
+   * source ignores them. Empty/undefined = no plugin skills (calm 0-state).
+   * PF-8-style contained keys — the abs path never leaks; reads stay containment-
+   * checked exactly like worktrees.
+   */
+  readonly skillRoots?: readonly string[];
   /** Scoped collect: null = full sweep; else only this repo key (the hook fast-path). */
   readonly scopeRepo: string | null;
   readonly git: GitRunner;

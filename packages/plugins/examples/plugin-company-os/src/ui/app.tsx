@@ -16,6 +16,7 @@ import { Home } from "./home/Home.js";
 import { Source } from "./source/Source.js";
 import { Docs } from "./docs/Docs.js";
 import { Routines } from "./routines/Routines.js";
+import { Skills } from "./skills/Skills.js";
 
 // ---------------------------------------------------------------------------
 // Sidebar entry — top-level nav link into the cockpit.
@@ -127,7 +128,8 @@ export function CompanyOsPage({ context }: PluginPageProps) {
     current.key === "source" ||
     current.key === "board" ||
     current.key === "reports" ||
-    current.key === "routines";
+    current.key === "routines" ||
+    current.key === "skills";
 
   return (
     <main
@@ -185,6 +187,8 @@ function TabPanel({
       return <Docs key={key} companyId={companyId} />;
     case "routines":
       return <Routines key={key} companyId={companyId} />;
+    case "skills":
+      return <Skills key={key} companyId={companyId} />;
     case "home":
       return <Home key={key} companyId={companyId} />;
     case "source":

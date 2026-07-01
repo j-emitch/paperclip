@@ -8,7 +8,7 @@
 // so the rail never renders a half-wired clickable tab. `docs` is NOT added here —
 // it's the `reports`→`docs` rename in 1h (adding it before then is an excess-property
 // error against the exhaustive TAB_ICONS Record).
-export type CompanyOsTabKey = "home" | "source" | "board" | "reports" | "routines" | "hygiene" | "teaching" | "knowledge";
+export type CompanyOsTabKey = "home" | "source" | "board" | "reports" | "routines" | "skills" | "hygiene" | "teaching" | "knowledge";
 
 export interface CompanyOsTab {
   key: CompanyOsTabKey;
@@ -50,6 +50,12 @@ export const COMPANY_OS_TABS: readonly CompanyOsTab[] = [
     label: "Routines",
     description: "CEO / COO / CTO / Librarian routine outputs plus their SLO health.",
     liveIn: "COS-0f",
+  },
+  {
+    key: "skills",
+    label: "Skills",
+    description: "Your Claude/Codex skills — company skills plus installed plugins, summarized and readable in place.",
+    liveIn: "COS-1h",
   },
   {
     key: "hygiene",

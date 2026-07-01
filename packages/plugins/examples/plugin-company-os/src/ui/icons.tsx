@@ -222,6 +222,17 @@ export function SourceIcon({ size = 16, strokeWidth = 1.8 }: IconProps) {
   ));
 }
 
+export function SkillsIcon({ size = 16, strokeWidth = 1.8 }: IconProps) {
+  // Stacked "cards" — the skills catalog: many composable skills, one shelf.
+  return svg(size, strokeWidth, (
+    <>
+      <rect x="3" y="4" width="13" height="16" rx="2" />
+      <path d="M19 7v11a2 2 0 0 1-2 2H8" />
+      <path d="M6.5 8.5h6M6.5 12h6M6.5 15.5h3.5" />
+    </>
+  ));
+}
+
 export const TAB_ICONS: Record<CompanyOsTabKey, (props: IconProps) => ReactElement> = {
   // home + source are pre-wired in 1d.8; their visible tabs land in 1e/1f.
   home: HomeIcon,
@@ -229,6 +240,7 @@ export const TAB_ICONS: Record<CompanyOsTabKey, (props: IconProps) => ReactEleme
   board: BoardIcon,
   reports: ReportsIcon,
   routines: RoutinesIcon,
+  skills: SkillsIcon,
   hygiene: HygieneIcon,
   teaching: TeachingIcon,
   knowledge: KnowledgeIcon,

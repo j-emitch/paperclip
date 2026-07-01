@@ -1,7 +1,10 @@
 import { definePlugin, runWorker, type PluginContext } from "@paperclipai/plugin-sdk";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import * as path from "node:path";
 import { DERIVE_BOARD_JOB_KEY, PLUGIN_ID } from "./manifest.js";
-import { makeCollectionContext } from "./runtime/makeCollectionContext.js";
+import { makeCollectionContext, type SkillRootInput } from "./runtime/makeCollectionContext.js";
 import { absByKeyFromRoots, readContainedText } from "./runtime/workspace-fs.js";
 import { buildCheckoutKeyMap } from "./runtime/checkout-keys.js";
 import { deriveForCompany, type DeriveDeps } from "./derive.js";
@@ -13,9 +16,11 @@ import {
   readGitState,
   readOrientation,
   readRoutineHealth,
+  readSkillsCatalog,
 } from "./db/cache.js";
 import { DOCS_VIEWER_MAX_BYTES, readReportContent } from "./report-content-read.js";
 import { readDocContent } from "./doc-content-read.js";
+import { readSkillContent } from "./skill-content-read.js";
 import { projectGroupV1Schema, resolveTaxonomy, type ProjectGroupV1 } from "./contracts/projects.js";
 
 /**
@@ -59,10 +64,41 @@ const plugin = definePlugin({
       return groups.length > 0 ? groups : undefined;
     };
 
+    // The optional `skillRoots` config → contained plugin-skill read-roots (COS-1h).
+    // Absolute dirs scanned for installed-plugin SKILL.md files. When unset, default
+    // to `~/.claude/plugins/cache` IF it exists — so the plugins sub-section appears
+    // out of the box on a dev machine, and degrades to empty everywhere else. Keys
+    // are namespaced (`skillroot:<basename>`) so they can never shadow a repo key.
+    const readSkillRoots = async (): Promise<SkillRootInput[]> => {
+      const config = await ctx.config.get();
+      const raw = (config as Record<string, unknown> | undefined)?.skillRoots;
+      const paths: string[] = Array.isArray(raw) ? raw.filter((r): r is string => typeof r === "string" && r !== "") : [];
+      if (paths.length === 0) {
+        const fallback = path.join(homedir(), ".claude", "plugins", "cache");
+        if (existsSync(fallback)) paths.push(fallback);
+      }
+      const seen = new Set<string>();
+      const out: SkillRootInput[] = [];
+      for (const abs of paths) {
+        if (!existsSync(abs)) continue; // a configured-but-absent root degrades to nothing
+        const base = path.basename(abs.replace(/\/+$/, "")) || "plugins";
+        let key = `skillroot:${base}`;
+        for (let n = 2; seen.has(key); n++) key = `skillroot:${base}-${n}`;
+        seen.add(key);
+        out.push({ key, absPath: abs });
+      }
+      return out;
+    };
+
     const deps: DeriveDeps = {
       db: ctx.db,
       makeContext: async (scopeRepo) =>
-        makeCollectionContext({ repoRoots: await readRepoRoots(), scopeRepo, logger: ctx.logger }),
+        makeCollectionContext({
+          repoRoots: await readRepoRoots(),
+          skillRoots: await readSkillRoots(),
+          scopeRepo,
+          logger: ctx.logger,
+        }),
       now: () => Date.now(),
       logger: ctx.logger,
       // Resolve the taxonomy FRESH from raw config each derive (PF-5/v6) — raw
@@ -78,6 +114,8 @@ const plugin = definePlugin({
     ctx.data.register("orientation", async (params) => readOrientation(ctx.db, str(params.companyId)));
     ctx.data.register("git-state", async (params) => readGitState(ctx.db, str(params.companyId)));
     ctx.data.register("doc-index", async (params) => readDocIndex(ctx.db, str(params.companyId)));
+    // COS-1h skills catalog read handler (the Skills tab's tree).
+    ctx.data.register("skills-catalog", async (params) => readSkillsCatalog(ctx.db, str(params.companyId)));
 
     // --- docs viewer: a LIVE, index-gated, containment-checked single-file read ---
     ctx.data.register("report-content", async (params) => {
@@ -118,6 +156,33 @@ const plugin = definePlugin({
         },
         str(params.companyId),
         str(params.docId),
+      );
+    });
+
+    // --- skills viewer: index-gated by skillId → checkoutKey read (company repo or
+    //     a plugin skill-root), reusing the same contained-read + size-cap defenses. ---
+    ctx.data.register("skill-content", async (params) => {
+      const repoRoots = await readRepoRoots();
+      const skillRoots = await readSkillRoots();
+      // Rebuild the SAME read-key map the derive used: repo/worktree keys PLUS the
+      // plugin skill-root keys, so a company skill ("company") and a plugin skill
+      // ("skillroot:…") both resolve. Skill-root keys never shadow a repo key.
+      const ckm = await buildCheckoutKeyMap(repoRoots);
+      const absByKey = new Map(ckm.absByKey);
+      for (const r of skillRoots) if (!absByKey.has(r.key)) absByKey.set(r.key, r.absPath);
+      return readSkillContent(
+        {
+          readIndex: (companyId) => readSkillsCatalog(ctx.db, companyId),
+          readFile: async (checkoutKey, relPath) => {
+            const root = absByKey.get(checkoutKey);
+            if (!root) throw new Error(`unknown checkout ${checkoutKey}`);
+            const { content, stat } = await readContainedText(root, relPath, DOCS_VIEWER_MAX_BYTES);
+            return { content, sizeBytes: stat.sizeBytes, mtime: stat.mtime };
+          },
+          checkoutResolvable: (checkoutKey) => absByKey.has(checkoutKey),
+        },
+        str(params.companyId),
+        str(params.skillId),
       );
     });
 

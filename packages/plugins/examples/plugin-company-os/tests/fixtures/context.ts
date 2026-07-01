@@ -56,6 +56,8 @@ export type ProcResponder = (repo: string, args: readonly string[]) => Subproces
 export interface FixtureOptions {
   repos?: RepoRoot[];
   worktrees?: WorktreeCheckout[];
+  /** Extra plugin skill read-keys (COS-1h) — their files live in `files` under the same key. */
+  skillRoots?: string[];
   scopeRepo?: string | null;
   git?: ProcResponder;
   gh?: ProcResponder;
@@ -119,6 +121,7 @@ export function makeFixtureContext(opts: FixtureOptions = {}): CollectionContext
   return {
     repos: opts.repos ?? DEFAULT_REPOS,
     worktrees: opts.worktrees ?? [],
+    skillRoots: opts.skillRoots ?? [],
     scopeRepo: opts.scopeRepo ?? null,
     git,
     gh,
