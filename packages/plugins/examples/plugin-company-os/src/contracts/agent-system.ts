@@ -68,7 +68,7 @@ export const routineSloEntryV1Schema = z.object({
   displayName: z.string().min(1),
   ownerAgent: ownerAgentSchema,
   cadence: z.string().min(1),
-  expectedArtifactGlob: z.string().min(1),
+  expectedArtifactGlob: z.string(),
   freshnessKind: freshnessKindSchema,
   lastRunAt: z.string().nullable(),
   nextExpectedAt: z.string().nullable(),

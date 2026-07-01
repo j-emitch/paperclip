@@ -150,7 +150,7 @@ function routine(
     displayName: routineKey,
     ownerAgent,
     cadence: "daily",
-    expectedArtifactGlob: "company/reports/**/*.md",
+    expectedArtifactGlob: freshnessKind === "embedded" ? "" : "company/reports/**/*.md",
     freshnessKind,
     lastRunAt: null,
     nextExpectedAt: null,
