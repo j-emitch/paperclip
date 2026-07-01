@@ -23,7 +23,8 @@ import {
 } from "../contracts/collection-context.js";
 import type { RepoFreshness, SignalBatch, WorkSignalSource } from "../contracts/WorkSignalSource.js";
 import type { Signal, SignalError, TicketSignal } from "../contracts/signals.js";
-import { extractTicketIds, parseFrontmatter, prefixOf } from "./parse.js";
+import { parseFrontmatter } from "./parse.js";
+import { extractTicketIds, prefixOf } from "../contracts/ticket-id.js";
 import { nowIso, readError } from "./_shared.js";
 
 export const PAPERCLIP_TICKET_SOURCE_ID = "ticket";

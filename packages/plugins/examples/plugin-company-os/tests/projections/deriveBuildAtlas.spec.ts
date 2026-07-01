@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { deriveBuildAtlas } from "../../src/projections/deriveBuildAtlas.js";
 import { bundleOf, docSignal, lineageSignal, taxon, ticketSignal, work, NOW } from "../fixtures/signals.js";
-import { corpusSignals, EXPECTED } from "../fixtures/tickets.js";
+import { buildCorpus, corpusSignals, EXPECTED } from "../fixtures/tickets.js";
 import { parseBuildAtlasV1 } from "../../src/contracts/build-atlas.js";
 
 describe("deriveBuildAtlas (5a — families + lifecycle)", () => {
@@ -281,6 +281,20 @@ describe("deriveBuildAtlas (5c — LYC three-tier routing)", () => {
   const atlasOf = () => deriveBuildAtlas(bundleOf([...corpusTaxa(), ...corpusSignals()]), NOW);
   const fam = (atlas: ReturnType<typeof atlasOf>, prefix: string) =>
     atlas.families.find((f) => f.prefix === prefix);
+
+  it("the 500-issue corpus has the documented origin/status distribution (oracle invariant)", () => {
+    const c = buildCorpus();
+    expect(c).toHaveLength(EXPECTED.total); // 500
+    const byOrigin = (o: string) => c.filter((t) => t.originKind === o).length;
+    expect(byOrigin("routine_execution")).toBe(227);
+    expect(byOrigin("issue_productivity_review")).toBe(EXPECTED.productivityReviewDropped); // 22
+    expect(byOrigin("manual")).toBe(251);
+    const doneManual = c.filter((t) => t.originKind === "manual" && ["done", "cancelled"].includes(t.status));
+    expect(doneManual).toHaveLength(EXPECTED.doneExcluded); // 31
+    // Firing-level accounting must close to 500: routine firings + review + routed
+    // family + ops + done-excluded manual.
+    expect(227 + EXPECTED.productivityReviewDropped + EXPECTED.mtpTickets + EXPECTED.ssfTickets + EXPECTED.opsUnrouted + EXPECTED.doneExcluded).toBe(EXPECTED.total);
+  });
 
   it("routes the full corpus with the expected counts (manual → family, routine/ops → Meta)", () => {
     const atlas = atlasOf();

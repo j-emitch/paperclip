@@ -37,7 +37,7 @@ import {
   type LineageEdgeV1,
   type TicketRefV1,
 } from "../contracts/build-atlas.js";
-import { prefixOf } from "../sources/parse.js";
+import { prefixOf } from "../contracts/ticket-id.js";
 import type { WorkState } from "../contracts/vocab.js";
 import { deriveLifecycle } from "./deriveLifecycle.js";
 import { aggregateSourceFreshness, diagnosticsFromFreshness, isoFrom } from "./_shared.js";
@@ -82,7 +82,8 @@ export function deriveBuildAtlas(bundle: SignalBundle, nowMs: number): BuildAtla
   // Meta·Routines chip per routine key, issue_productivity_review is dropped,
   // manual routes to the family it references (extras → lineage tags) or to the
   // Meta·Ops bucket when it names none. done/cancelled are excluded from active.
-  const routing = routeTickets(signals.filter(isTicketSignal), registered, diagnostics);
+  const tickets = signals.filter(isTicketSignal);
+  const routing = routeTickets(tickets, registered, diagnostics);
 
   // A family per registered prefix (show 0-count families, like the Board's rows).
   const families: FamilyV1[] = [];
@@ -123,6 +124,9 @@ export function deriveBuildAtlas(bundle: SignalBundle, nowMs: number): BuildAtla
   for (const w of work) {
     if (w.prefix && !registered.has(w.prefix)) unknownPrefixes.add(w.prefix);
   }
+  // Ticket-referenced unregistered prefixes join the SAME channel (deduped, one
+  // diagnostic per prefix across work + tickets — codex-5c-A-P2).
+  for (const p of routing.unknownRefPrefixes) unknownPrefixes.add(p);
   for (const prefix of [...unknownPrefixes].sort()) {
     diagnostics.push({
       code: "unknown_prefix",
@@ -137,7 +141,10 @@ export function deriveBuildAtlas(bundle: SignalBundle, nowMs: number): BuildAtla
   // labeled bucket rather than a dumping-ground on a real family. Appended AFTER
   // the orphan/unknown checks so it is never itself flagged as orphaned (it is not
   // a registered family), and picked up by buildDomains under the Company domain.
-  if (routing.metaTickets.length > 0) {
+  // Emitted whenever the ticket source is participating (show-0: the Meta lane
+  // renders with explicit 0-counts even if everything routed to real families) —
+  // but NOT when there are no tickets at all (5a/5b backward-compat).
+  if (tickets.length > 0) {
     families.push(buildMetaFamily(routing.metaTickets));
   }
 
@@ -285,14 +292,18 @@ interface TicketRouting {
   readonly extraTagsByPrefix: Map<string, string[]>;
   /** Collapsed routine chips (route: "routine") + unrouted manual (route: "ops"). */
   readonly metaTickets: TicketRefV1[];
+  /** Referenced-but-unregistered prefixes — folded into the unified unknown_prefix channel. */
+  readonly unknownRefPrefixes: ReadonlySet<string>;
 }
 
 /**
  * The three-tier fold. Tier 1 (routine_execution) collapses to one Meta·Routines
  * chip per routine key; tier 2 (issue_productivity_review) is dropped; tier 3
- * (manual + any other origin) routes to the first registered family it references
- * — extras become that family's lineage tags — or to the Meta·Ops bucket (with an
- * `unrouted_ticket` diagnostic) when it references none. done/cancelled excluded.
+ * (manual + any other work origin) routes to the first registered family it
+ * references — extras become that family's lineage tags — or to the Meta·Ops
+ * bucket (with an `unrouted_ticket` diagnostic) when it references none. The
+ * done/cancelled exclusion is a MANUAL work-backlog filter (spec §5.5): it never
+ * touches routine firings (which count every run) nor other origins.
  */
 function routeTickets(
   tickets: readonly TicketSignal[],
@@ -302,40 +313,51 @@ function routeTickets(
   const ticketsByPrefix = new Map<string, TicketRefV1[]>();
   const extraTagsByPrefix = new Map<string, string[]>();
   const metaTickets: TicketRefV1[] = [];
-
+  const unknownRefPrefixes = new Set<string>();
   const routineFirings: TicketSignal[] = [];
-  for (const t of tickets) {
-    if (t.originKind === "issue_productivity_review") continue; // tier 2 — scan noise, dropped
-    if (t.originKind === "routine_execution") {
-      routineFirings.push(t); // tier 1 — collapsed below; every firing counts as a run
-      continue;
-    }
-    // tier 3 — manual (or any other origin): route by referenced family. The
-    // done/cancelled exclusion is a WORK-backlog filter, so it applies here only —
-    // a completed routine firing is a normal run and must still be counted above.
-    if (DONE_STATUSES.has((t.status ?? "").trim().toLowerCase())) continue;
+
+  const routeByFamily = (t: TicketSignal) => {
     const ownPrefix = prefixOf(t.identifier);
+    // Surface referenced-but-unregistered prefixes (typo / registry gap) via the
+    // unified unknown_prefix channel — even when a registered candidate exists, so a
+    // `MPT-1` typo alongside a real `COS-1` is not silently swallowed (codex-5c-A-P2).
+    for (const p of t.referencedFamilies) {
+      if (p !== ownPrefix && !registered.has(p)) unknownRefPrefixes.add(p);
+    }
     const candidates = t.referencedFamilies.filter((p) => p !== ownPrefix && registered.has(p));
     if (candidates.length === 0) {
       metaTickets.push(ticketRefFrom(t, "ops"));
       diagnostics.push({
         code: "unrouted_ticket",
         severity: "warn",
-        message: `manual ticket ${t.identifier} references no registered family — parked in Meta·Ops`,
+        message: `ticket ${t.identifier} references no registered family — parked in Meta·Ops`,
         prefix: null,
       });
-      continue;
+      return;
     }
     const target = candidates[0];
     const list = ticketsByPrefix.get(target) ?? [];
     list.push(ticketRefFrom(t, "family"));
     ticketsByPrefix.set(target, list);
     for (const extra of candidates.slice(1)) addExtraTag(extraTagsByPrefix, target, extra);
+  };
+
+  for (const t of tickets) {
+    if (t.originKind === "issue_productivity_review") continue; // tier 2 — scan noise, dropped
+    if (t.originKind === "routine_execution") {
+      routineFirings.push(t); // tier 1 — collapsed below; every firing counts as a run
+      continue;
+    }
+    // tier 3 — manual (or any other work origin). done/cancelled excludes the
+    // completed MANUAL backlog only (spec §5.5) — it is gated on `manual` so it can
+    // never drop another origin's tickets, and routine firings are handled above.
+    if (t.originKind === "manual" && DONE_STATUSES.has((t.status ?? "").trim().toLowerCase())) continue;
+    routeByFamily(t);
   }
 
   metaTickets.push(...collapseRoutines(routineFirings));
   metaTickets.sort((a, b) => a.identifier.localeCompare(b.identifier));
-  return { ticketsByPrefix, extraTagsByPrefix, metaTickets };
+  return { ticketsByPrefix, extraTagsByPrefix, metaTickets, unknownRefPrefixes };
 }
 
 function addExtraTag(map: Map<string, string[]>, prefix: string, tag: string): void {
@@ -376,13 +398,15 @@ function collapseRoutines(firings: readonly TicketSignal[]): TicketRefV1[] {
   }
 
   const chips: TicketRefV1[] = [];
-  for (const group of byKey.values()) {
+  for (const [key, group] of byKey) {
     const rep = group.reduce((a, b) => (firingTime(b) >= firingTime(a) ? b : a));
     const count = group.length;
     const last = rep.mtime ? ` · last ${rep.mtime.slice(0, 10)}` : "";
     const base = rep.title === "" ? rep.identifier : rep.title;
     chips.push({
-      identifier: rep.identifier,
+      // A STABLE synthetic identifier from the routine key — NOT the latest firing's
+      // id (which churns + reorders the row as new firings arrive; codex-5c-A-P2).
+      identifier: `routine:${key}`,
       title: `${base} · ${count} run${count === 1 ? "" : "s"}${last}`,
       status: null,
       priority: null,

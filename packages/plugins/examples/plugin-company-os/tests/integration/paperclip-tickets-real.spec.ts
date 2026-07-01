@@ -70,13 +70,29 @@ describe("PaperclipTicketSource — real exported files", () => {
 
     expect(tickets.length).toBe(sample.length); // every sampled file parsed
     expect(batch.repoFreshness[0]?.freshness).toBe("live"); // no parse/read degrade
+
+    // Compare each PARSED signal against the RAW exported frontmatter (guards
+    // exporter↔parser drift, and proves origin_kind was WRITTEN — not defaulted).
+    const fmVal = (raw: string, key: string): string | null => {
+      const m = new RegExp(`^${key}:\\s*(.+)$`, "m").exec(raw);
+      return m ? m[1].trim().replace(/^["']|["']$/g, "") : null;
+    };
+    let sawOriginKindInFrontmatter = false;
     for (const t of tickets) {
-      expect(t.identifier).toMatch(/^[A-Z]{2,}-\d+/); // real identifier shape
-      expect(typeof t.originKind).toBe("string");
-      expect(t.originKind.length).toBeGreaterThan(0); // the load-bearing 5c field is present
+      const raw = await readFile(path.join(dest, `${t.identifier}.md`), "utf-8");
+      expect(fmVal(raw, "identifier")).toBe(t.identifier);
+      if (/\norigin_kind:/.test(raw)) {
+        sawOriginKindInFrontmatter = true;
+        expect(t.originKind).toBe(fmVal(raw, "origin_kind")); // parsed matches written (not the "manual" default)
+      }
+      expect(t.status).toBe(fmVal(raw, "status"));
+      expect(t.priority).toBe(fmVal(raw, "priority"));
+      expect(t.parentId).toBe(fmVal(raw, "parent_id")); // both null when absent
+      expect(t.assigneeAgentId).toBe(fmVal(raw, "assignee_agent_id"));
       expect(Array.isArray(t.referencedFamilies)).toBe(true);
     }
-    // The corpus is dominated by these three origins — at least one must appear.
+    // The 5c export bridge must be present in the sampled real files (not vacuous).
+    expect(sawOriginKindInFrontmatter).toBe(true);
     const origins = new Set(tickets.map((t) => t.originKind));
     expect([...origins].some((o) => ["manual", "routine_execution", "issue_productivity_review"].includes(o))).toBe(true);
   });
