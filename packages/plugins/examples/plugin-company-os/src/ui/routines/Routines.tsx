@@ -57,7 +57,7 @@ export function Routines({ companyId }: { companyId: string | null }) {
         <div>
           <p style={{ margin: 0, fontSize: 15, fontWeight: 650, color: tokens.fg }}>No routine health yet</p>
           <p style={{ margin: "4px 0 0", fontSize: 13, color: tokens.muted, maxWidth: 420, lineHeight: 1.5 }}>
-            Routine contracts are read from each agent’s <code style={{ fontFamily: tokens.mono }}>company_os</code> block on the next derive.
+            Routine contracts are read from each agent’s <code style={{ fontFamily: tokens.mono }}>company-os.json</code> sidecar on the next derive.
           </p>
         </div>
         {companyId ? (

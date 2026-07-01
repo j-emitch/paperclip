@@ -44,8 +44,8 @@ export const HOME_RECENT_WORK_LIMIT = 20 as const;
 /**
  * The COS-1 default pinned briefing set (spec §5.3) — the ORDERED stable role
  * ids. Each resolves to a live routine key via `PINNED_ROLE_TO_ROUTINE` (bound
- * in `deriveOrientation` from the AGENTS `company_os:` blocks), skipping any role
- * whose routine isn't present. The role ids are the stable contract (used in the
+ * in `deriveOrientation` from routine-contract signals), skipping any role whose
+ * routine isn't present. The role ids are the stable contract (used in the
  * §11 AC); COS-1R (§17) later replaces this default with an evidence-driven set.
  */
 export const DEFAULT_PINNED_ROLES = [

@@ -22,7 +22,7 @@ export const ARTIFACT_SOURCE_ID = "artifact";
 /**
  * Union of artifact globs scanned per repo (repo-relative; non-matches return
  * nothing). `reports/**` is indexed WHOLE rather than dir-by-dir so the index
- * catches every routine-output directory an AGENTS `company_os` block can declare
+ * catches every routine-output directory an agent routine contract can declare
  * (strategy / health / process / journal / harvest / standup / weekly / …) — the
  * routine-health join (COS-0f) depends on those artifacts being present, and a
  * hardcoded dir list silently drops the routines whose dir isn't enumerated.
@@ -50,7 +50,7 @@ const TYPE_BY_FRONTMATTER: Record<string, ArtifactType> = {
  * Path heuristic when frontmatter carries no `type`. Order matters: the specific
  * report families (cannons, handoffs) win first; every OTHER file under
  * `reports/**` is a routine output. That catch-all is deliberate — it means a NEW
- * routine-output directory (declared in an AGENTS `company_os` block) is indexed
+ * routine-output directory (declared in an agent routine contract) is indexed
  * the moment it exists, without editing this list, so the routine-health join
  * never silently drops a routine whose dir we forgot to enumerate.
  */

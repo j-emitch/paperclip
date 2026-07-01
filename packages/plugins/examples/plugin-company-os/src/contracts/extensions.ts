@@ -77,8 +77,8 @@ export interface TaxonomyResolver {
  * board surfaces* (archive shipped backlog, reconcile spec §10 + CONTEXT
  * "What's In Progress", close phantom tickets) under a tiered, evidence-gated,
  * git-reversible authority model. Adopted as **COS-3** in the COS family so it
- * shares THIS signal layer + the AGENTS.md `company_os` directive blocks — no
- * second parser, no second registry.
+ * shares THIS signal layer + the routine-contract metadata seam — no second
+ * parser, no second registry.
  *
  * Declared here as a FORWARD-COMPAT seam only. PWA-01 is a draft spec (not yet
  * spec-verified) and its tier assignments are Joe's open questions (PWA-01 §12
@@ -123,10 +123,10 @@ export interface HygieneActionSignal {
 }
 
 /**
- * The per-agent write-authority stanza COS-3 adds to the AGENTS.md `company_os`
- * directive block (sibling to `routines:`). COS-0's RoutineContractSource parser
- * (COS-0c) treats it as an OPTIONAL key, so PWA can land it without a parser
- * change; COS-0 never populates it and encodes no tier policy.
+ * The per-agent write-authority stanza COS-3 adds beside routine contracts.
+ * The legacy AGENTS parser already tolerates an optional `write_authority:` key,
+ * so PWA can land it without breaking activation fallback; COS-0 never populates
+ * it and encodes no tier policy.
  */
 export interface WriteAuthority {
   readonly tier: WriteTier;

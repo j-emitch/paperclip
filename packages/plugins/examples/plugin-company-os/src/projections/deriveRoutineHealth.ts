@@ -1,8 +1,8 @@
 /**
- * `deriveRoutineHealth` — pure join of routine CONTRACTS (`RoutineSignal` from
- * the AGENTS.md `company_os` blocks) against artifact PRESENCE/mtime (the
- * `ArtifactSignal`s) and LAST-RUN (`RoutineSignal.lastRunAt`, set from
- * issues.read upstream), folded into an SLO verdict per routine.
+ * `deriveRoutineHealth` — pure join of routine CONTRACTS (`RoutineSignal`s from
+ * agent sidecars, with legacy AGENTS fallback during activation) against artifact
+ * PRESENCE/mtime (`ArtifactSignal`s) and LAST-RUN (`RoutineSignal.lastRunAt`,
+ * set from issues.read upstream), folded into an SLO verdict per routine.
  *
  * Verdict ladder (against the cadence window W):
  *   never_ran — no artifact ever AND no last-run

@@ -1,7 +1,7 @@
 /**
  * `RoutineHealthV1` — the routine-SLO projection (spec §7), the join of:
- *   (a) each agent's routine CONTRACT (AGENTS.md fenced `company_os` block:
- *       cadence + expected_artifact + owner_agent),
+ *   (a) each agent's routine CONTRACT (sidecar primary, legacy AGENTS fallback:
+ *       cadence + expected artifact/proposal + owner agent),
  *   (b) artifact PRESENCE/mtime from the artifact index,
  *   (c) LAST-RUN from issues.read,
  * folded into an SLO verdict per routine (fresh / stale / missing / never_ran).

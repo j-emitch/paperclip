@@ -41,8 +41,9 @@ import { aggregateSourceFreshness, diagnosticsFromFreshness, isoFrom } from "./_
 
 /**
  * The stable role id → live routine key binding (spec §5.3, OI-3). Bound from the
- * AGENTS `company_os:` blocks (verified live 2026-06-26); a role whose routine
- * isn't present is skipped, so the briefing is non-empty whenever ≥1 resolves.
+ * routine-contract source (sidecars first, legacy AGENTS fallback during
+ * activation); a role whose routine isn't present is skipped, so the briefing is
+ * non-empty whenever ≥1 resolves.
  */
 const PINNED_ROLE_TO_ROUTINE: Record<string, string> = {
   "daily-standup": "daily-standup",

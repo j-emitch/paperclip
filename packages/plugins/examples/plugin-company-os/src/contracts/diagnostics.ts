@@ -1,9 +1,8 @@
 /**
- * Diagnostics + per-source freshness — primitives shared by ALL three
- * projection contracts (board, artifact index, routine health) and the
- * collection-runs diagnostics row.
+ * Diagnostics + per-source freshness — primitives shared by every persisted
+ * projection contract and the collection-runs diagnostics row.
  *
- * Defined once here (rather than triplicated across the projection files) so a
+ * Defined once here (rather than repeated across the projection files) so a
  * surface that wants to render "why is this stale / what failed" reads one
  * shape everywhere. zod-validated because these cross the DB/IPC boundary
  * inside every persisted projection.
