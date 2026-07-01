@@ -154,4 +154,41 @@ describe("deriveAgentSystem", () => {
       agentKey: null,
     });
   });
+
+  it("deduplicates duplicate company roots by owner agent", () => {
+    const system = deriveAgentSystem(
+      bundleOf([
+        agentSignal("cto", {
+          displayName: "CTO",
+          repo: "company-copy",
+          freshness: "cached",
+          budgetMonthlyCents: 4000,
+          duties: [{ id: "copied-docs", surface: "company/docs" }],
+        }),
+        agentSignal("cto", {
+          displayName: "CTO",
+          repo: "company",
+          freshness: "live",
+          budgetMonthlyCents: 8000,
+          duties: [{ id: "technical-analysis", surface: "company/reports/analysis" }],
+        }),
+        routine("technical-analysis", "daily", "company/reports/analysis/*.md", {
+          ownerAgent: "CTO",
+          displayName: "Technical Analysis",
+          freshnessKind: "artifact",
+        }),
+      ]),
+      NOW,
+    );
+
+    expect(system.agents).toHaveLength(1);
+    expect(system.agents[0]).toMatchObject({
+      displayName: "CTO",
+      budgetMonthlyCents: 8000,
+      duties: [{ id: "technical-analysis", surface: "company/reports/analysis", kind: "duty" }],
+    });
+    expect(system.agents[0]?.ownedRoutines).toHaveLength(1);
+    expect(system.vitals.agentCount).toBe(1);
+    expect(system.vitals.budgetMonthlyCentsTotal).toBe(8000);
+  });
 });

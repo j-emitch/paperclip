@@ -68,7 +68,7 @@ const OVERLAP_RESOLUTIONS: readonly OverlapResolution[] = [
 
 export function deriveAgentSystem(bundle: SignalBundle, nowMs: number): AgentSystemV1 {
   const signals = bundle.batches.flatMap((b) => b.signals);
-  const agentSignals = signals.filter(isAgentSignal).sort(agentOrder);
+  const agentSignals = uniqueAgentSignals(signals.filter(isAgentSignal));
   const routineSignals = signals.filter(isRoutineSignal);
   const routineHealth = deriveRoutineHealth(bundle, nowMs);
   const diagnostics: AgentDiagnosticV1[] = [];
@@ -309,6 +309,29 @@ function overlappingSurface(a: string, b: string): string | null {
 
 function agentOrder(a: AgentSignal, b: AgentSignal): number {
   return ownerRank(a.displayName, b.displayName) || a.agentKey.localeCompare(b.agentKey);
+}
+
+function uniqueAgentSignals(agentSignals: readonly AgentSignal[]): AgentSignal[] {
+  const byOwner = new Map<OwnerAgent, AgentSignal>();
+  for (const agent of [...agentSignals].sort(agentOrder)) {
+    const incumbent = byOwner.get(agent.displayName);
+    if (!incumbent || isBetterAgentSource(agent, incumbent)) {
+      byOwner.set(agent.displayName, agent);
+    }
+  }
+  return [...byOwner.values()].sort(agentOrder);
+}
+
+function isBetterAgentSource(candidate: AgentSignal, incumbent: AgentSignal): boolean {
+  const qualityDelta = agentSourceQuality(candidate) - agentSourceQuality(incumbent);
+  if (qualityDelta !== 0) return qualityDelta < 0;
+  return candidate.repo.localeCompare(incumbent.repo) < 0;
+}
+
+function agentSourceQuality(agent: AgentSignal): number {
+  const freshnessRank = agent.freshness === "live" ? 0 : agent.freshness === "cached" ? 1 : 2;
+  const degradedErrors = agent.errors.filter((error) => error.degraded).length;
+  return freshnessRank * 100 + degradedErrors * 10 + agent.errors.length;
 }
 
 function ownerRank(a: OwnerAgent, b?: OwnerAgent): number {
