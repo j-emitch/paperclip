@@ -6,6 +6,8 @@ import {
   loadSourceVersions,
   readAgentSystem,
   readBoardState,
+  readOrientation,
+  readRoutineHealth,
   releaseDeriveLock,
   replaceSourceVersions,
   writeProjections,
@@ -90,6 +92,26 @@ describe("cache — projection write/read round-trip + version gate", () => {
     expect(board?.chips.find((c) => c.id === "COS-0")?.column).toBe("in_progress");
     const agentSystem = await readAgentSystem(db, CO);
     expect(agentSystem?.agents).toEqual([]);
+  });
+
+  it("writes COS-1R routine and orientation snapshots at schema version 2", async () => {
+    const db = new FakeDb();
+    await acquired(db, "A");
+    await writeProjections(db, CO, projections, "A");
+    expect(db.routine.get(CO)?.schemaVersion).toBe(2);
+    expect(db.orientation.get(CO)?.schemaVersion).toBe(2);
+    expect((await readRoutineHealth(db, CO))?.schemaVersion).toBe(2);
+    expect((await readOrientation(db, CO))?.schemaVersion).toBe(2);
+  });
+
+  it("rejects pre-COS-1R routine and orientation rows until re-derived", async () => {
+    const db = new FakeDb();
+    await acquired(db, "A");
+    await writeProjections(db, CO, projections, "A");
+    db.routine.get(CO)!.schemaVersion = 1;
+    db.orientation.get(CO)!.schemaVersion = 1;
+    expect(await readRoutineHealth(db, CO)).toBeNull();
+    expect(await readOrientation(db, CO)).toBeNull();
   });
 
   it("a stale derive cannot overwrite after losing the lease (fenced write throws)", async () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PINNED_ROLES,
   HOME_RECENT_COMMITS_LIMIT,
+  ORIENTATION_SCHEMA_VERSION,
   orientationV1Schema,
   parseOrientationV1,
   safeParseOrientationV1,
@@ -10,7 +11,7 @@ import {
 const TAXONOMY = { schemaVersion: 1 as const, groups: [], source: "derived-default" as const, diagnostics: [] };
 
 const MINIMAL = {
-  schemaVersion: 1 as const,
+  schemaVersion: ORIENTATION_SCHEMA_VERSION,
   derivedAt: "2026-06-23T00:00:00.000Z",
   taxonomy: TAXONOMY,
   briefing: [],
@@ -26,7 +27,7 @@ const MINIMAL = {
 describe("OrientationV1", () => {
   it("a minimal payload round-trips through parse", () => {
     const parsed = parseOrientationV1(MINIMAL);
-    expect(parsed.schemaVersion).toBe(1);
+    expect(parsed.schemaVersion).toBe(ORIENTATION_SCHEMA_VERSION);
     expect(parsed.metrics.openPrs).toBe(0);
   });
 
@@ -100,7 +101,7 @@ describe("OrientationV1", () => {
   });
 
   it("rejects a wrong schemaVersion (forces re-derive on read)", () => {
-    expect(orientationV1Schema.safeParse({ ...MINIMAL, schemaVersion: 2 }).success).toBe(false);
+    expect(orientationV1Schema.safeParse({ ...MINIMAL, schemaVersion: 1 }).success).toBe(false);
   });
 
   it("exposes the stable default-pinned-role contract", () => {

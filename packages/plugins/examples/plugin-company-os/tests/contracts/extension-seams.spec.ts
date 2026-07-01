@@ -13,6 +13,7 @@ import {
   parseArtifactIndexV1,
   parseBoardStateV1,
   parseRoutineHealthV1,
+  ROUTINE_HEALTH_SCHEMA_VERSION,
   safeParseBoardStateV1,
   type ArtifactSignal,
   type Clock,
@@ -284,7 +285,7 @@ describe("projection contracts validate", () => {
     expect(index.countsByType.spec).toBe(0);
 
     const health = parseRoutineHealthV1({
-      schemaVersion: 1,
+      schemaVersion: ROUTINE_HEALTH_SCHEMA_VERSION,
       derivedAt: "2026-06-23T00:00:00.000Z",
       routines: [],
       sources: [],

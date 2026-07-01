@@ -35,7 +35,7 @@ import {
   type RoutineVerdict,
 } from "./vocab.js";
 
-export const ORIENTATION_SCHEMA_VERSION = 1 as const;
+export const ORIENTATION_SCHEMA_VERSION = 2 as const;
 
 /** Home glance caps (spec §5.3). */
 export const HOME_RECENT_COMMITS_LIMIT = 20 as const;

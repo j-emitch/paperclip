@@ -6,6 +6,7 @@
  */
 
 import {
+  ORIENTATION_SCHEMA_VERSION,
   parseOrientationV1,
   type OrientationV1,
 } from "../../../src/contracts/index.js";
@@ -15,7 +16,7 @@ export const HOME_NOW = Date.parse("2026-06-26T18:00:00Z");
 
 export function goldenOrientation(): OrientationV1 {
   return parseOrientationV1({
-    schemaVersion: 1,
+    schemaVersion: ORIENTATION_SCHEMA_VERSION,
     derivedAt: "2026-06-26T17:56:00Z",
     taxonomy: taxonomyFixture(),
     briefing: [
@@ -132,7 +133,7 @@ export function goldenOrientation(): OrientationV1 {
 /** Everything derived but empty — Home must render every panel's calm 0-state. */
 export function emptyOrientation(): OrientationV1 {
   return parseOrientationV1({
-    schemaVersion: 1,
+    schemaVersion: ORIENTATION_SCHEMA_VERSION,
     derivedAt: "2026-06-26T17:56:00Z",
     taxonomy: taxonomyFixture(),
     briefing: [],

@@ -20,7 +20,7 @@ import {
   type RoutineVerdict,
 } from "./vocab.js";
 
-export const ROUTINE_HEALTH_SCHEMA_VERSION = 1 as const;
+export const ROUTINE_HEALTH_SCHEMA_VERSION = 2 as const;
 
 export const routineVerdictSchema = z.enum(ROUTINE_VERDICTS);
 export const nullableRoutineVerdictSchema = z.union([routineVerdictSchema, z.null()]);
