@@ -1,14 +1,21 @@
 /**
- * The cockpit's tab taxonomy — single source of truth consumed by both the
- * page tab bar and the route sidebar so they cannot drift. Adding the COS-1
- * Teaching / COS-2 Knowledge surfaces is a one-line change here.
+ * The cockpit's tab taxonomy — single source of truth consumed by both the page
+ * tab bar and the route sidebar so they cannot drift. The array order IS the
+ * display order: the live daily-driver surfaces first, in workflow order
+ * (Home -> Board -> Source -> Docs -> Routines -> Skills), then the placeholders
+ * in arrival order (Teaching = COS-2, Knowledge = COS-3, Hygiene = COS-4).
+ * Adding a surface or lighting one up is a one-line change here.
  */
-// `home` + `source` are pre-wired in 1d.8 (union member + icon + app branch) but
-// NOT added to the visible COMPANY_OS_TABS array until their views land (1e/1f),
-// so the rail never renders a half-wired clickable tab. `docs` is NOT added here —
-// it's the `reports`→`docs` rename in 1h (adding it before then is an excess-property
-// error against the exhaustive TAB_ICONS Record).
-export type CompanyOsTabKey = "home" | "source" | "board" | "reports" | "routines" | "skills" | "hygiene" | "teaching" | "knowledge";
+export type CompanyOsTabKey =
+  | "home"
+  | "board"
+  | "source"
+  | "docs"
+  | "routines"
+  | "skills"
+  | "teaching"
+  | "knowledge"
+  | "hygiene";
 
 export interface CompanyOsTab {
   key: CompanyOsTabKey;
@@ -16,7 +23,7 @@ export interface CompanyOsTab {
   description: string;
   /** The phase that lights this tab up with live data. */
   liveIn: string;
-  /** Placeholder tabs reserved for COS-1 / COS-2. */
+  /** Placeholder tabs reserved for a later COS phase. */
   placeholder?: boolean;
 }
 
@@ -40,10 +47,10 @@ export const COMPANY_OS_TABS: readonly CompanyOsTab[] = [
     liveIn: "COS-1f",
   },
   {
-    key: "reports",
-    label: "Reports",
-    description: "Specs, handoffs, and review reports — rendered in place.",
-    liveIn: "COS-0f",
+    key: "docs",
+    label: "Docs",
+    description: "Specs, plans, handoffs, backlog, and review reports — from every branch and worktree, rendered in place.",
+    liveIn: "COS-1g",
   },
   {
     key: "routines",
@@ -58,30 +65,54 @@ export const COMPANY_OS_TABS: readonly CompanyOsTab[] = [
     liveIn: "COS-1h",
   },
   {
-    key: "hygiene",
-    label: "Hygiene",
-    description: "Paperclip write-authority audit — what the agents archived, reconciled, and closed (PWA-01). Arrives in COS-3.",
-    liveIn: "COS-3",
-    placeholder: true,
-  },
-  {
     key: "teaching",
     label: "Teaching",
-    description: "The teaching loop surface — arrives in COS-1.",
-    liveIn: "COS-1",
+    description: "The teaching loop — captured nuggets, digest queue, and the synthesized units. Arrives in COS-2.",
+    liveIn: "COS-2",
     placeholder: true,
   },
   {
     key: "knowledge",
     label: "Knowledge",
-    description: "Library / classifier / graph convergence — arrives in COS-2.",
-    liveIn: "COS-2",
+    description: "Library / classifier / graph convergence. Arrives in COS-3.",
+    liveIn: "COS-3",
+    placeholder: true,
+  },
+  {
+    key: "hygiene",
+    label: "Hygiene",
+    description: "Paperclip write-authority audit — what the agents archived, reconciled, and closed (PWA-01). Arrives in COS-4.",
+    liveIn: "COS-4",
     placeholder: true,
   },
 ] as const;
 
-export const DEFAULT_TAB_KEY: CompanyOsTabKey = "board";
+/** Home is the daily-driver landing (COS-1h IA reorg). */
+export const DEFAULT_TAB_KEY: CompanyOsTabKey = "home";
 
 export function isCompanyOsTabKey(value: string): value is CompanyOsTabKey {
   return COMPANY_OS_TABS.some((tab) => tab.key === value);
+}
+
+/**
+ * Tab keys that were renamed, mapped to their current key. `reports` became
+ * `docs` when the Docs surface superseded the Reports tab (COS-1g/1h). Kept in
+ * lockstep with the deep-link migrator in `docs/legacy-link.ts`, which performs
+ * the equivalent `{tab:"reports",…}` -> `{tab:"docs",…}` remap for deep-link
+ * payloads; this map is the tab-KEY side.
+ */
+const LEGACY_TAB_KEYS: Readonly<Record<string, CompanyOsTabKey>> = {
+  reports: "docs",
+};
+
+/**
+ * Resolve an arbitrary string to a live tab key: a current key maps to itself, a
+ * known legacy key (e.g. `reports`) maps forward, and anything unrecognized
+ * falls back to the default landing tab. Used by the active-tab store to
+ * sanitize a persisted key across the `reports` -> `docs` rename so a returning
+ * session never lands on a dead tab.
+ */
+export function normalizeTabKey(value: string): CompanyOsTabKey {
+  if (isCompanyOsTabKey(value)) return value;
+  return LEGACY_TAB_KEYS[value] ?? DEFAULT_TAB_KEY;
 }

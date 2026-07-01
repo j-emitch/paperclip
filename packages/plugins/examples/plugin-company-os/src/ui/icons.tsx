@@ -40,7 +40,7 @@ export function BoardIcon({ size = 16, strokeWidth = 1.8 }: IconProps) {
   ));
 }
 
-export function ReportsIcon({ size = 16, strokeWidth = 1.8 }: IconProps) {
+export function DocsIcon({ size = 16, strokeWidth = 1.8 }: IconProps) {
   return svg(size, strokeWidth, (
     <>
       <path d="M6 2.5h8l4 4V21a.5.5 0 0 1-.5.5h-11A.5.5 0 0 1 6 21z" />
@@ -234,14 +234,13 @@ export function SkillsIcon({ size = 16, strokeWidth = 1.8 }: IconProps) {
 }
 
 export const TAB_ICONS: Record<CompanyOsTabKey, (props: IconProps) => ReactElement> = {
-  // home + source are pre-wired in 1d.8; their visible tabs land in 1e/1f.
   home: HomeIcon,
-  source: SourceIcon,
   board: BoardIcon,
-  reports: ReportsIcon,
+  source: SourceIcon,
+  docs: DocsIcon,
   routines: RoutinesIcon,
   skills: SkillsIcon,
-  hygiene: HygieneIcon,
   teaching: TeachingIcon,
   knowledge: KnowledgeIcon,
+  hygiene: HygieneIcon,
 };

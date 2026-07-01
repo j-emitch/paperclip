@@ -127,7 +127,7 @@ export function CompanyOsPage({ context }: PluginPageProps) {
     current.key === "home" ||
     current.key === "source" ||
     current.key === "board" ||
-    current.key === "reports" ||
+    current.key === "docs" ||
     current.key === "routines" ||
     current.key === "skills";
 
@@ -176,14 +176,12 @@ function TabPanel({
   // Key the live surfaces by companyId so switching companies REMOUNTS them —
   // `usePluginData` keeps the prior company's data while the next request is in
   // flight (stale-while-revalidate), and a remount clears it so one company's
-  // board/reports/routines can never flash under another's id.
+  // board/docs/routines can never flash under another's id.
   const key = companyId ?? "_no_company";
   switch (tabKey) {
     case "board":
       return <CompanyOsBoard key={key} companyId={companyId} />;
-    // The Docs surface (COS-1g) lives on the existing `reports` key — the content
-    // swap; the `reports → docs` key rename happens atomically in 1h.
-    case "reports":
+    case "docs":
       return <Docs key={key} companyId={companyId} />;
     case "routines":
       return <Routines key={key} companyId={companyId} />;

@@ -34,9 +34,10 @@ function renderHostMarkdown(markdown: string) {
 }
 
 /**
- * Map a typed deep-link to the tab that hosts its target. `docs` lands on the
- * `reports` key until the 1h `reports→docs` rename (the Docs surface already
- * lives on that key post-1g); `source`/`board` are stable.
+ * Map a typed deep-link to the tab that hosts its target. Post-1h the deep-link
+ * tab and the cockpit tab key are 1:1 (`docs` -> `docs`, `source` -> `source`,
+ * `board` -> `board`) — the indirection stays so a future split (e.g. a
+ * deep-link whose home tab differs from its name) is a one-line change here.
  */
 function deepLinkTabKey(link: DeepLink): CompanyOsTabKey {
   switch (link.tab) {
@@ -45,7 +46,7 @@ function deepLinkTabKey(link: DeepLink): CompanyOsTabKey {
     case "board":
       return "board";
     case "docs":
-      return "reports";
+      return "docs";
   }
 }
 
