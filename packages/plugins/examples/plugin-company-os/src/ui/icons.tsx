@@ -30,12 +30,15 @@ function svg(size: number, strokeWidth: number, children: ReactNode) {
   );
 }
 
-export function BoardIcon({ size = 16, strokeWidth = 1.8 }: IconProps) {
+export function AtlasIcon({ size = 16, strokeWidth = 1.8 }: IconProps) {
+  // Stacked map sheets — the Build Atlas: many spec-prefix families layered into
+  // domains. Distinct from the Board's columns and the Agents constellation, so
+  // the tab icon reads as "the atlas of what we've built".
   return svg(size, strokeWidth, (
     <>
-      <rect x="3" y="3" width="6" height="14" rx="1.4" />
-      <rect x="9.5" y="3" width="6" height="9" rx="1.4" transform="translate(0.5 0)" />
-      <rect x="16" y="3" width="5" height="11" rx="1.4" />
+      <path d="M12 3 3 7.5 12 12l9-4.5z" />
+      <path d="M3 12l9 4.5 9-4.5" />
+      <path d="M3 16.5 12 21l9-4.5" />
     </>
   ));
 }
@@ -242,7 +245,7 @@ export function SkillsIcon({ size = 16, strokeWidth = 1.8 }: IconProps) {
 
 export const TAB_ICONS: Record<CompanyOsTabKey, (props: IconProps) => ReactElement> = {
   home: HomeIcon,
-  board: BoardIcon,
+  atlas: AtlasIcon,
   source: SourceIcon,
   docs: DocsIcon,
   agents: AgentsIcon,

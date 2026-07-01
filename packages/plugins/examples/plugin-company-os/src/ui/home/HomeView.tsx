@@ -87,7 +87,7 @@ export function HomeView({
       title="Cross-session work"
       count={orientation.recentWork.length}
       isMobile={isMobile}
-      action={orientation.recentWork.length > 0 ? <SeeAll label="Board" onClick={() => onNavigateTab?.("board")} /> : undefined}
+      action={orientation.recentWork.length > 0 ? <SeeAll label="Atlas" onClick={() => onNavigateTab?.("atlas")} /> : undefined}
     >
       <CrossSessionWork recentWork={orientation.recentWork} taxonomy={orientation.taxonomy} now={now} isMobile={isMobile} onFollow={onFollow} />
     </Panel>

@@ -2,13 +2,13 @@
  * The cockpit's tab taxonomy — single source of truth consumed by both the page
  * tab bar and the route sidebar so they cannot drift. The array order IS the
  * display order: the live daily-driver surfaces first, in workflow order
- * (Home -> Board -> Source -> Docs -> Agents -> Skills), then the placeholders
+ * (Home -> Atlas -> Source -> Docs -> Agents -> Skills), then the placeholders
  * in arrival order (Teaching = COS-2, Knowledge = COS-3, Hygiene = COS-4).
  * Adding a surface or lighting one up is a one-line change here.
  */
 export type CompanyOsTabKey =
   | "home"
-  | "board"
+  | "atlas"
   | "source"
   | "docs"
   | "agents"
@@ -35,10 +35,10 @@ export const COMPANY_OS_TABS: readonly CompanyOsTab[] = [
     liveIn: "COS-1e",
   },
   {
-    key: "board",
-    label: "Board",
-    description: "Auto-updating Kanban across systems x spec-prefix families. Chips move themselves.",
-    liveIn: "COS-0e",
+    key: "atlas",
+    label: "Atlas",
+    description: "The Build Atlas — every spec-prefix family with a Spec·Plan·Build·Prod lifecycle, built bar, and lineage across the workspace.",
+    liveIn: "COS-5d",
   },
   {
     key: "source",
@@ -99,20 +99,23 @@ export function isCompanyOsTabKey(value: string): value is CompanyOsTabKey {
  * Tab keys that were renamed, mapped to their current key. `reports` became
  * `docs` when the Docs surface superseded the Reports tab (COS-1g/1h); `routines`
  * became `agents` when the Agents cockpit subsumed the standalone routine board
- * (COS-1R). Single source of the legacy tab-key map, consumed by the active-tab
+ * (COS-1R); `board` became `atlas` when the Build Atlas replaced the Kanban
+ * (COS-5d). Single source of the legacy tab-key map, consumed by the active-tab
  * store to resolve a persisted pre-rename key forward instead of onto a dead tab.
  */
 const LEGACY_TAB_KEYS: Readonly<Record<string, CompanyOsTabKey>> = {
   reports: "docs",
   routines: "agents",
+  board: "atlas",
 };
 
 /**
  * Resolve an arbitrary string to a live tab key: a current key maps to itself, a
  * known legacy key (e.g. `reports`) maps forward, and anything unrecognized
  * falls back to the default landing tab. Used by the active-tab store to
- * sanitize a persisted key across the `reports` -> `docs` and `routines` ->
- * `agents` renames so a returning session never lands on a dead tab.
+ * sanitize a persisted key across the `reports` -> `docs`, `routines` ->
+ * `agents`, and `board` -> `atlas` renames so a returning session never lands on
+ * a dead tab.
  */
 export function normalizeTabKey(value: string): CompanyOsTabKey {
   if (isCompanyOsTabKey(value)) return value;

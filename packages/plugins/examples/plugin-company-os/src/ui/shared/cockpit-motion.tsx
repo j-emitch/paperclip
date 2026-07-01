@@ -22,6 +22,8 @@ const CSS = `
 @keyframes cos-fx-pulse { 0%, 100% { box-shadow: 0 0 0 0 ${withAlpha(statusColors.danger, 0.5)}; } 50% { box-shadow: 0 0 0 4px ${withAlpha(statusColors.danger, 0)}; } }
 @keyframes cos-fx-agent-pulse { 0%, 100% { opacity: 0.12; } 50% { opacity: 0.42; } }
 @keyframes cos-fx-drawer-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes cos-fx-flow { from { background-position: 0 0; } to { background-position: 16px 0; } }
+@keyframes cos-fx-live { 0%, 100% { box-shadow: 0 0 0 0 ${withAlpha(statusColors.live, 0.5)}; } 50% { box-shadow: 0 0 0 4px ${withAlpha(statusColors.live, 0)}; } }
 
 .cos-fx-enter { animation: cos-fx-rise 460ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 
@@ -69,6 +71,10 @@ const CSS = `
 .cos-fx-fade { animation: cos-fx-fade-in 220ms ease both; }
 .cos-fx-pulse-dot { animation: cos-fx-pulse 2200ms ease-in-out infinite; }
 .cos-fx-agent-pulse { animation: cos-fx-agent-pulse 2800ms ease-in-out infinite; }
+/* A "live" indicator — a gentle green ring pulse (the Atlas freshness dot). */
+.cos-fx-live-dot { border-radius: 999px; animation: cos-fx-live 2200ms ease-in-out infinite; }
+/* A slow leftward flow for a rolling-program's striped built bar. */
+.cos-fx-flow { animation: cos-fx-flow 1.4s linear infinite; }
 
 summary.cos-fx-summary { list-style: none; }
 summary.cos-fx-summary::-webkit-details-marker { display: none; }
@@ -77,7 +83,8 @@ details[open] > summary.cos-fx-summary .cos-fx-caret { transform: rotate(0deg); 
 details[open] > .cos-fx-drawer-body { animation: cos-fx-drawer-open 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 
 @media (prefers-reduced-motion: reduce) {
-  .cos-fx-enter, .cos-fx-drawer, .cos-fx-scrim, .cos-fx-fade, .cos-fx-pulse-dot, .cos-fx-agent-pulse { animation: none; }
+  .cos-fx-enter, .cos-fx-drawer, .cos-fx-scrim, .cos-fx-fade, .cos-fx-pulse-dot, .cos-fx-agent-pulse,
+  .cos-fx-flow, .cos-fx-live-dot { animation: none; }
   /* The drawer-open rule is \`details[open] > .cos-fx-drawer-body\` (specificity 0,2,1);
      a bare \`.cos-fx-drawer-body\` (0,1,0) reset loses on specificity and the fade would
      still play under reduced-motion — match the selector so the override actually wins. */

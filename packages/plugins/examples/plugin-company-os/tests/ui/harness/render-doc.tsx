@@ -18,6 +18,10 @@ import { SourceView } from "../../../src/ui/source/SourceView.js";
 import { BranchRow } from "../../../src/ui/source/BranchRow.js";
 import { DocsView } from "../../../src/ui/docs/DocsView.js";
 import { AgentsView } from "../../../src/ui/agents/AgentsView.js";
+import { BuildAtlasView } from "../../../src/ui/atlas/BuildAtlasView.js";
+import { FamilyCard } from "../../../src/ui/atlas/FamilyCard.js";
+import { SurfaceEmpty } from "../../../src/ui/shared/surface-state.js";
+import { AtlasIcon } from "../../../src/ui/icons.js";
 import { CockpitMotionStyles } from "../../../src/ui/shared/cockpit-motion.js";
 import { EMPTY_FILTER } from "../../../src/ui/reports/reports-view-model.js";
 import type { BoardStateV1 } from "../../../src/contracts/index.js";
@@ -27,6 +31,7 @@ import { goldenOrientation, emptyOrientation, HOME_NOW } from "../fixtures/home.
 import { goldenGitState, emptyGitState, SOURCE_NOW } from "../fixtures/source.js";
 import { goldenDocIndex, emptyDocIndex, dogfoodSpecDocId, DOCS_NOW } from "../fixtures/docs.js";
 import { goldenAgentSystem, emptyAgentSystem, AGENTS_NOW } from "../fixtures/agents.js";
+import { goldenAtlas, ATLAS_NOW } from "../fixtures/atlas.js";
 import { NOW } from "../../fixtures/signals.js";
 
 const noop = () => {};
@@ -144,6 +149,38 @@ function agents(isMobile: boolean, opts?: { empty?: boolean; selected?: string }
   );
 }
 
+function atlas(isMobile: boolean): ReactElement {
+  return <BuildAtlasView atlas={goldenAtlas()} now={ATLAS_NOW} isMobile={isMobile} onRefresh={noop} refreshing={false} />;
+}
+
+function atlasStale(): ReactElement {
+  return <BuildAtlasView atlas={goldenAtlas()} now={ATLAS_NOW + 10 * 60 * 1000} isMobile={false} onRefresh={noop} refreshing={false} />;
+}
+
+function atlasEmpty(): ReactElement {
+  return (
+    <SurfaceEmpty
+      icon={<AtlasIcon size={24} />}
+      title="No atlas yet"
+      body="The cockpit hasn’t derived any families yet. The Build Atlas fills in automatically as specs, plans, branches, PRs, and merges land across the workspace."
+      onRefresh={noop}
+    />
+  );
+}
+
+/** An expanded family card — the SSR harness has no hydration, so the open body
+ *  (builds + tickets + lineage tags) is screenshotted via `defaultExpanded`. */
+function atlasExpanded(): ReactElement {
+  const family = goldenAtlas().families.find((f) => f.prefix === "COS");
+  if (!family) throw new Error("harness: COS family missing from goldenAtlas");
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+      <CockpitMotionStyles />
+      <FamilyCard family={family} now={ATLAS_NOW} defaultExpanded />
+    </div>
+  );
+}
+
 /** A single expanded BranchRow — proves the commit list renders (the harness is
  *  SSR-only with no hydration, so an open row is screenshotted via `defaultExpanded`,
  *  not a click). */
@@ -191,5 +228,10 @@ export function harnessDocs(): HarnessDoc[] {
     { name: "agents-mobile", width: 390, html: document("Agents · mobile", renderToStaticMarkup(agents(true)), 390) },
     { name: "agents-empty", width: 1180, html: document("Agents · empty (all 0-states)", renderToStaticMarkup(agents(false, { empty: true })), 1180) },
     { name: "agents-selected", width: 1180, html: document("Agents · CTO selected", renderToStaticMarkup(agents(false, { selected: "cto" })), 1180) },
+    { name: "atlas-desktop", width: 1180, html: document("Atlas · populated", renderToStaticMarkup(atlas(false)), 1180) },
+    { name: "atlas-mobile", width: 390, html: document("Atlas · mobile", renderToStaticMarkup(atlas(true)), 390) },
+    { name: "atlas-stale", width: 1180, html: document("Atlas · stale", renderToStaticMarkup(atlasStale()), 1180) },
+    { name: "atlas-empty", width: 1180, html: document("Atlas · empty", renderToStaticMarkup(atlasEmpty()), 720) },
+    { name: "atlas-expanded", width: 760, html: document("Atlas · expanded family", renderToStaticMarkup(atlasExpanded()), 760) },
   ];
 }

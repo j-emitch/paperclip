@@ -19,7 +19,7 @@ import { TAB_ICONS } from "../../src/ui/icons.js";
 
 const EXPECTED_ORDER: readonly CompanyOsTabKey[] = [
   "home",
-  "board",
+  "atlas",
   "source",
   "docs",
   "agents",
@@ -57,6 +57,16 @@ describe("tab taxonomy", () => {
     expect(isCompanyOsTabKey("routines")).toBe(false);
   });
 
+  it("has fully retired the `board` key in favour of `atlas` (COS-5d)", () => {
+    const keys = COMPANY_OS_TABS.map((t) => t.key);
+    expect(keys).not.toContain("board" as CompanyOsTabKey);
+    expect(keys).toContain("atlas");
+    const atlas = COMPANY_OS_TABS.find((t) => t.key === "atlas");
+    expect(atlas?.label).toBe("Atlas");
+    expect(atlas?.liveIn).toBe("COS-5d");
+    expect(isCompanyOsTabKey("board")).toBe(false);
+  });
+
   it("orders every live surface ahead of every placeholder", () => {
     const firstPlaceholder = COMPANY_OS_TABS.findIndex((t) => t.placeholder);
     const lastLive = [...COMPANY_OS_TABS].map((t, i) => ({ t, i })).filter(({ t }) => !t.placeholder).at(-1)?.i ?? -1;
@@ -86,6 +96,10 @@ describe("normalizeTabKey", () => {
 
   it("maps the legacy `routines` key forward to `agents`", () => {
     expect(normalizeTabKey("routines")).toBe("agents");
+  });
+
+  it("maps the legacy `board` key forward to `atlas` (COS-5d)", () => {
+    expect(normalizeTabKey("board")).toBe("atlas");
   });
 
   it("passes every current tab key through unchanged", () => {

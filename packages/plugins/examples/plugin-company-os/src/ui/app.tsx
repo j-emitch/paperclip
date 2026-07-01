@@ -11,7 +11,7 @@ import { COMPANY_OS_TABS, type CompanyOsTab } from "./tabs.js";
 import { TAB_ICONS, CompanyOsGlyph } from "./icons.js";
 import { useActiveTab, usePersistedTabHydration } from "./active-tab-store.js";
 import { useIsMobile } from "./hooks/useMediaQuery.js";
-import { CompanyOsBoard } from "./board/CompanyOsBoard.js";
+import { WorkSurface } from "./work-surface.js";
 import { Home } from "./home/Home.js";
 import { Source } from "./source/Source.js";
 import { Docs } from "./docs/Docs.js";
@@ -128,7 +128,7 @@ export function CompanyOsPage({ context }: PluginPageProps) {
   const isLive =
     current.key === "home" ||
     current.key === "source" ||
-    current.key === "board" ||
+    current.key === "atlas" ||
     current.key === "docs" ||
     current.key === "agents" ||
     current.key === "skills";
@@ -183,8 +183,8 @@ function TabPanel({
   // board/docs/routines can never flash under another's id.
   const key = companyId ?? "_no_company";
   switch (tabKey) {
-    case "board":
-      return <CompanyOsBoard key={key} companyId={companyId} />;
+    case "atlas":
+      return <WorkSurface key={key} companyId={companyId} />;
     case "docs":
       return <Docs key={key} companyId={companyId} />;
     case "agents":
