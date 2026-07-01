@@ -7,8 +7,8 @@
  * from the contract barrel: the browser import-boundary forbids a value import of
  * a contract module (it would drag zod into the bundle). This module carries NO
  * zod — a plain tuple + a pure ranking function — so it is safe to import from the
- * browser bundle and closes the prior triplication of this constant across
- * `agent-system-view`, `constellation-layout`, and `routines-view-model`.
+ * browser bundle and closes the prior duplication of this constant across
+ * `agent-system-view` and `constellation-layout`.
  */
 
 export const OWNER_AGENT_ORDER = ["CEO", "COO", "CTO", "Librarian"] as const;

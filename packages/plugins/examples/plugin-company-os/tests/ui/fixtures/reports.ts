@@ -1,19 +1,17 @@
 /**
- * Golden `ArtifactIndexV1` / `RoutineHealthV1` / `ReportContentV1` fixtures for
- * the Reports + Routines UI tests + the Playwright harness. The index + routine
- * health are built by running the REAL `deriveArtifactIndex` / `deriveRoutineHealth`
- * projections over curated signals, so they are contract-faithful by construction
- * and exercise every visual branch (each artifact type, cross-repo entries, a
- * stale source, and all four routine verdicts: fresh / stale / missing /
- * never_ran). The `report-content` payloads are validated against the contract.
+ * Golden `ArtifactIndexV1` / `ReportContentV1` fixtures for the Reports UI tests +
+ * the Playwright harness. The index is built by running the REAL
+ * `deriveArtifactIndex` projection over curated signals, so it is contract-faithful
+ * by construction and exercises every visual branch (each artifact type, cross-repo
+ * entries, a stale source). The `report-content` payloads are validated against the
+ * contract.
  */
 
-import type { ArtifactIndexV1, RoutineHealthV1, ReportContentV1 } from "../../../src/contracts/index.js";
+import type { ArtifactIndexV1, ReportContentV1 } from "../../../src/contracts/index.js";
 import { parseReportContentV1, REPORT_CONTENT_SCHEMA_VERSION } from "../../../src/contracts/report-content.js";
 import type { RepoFreshness, SignalBatch, SignalBundle } from "../../../src/contracts/WorkSignalSource.js";
 import { deriveArtifactIndex } from "../../../src/projections/deriveArtifactIndex.js";
-import { deriveRoutineHealth } from "../../../src/projections/deriveRoutineHealth.js";
-import { NOW, artifact, routine } from "../../fixtures/signals.js";
+import { NOW, artifact } from "../../fixtures/signals.js";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
@@ -85,24 +83,6 @@ const ARTIFACTS = [
   }),
 ];
 
-// --- Routines: one of each verdict, computed by the real projection ------------
-const ROUTINES = [
-  // CTO daily standup — artifact 2h old (within the 1d window) → fresh.
-  routine("daily-standup", "daily", "company/reports/standup/**/*.md", { displayName: "Daily Standup", ownerAgent: "CTO", lastRunAt: iso(NOW - 2 * HOUR) }),
-  // COO weekly compliance — artifact 9d old (within (7d, 14d]) → stale.
-  routine("weekly-compliance", "weekly", "company/reports/weekly-compliance/**/*.md", { displayName: "Process Enforcement (Weekly)", ownerAgent: "COO", lastRunAt: iso(NOW - 9 * DAY) }),
-  // CEO weekly summary — ran 1h ago but no matching artifact → missing.
-  routine("weekly-summary", "weekly", "company/reports/weekly-summary/**/*.md", { displayName: "Weekly Strategic Summary (Friday)", ownerAgent: "CEO", lastRunAt: iso(NOW - 1 * HOUR) }),
-  // Librarian daily awareness — no run, no artifact → never_ran.
-  routine("daily-awareness", "daily", "company/reports/awareness/**/*.md", { displayName: "Daily Codebase Awareness", ownerAgent: "Librarian" }),
-];
-
-// Artifacts the routines join against (separate from the Reports-tab artifacts above).
-const ROUTINE_ARTIFACTS = [
-  artifact("reports/standup/2026-06-23.md", { repo: "company", artifactType: "routine_output", mtime: iso(NOW - 2 * HOUR) }),
-  artifact("reports/weekly-compliance/2026-06-14.md", { repo: "company", artifactType: "routine_output", mtime: iso(NOW - 9 * DAY) }),
-];
-
 function bundle(batches: SignalBatch[]): SignalBundle {
   return { collectedAt: NOW, batches };
 }
@@ -111,15 +91,6 @@ export function goldenArtifactIndex(): ArtifactIndexV1 {
   return deriveArtifactIndex(
     bundle([
       { source: "artifact", collectedAt: NOW, signals: ARTIFACTS, repoFreshness: [live("company"), live("juice-bar"), staleArc()] },
-    ]),
-    NOW,
-  );
-}
-
-export function goldenRoutineHealth(): RoutineHealthV1 {
-  return deriveRoutineHealth(
-    bundle([
-      { source: "routine-contract", collectedAt: NOW, signals: [...ROUTINES, ...ROUTINE_ARTIFACTS], repoFreshness: [live("company")] },
     ]),
     NOW,
   );

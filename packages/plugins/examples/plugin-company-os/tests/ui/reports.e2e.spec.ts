@@ -1,5 +1,5 @@
 /**
- * Reports + Routines UI e2e (Playwright). Loads the SSR harness documents in real
+ * Reports UI e2e (Playwright). Loads the SSR harness documents in real
  * Chromium at the two key viewports (dark scheme), asserts ZERO console / page
  * errors, checks the a11y labels on the filter + viewer controls, and captures
  * screenshots. The populated Reports doc is also captured under
@@ -76,38 +76,6 @@ test.describe("Company OS reports", () => {
       async (p) => {
         await expect(p.getByText("Reports", { exact: false }).first()).toBeVisible();
         await expect(p.getByLabel("Search reports")).toBeVisible();
-      },
-      page,
-      testInfo.project.name,
-    );
-  });
-});
-
-test.describe("Company OS routines", () => {
-  test("populated routines: agent groups + verdicts", async ({ page }, testInfo) => {
-    await loadAndCheck(
-      "routines-desktop",
-      async (p) => {
-        await expect(p.getByText("Routines", { exact: false }).first()).toBeVisible();
-        await expect(p.getByText("Daily Standup").first()).toBeVisible();
-        // Every owning agent renders.
-        for (const agent of ["CEO", "COO", "CTO", "Librarian"]) {
-          await expect(p.getByText(agent, { exact: true }).first()).toBeVisible();
-        }
-        // A verdict pill is present.
-        await expect(p.getByText("Fresh", { exact: false }).first()).toBeVisible();
-      },
-      page,
-      testInfo.project.name,
-    );
-  });
-
-  test("mobile routines stacks the cards", async ({ page }, testInfo) => {
-    await loadAndCheck(
-      "routines-mobile",
-      async (p) => {
-        await expect(p.getByText("Routines", { exact: false }).first()).toBeVisible();
-        await expect(p.getByText("Daily Standup").first()).toBeVisible();
       },
       page,
       testInfo.project.name,

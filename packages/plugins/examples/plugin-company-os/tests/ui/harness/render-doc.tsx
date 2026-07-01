@@ -13,7 +13,6 @@ import { CompanyOsBoardView } from "../../../src/ui/board/CompanyOsBoardView.js"
 import { EmptyState, ErrorState, LoadingState } from "../../../src/ui/board/states.js";
 import { ReportsView } from "../../../src/ui/reports/ReportsView.js";
 import { DocumentViewerPanel } from "../../../src/ui/shared/DocumentViewerPanel.js";
-import { RoutinesView } from "../../../src/ui/routines/RoutinesView.js";
 import { HomeView } from "../../../src/ui/home/HomeView.js";
 import { SourceView } from "../../../src/ui/source/SourceView.js";
 import { BranchRow } from "../../../src/ui/source/BranchRow.js";
@@ -23,7 +22,7 @@ import { CockpitMotionStyles } from "../../../src/ui/shared/cockpit-motion.js";
 import { EMPTY_FILTER } from "../../../src/ui/reports/reports-view-model.js";
 import type { BoardStateV1 } from "../../../src/contracts/index.js";
 import { goldenBoard, staleBoard, zeroChipBoard, RENDER_NOW } from "../fixtures/board.js";
-import { goldenArtifactIndex, goldenRoutineHealth, okMarkdownContent, REPORTS_NOW } from "../fixtures/reports.js";
+import { goldenArtifactIndex, okMarkdownContent, REPORTS_NOW } from "../fixtures/reports.js";
 import { goldenOrientation, emptyOrientation, HOME_NOW } from "../fixtures/home.js";
 import { goldenGitState, emptyGitState, SOURCE_NOW } from "../fixtures/source.js";
 import { goldenDocIndex, emptyDocIndex, dogfoodSpecDocId, DOCS_NOW } from "../fixtures/docs.js";
@@ -87,10 +86,6 @@ function reports(isMobile: boolean): ReactElement {
       viewer={<DocumentViewerPanel content={okMarkdownContent()} loading={false} error={null} now={REPORTS_NOW} isMobile={isMobile} renderMarkdown={preMarkdown} />}
     />
   );
-}
-
-function routines(isMobile: boolean): ReactElement {
-  return <RoutinesView health={goldenRoutineHealth()} now={REPORTS_NOW} isMobile={isMobile} />;
 }
 
 function home(isMobile: boolean, opts?: { empty?: boolean; drawer?: boolean }): ReactElement {
@@ -180,8 +175,6 @@ export function harnessDocs(): HarnessDoc[] {
     { name: "error", width: 1180, html: document("Board · error", renderToStaticMarkup(<ErrorState message="The plugin worker did not respond." onRetry={noop} />), 720) },
     { name: "reports-desktop", width: 1180, html: document("Reports · populated", renderToStaticMarkup(reports(false)), 1180) },
     { name: "reports-mobile", width: 390, html: document("Reports · mobile", renderToStaticMarkup(reports(true)), 390) },
-    { name: "routines-desktop", width: 1180, html: document("Routines · populated", renderToStaticMarkup(routines(false)), 1180) },
-    { name: "routines-mobile", width: 390, html: document("Routines · mobile", renderToStaticMarkup(routines(true)), 390) },
     { name: "home-desktop", width: 1180, html: document("Home · populated", renderToStaticMarkup(home(false)), 1180) },
     { name: "home-mobile", width: 390, html: document("Home · mobile", renderToStaticMarkup(home(true)), 390) },
     { name: "home-empty", width: 1180, html: document("Home · empty (all 0-states)", renderToStaticMarkup(home(false, { empty: true })), 1180) },

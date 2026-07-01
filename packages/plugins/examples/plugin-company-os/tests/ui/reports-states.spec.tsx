@@ -1,5 +1,5 @@
 /**
- * SSR state-injection for the Reports + Routines surfaces. Renders the PURE views
+ * SSR state-injection for the Reports surface. Renders the PURE view
  * + the viewer states with `renderToStaticMarkup` (no host bridge, no DOM) and
  * asserts they don't throw and surface their key content. This is the same
  * bridge-free guarantee the board relies on, and it's what lets the Playwright
@@ -12,11 +12,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactNode } from "react";
 import { ReportsView } from "../../src/ui/reports/ReportsView.js";
 import { DocumentViewerPanel } from "../../src/ui/shared/DocumentViewerPanel.js";
-import { RoutinesView } from "../../src/ui/routines/RoutinesView.js";
 import { EMPTY_FILTER } from "../../src/ui/reports/reports-view-model.js";
 import {
   goldenArtifactIndex,
-  goldenRoutineHealth,
   emptyArtifactIndex,
   okMarkdownContent,
   tooLargeContent,
@@ -86,49 +84,5 @@ describe("Reports SSR", () => {
     );
     expect(html).toContain("Couldn’t load the document");
     expect(html).toContain("Try again");
-  });
-});
-
-describe("Routines SSR", () => {
-  it("renders every agent group + the verdict summary", () => {
-    const html = renderToStaticMarkup(<RoutinesView health={goldenRoutineHealth()} now={REPORTS_NOW} />);
-    expect(html).toContain("Routines");
-    for (const agent of ["CEO", "COO", "CTO", "Librarian"]) expect(html).toContain(agent);
-    // The summary tallies + a routine card verdict.
-    expect(html).toContain("fresh");
-    expect(html).toContain("missing");
-    expect(html).toContain("Daily Standup");
-  });
-
-  it("renders an empty health snapshot without throwing", () => {
-    const empty = { ...goldenRoutineHealth(), routines: [] };
-    const html = renderToStaticMarkup(<RoutinesView health={empty} now={REPORTS_NOW} />);
-    expect(html).toContain("No routine contracts found yet");
-  });
-
-  it("renders embedded duties as calm duties-only cards", () => {
-    const base = goldenRoutineHealth();
-    const health = {
-      ...base,
-      routines: [
-        {
-          ...base.routines[0],
-          routineKey: "wiki-maintenance",
-          displayName: "Wiki Maintenance",
-          ownerAgent: "Librarian",
-          freshnessKind: "embedded" as const,
-          expectedArtifactGlob: "",
-          verdict: null,
-          expectedArtifactPresent: false,
-          latestArtifactPath: null,
-          latestArtifactMtime: null,
-          nextExpectedAt: null,
-          detail: "embedded duty; no standalone SLO",
-        },
-      ],
-    };
-    const html = renderToStaticMarkup(<RoutinesView health={health} now={REPORTS_NOW} />);
-    expect(html).toContain("Wiki Maintenance");
-    expect(html).toContain("Duties only");
   });
 });
