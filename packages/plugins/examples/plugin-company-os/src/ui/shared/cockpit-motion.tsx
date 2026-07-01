@@ -77,7 +77,11 @@ details[open] > summary.cos-fx-summary .cos-fx-caret { transform: rotate(0deg); 
 details[open] > .cos-fx-drawer-body { animation: cos-fx-drawer-open 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 
 @media (prefers-reduced-motion: reduce) {
-  .cos-fx-enter, .cos-fx-drawer, .cos-fx-scrim, .cos-fx-fade, .cos-fx-pulse-dot, .cos-fx-agent-pulse, .cos-fx-drawer-body { animation: none; }
+  .cos-fx-enter, .cos-fx-drawer, .cos-fx-scrim, .cos-fx-fade, .cos-fx-pulse-dot, .cos-fx-agent-pulse { animation: none; }
+  /* The drawer-open rule is \`details[open] > .cos-fx-drawer-body\` (specificity 0,2,1);
+     a bare \`.cos-fx-drawer-body\` (0,1,0) reset loses on specificity and the fade would
+     still play under reduced-motion — match the selector so the override actually wins. */
+  details[open] > .cos-fx-drawer-body { animation: none; }
   .cos-fx-card, .cos-fx-tile, .cos-fx-row, .cos-fx-seeall, .cos-fx-seeall span, .cos-fx-caret,
   .cos-fx-tile-arrow, .cos-fx-row-go { transition: none; }
   .cos-fx-card:hover, .cos-fx-tile:hover, .cos-fx-row:hover,

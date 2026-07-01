@@ -26,6 +26,7 @@ const HANDOFF_MISMATCH = statusColors.revise; // amber
 
 export function AgentConstellation({ agents, handoffs, selectedAgentKey = null, onSelectAgent, isMobile = false }: AgentConstellationProps) {
   const layout = buildConstellationLayout(agents, handoffs, { mobile: isMobile });
+  const interactive = typeof onSelectAgent === "function";
   const hasSelection = selectedAgentKey !== null;
   const selectedName = agents.find((a) => a.agentKey === selectedAgentKey)?.displayName ?? null;
   const viewBox = "0 0 " + layout.width + " " + layout.height;
@@ -41,11 +42,14 @@ export function AgentConstellation({ agents, handoffs, selectedAgentKey = null, 
         overflow: "hidden",
       }}
     >
+      {/* A flattening `img` role would hide the interactive nodes from assistive
+          tech; when the nodes are focusable buttons use a non-flattening `group`
+          so they stay in the a11y tree. Static → a single labelled image. */}
       <svg
         viewBox={viewBox}
         width="100%"
         height={layout.height}
-        role="img"
+        role={interactive ? "group" : "img"}
         aria-label="Agent org constellation — CEO, COO, CTO, and Librarian with their reporting lines and hand-offs"
         style={{ display: "block", maxWidth: "100%" }}
       >
@@ -134,6 +138,17 @@ function ConstellationNodeMark({
       aria-pressed={clickable ? selected : undefined}
       tabIndex={clickable ? 0 : undefined}
       onClick={clickable ? () => onSelect?.(selected ? null : node.agentKey) : undefined}
+      onKeyDown={
+        clickable
+          ? (e) => {
+              // A role=button node must activate on Enter/Space, not just click (codex A).
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onSelect?.(selected ? null : node.agentKey);
+              }
+            }
+          : undefined
+      }
       style={{ cursor: clickable ? "pointer" : "default", opacity: dimmed ? 0.5 : 1, transition: "opacity 180ms ease" }}
     >
       {/* Soft tone-tinted glow disc — gives each node presence in the field. */}

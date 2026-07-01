@@ -42,6 +42,20 @@ describe("AgentSystemV1 contract", () => {
     };
     expect(safeParseAgentSystemV1(badDiagnostic).success).toBe(false);
   });
+
+  it("rejects an overlap proposedOwner that is not an OwnerAgent (codex B)", () => {
+    const foreignOwner = {
+      ...goldenAgentSystem(),
+      overlaps: [{ surface: "company/reports/journal", agents: ["CTO", "Librarian"], proposedOwner: "Marketing", recommendation: null }],
+    };
+    expect(safeParseAgentSystemV1(foreignOwner).success).toBe(false);
+    // A real OwnerAgent still parses.
+    const realOwner = {
+      ...goldenAgentSystem(),
+      overlaps: [{ surface: "company/reports/journal", agents: ["CTO", "Librarian"], proposedOwner: "Librarian", recommendation: null }],
+    };
+    expect(safeParseAgentSystemV1(realOwner).success).toBe(true);
+  });
 });
 
 function goldenAgentSystem(): AgentSystemV1 {

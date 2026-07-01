@@ -102,7 +102,10 @@ export type AgentCardV1 = z.infer<typeof agentCardV1Schema>;
 export const overlapEdgeV1Schema = z.object({
   surface: z.string().min(1),
   agents: z.array(ownerAgentSchema).min(2),
-  proposedOwner: z.string().nullable(),
+  // A proposed owner is an OwnerAgent, not a free string — tighten so cache
+  // validation rejects a non-agent owner (codex B). The projection already
+  // models it as OwnerAgent.
+  proposedOwner: ownerAgentSchema.nullable(),
   recommendation: z.string().nullable(),
 });
 export type OverlapEdgeV1 = z.infer<typeof overlapEdgeV1Schema>;
