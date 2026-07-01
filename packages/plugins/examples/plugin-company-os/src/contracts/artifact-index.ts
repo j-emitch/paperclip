@@ -1,7 +1,7 @@
 /**
  * `ArtifactIndexV1` — the shared artifact projection (spec §7), persisted from
  * `ArtifactSignal`s. Both the Reports tab (filter by type/system/prefix/date)
- * and the Routines tab (join routine contracts against artifact mtime) read it,
+ * and the Agents cockpit (join routine contracts against artifact mtime) read it,
  * so it is one index, not two. COS-1 teaching nuggets + COS-2 knowledge docs
  * are already first-class `artifact_type`s (see `vocab.ts`), so neither phase
  * needs a schema bump.

@@ -1,8 +1,8 @@
 /**
- * `RoutineSloCard` — the ONE routine-SLO tile, shared by the standalone Routines
- * board (`variant="card"`, the full 3D tile with a verdict-tinted left accent)
- * and each AgentCard's owned-routines drawer (`variant="row"`, a compact
- * divider-separated line — dividers over card-in-card, per Joe's density rule).
+ * `RoutineSloCard` — the ONE routine-SLO tile in two forms: the full 3D `card`
+ * (a verdict-tinted left-accent tile) and each AgentCard's owned-routines drawer
+ * (`variant="row"`, the live Agents-cockpit form — a compact divider-separated
+ * line; dividers over card-in-card, per Joe's density rule).
  *
  * All display logic is the pure `computeRoutineSlo` fold; this file is render
  * only, SSR-faithful (no host bridge), so the Playwright harness screenshots the
@@ -19,7 +19,7 @@ import { computeRoutineSlo, type RoutineSloDisplay, type RoutineSloView } from "
 export interface RoutineSloCardProps {
   routine: RoutineSloView;
   now: number;
-  /** `card` = the full standalone tile; `row` = the compact nested-in-AgentCard form. */
+  /** `card` = the full-tile form; `row` = the compact nested-in-AgentCard form (the live Agents drawer). */
   variant?: "card" | "row";
 }
 
@@ -29,8 +29,8 @@ export function RoutineSloCard({ routine, now, variant = "card" }: RoutineSloCar
 }
 
 // ---------------------------------------------------------------------------
-// Card variant — the standalone Routines board tile (extracted verbatim from the
-// former inline `RoutineCard`; every field/state preserved).
+// Card variant — the full-tile SLO form (a verdict-tinted 3D card). A shared-
+// primitive capability; the live Agents cockpit renders the `row` variant.
 // ---------------------------------------------------------------------------
 
 function RoutineSloFullCard({ routine, d }: { routine: RoutineSloView; d: RoutineSloDisplay }) {

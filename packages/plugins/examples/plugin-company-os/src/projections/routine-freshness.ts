@@ -1,6 +1,6 @@
 /**
  * Routine-freshness math — the cadence-window + SLO-verdict logic shared by
- * `deriveRoutineHealth` (the Routines tab) and `deriveOrientation` (the Home
+ * `deriveRoutineHealth` (the Agents cockpit) and `deriveOrientation` (the Home
  * pinned briefing), extracted so the two surfaces can never disagree on what
  * "fresh / stale / missing" means (PF-3a). Behavior-preserving: `cadenceWindowMs`
  * / `computeVerdict` / `MS` / `artifactMs` are moved verbatim, and the matching +

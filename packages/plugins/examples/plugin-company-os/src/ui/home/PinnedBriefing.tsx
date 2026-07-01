@@ -2,7 +2,7 @@
  * `PinnedBriefing` — the company-global routine briefing row (spec §5.3): the
  * CEO / COO / CTO / Librarian outputs Joe pins to read first thing. Each card
  * shows its owning agent, the routine, a verdict pill (the SAME palette as the
- * Routines tab), and how fresh the latest report is; clicking opens it in the
+ * Agents cockpit), and how fresh the latest report is; clicking opens it in the
  * in-place drawer. Company-level, so it is NOT project-grouped. Pure — the
  * connected `Home` owns the drawer + the open callback.
  */

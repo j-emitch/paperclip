@@ -15,7 +15,7 @@ const manifest: PaperclipPluginManifestV1 = {
   version: "0.1.0",
   displayName: "Company OS",
   description:
-    "Owner/developer cockpit: an auto-updating Kanban (system x spec-prefix family) plus a docs/reports/routines viewer over the Lycaon multi-repo workspace. Read-only over product repos; the only writes are the plugin-owned company_os cache, plugin state, and an opt-in git hook.",
+    "Owner/developer cockpit: an auto-updating Kanban (system x spec-prefix family) plus Home, Source, Docs, and Agents surfaces over the Lycaon multi-repo workspace. Read-only over product repos; the only writes are the plugin-owned company_os cache, plugin state, and an opt-in git hook.",
   author: "Lycaon",
   categories: ["automation", "ui"],
   // No minimumHostVersion floor: the local dev host the cockpit installs into

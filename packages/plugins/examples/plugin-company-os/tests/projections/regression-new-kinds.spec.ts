@@ -6,7 +6,7 @@ import { deriveSkillsCatalog } from "../../src/projections/deriveSkillsCatalog.j
 import { NOW, agentSignal, branchSignal, bundleOf, docSignal, repoGitSignal, taxon, work } from "../fixtures/signals.js";
 
 /**
- * The COS-0 regression guard: the three new signal kinds (branch / repo_git /
+ * The COS-0 regression guard: the four new signal kinds (branch / repo_git /
  * doc / agent) must be IGNORED by the existing folds (filter-in, no exhaustive switch), so
  * adding them to the bundle leaves every COS-0 projection byte-identical.
  */

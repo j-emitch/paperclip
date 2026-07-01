@@ -1,8 +1,8 @@
 /**
  * Pure per-routine display fold for the shared `RoutineSloCard`.
  *
- * Both the standalone Routines board (card variant) AND each AgentCard's
- * owned-routines drawer (row variant) render the same routine SLO, so the field
+ * Both the full-tile `card` variant AND each AgentCard's owned-routines drawer
+ * (`row` variant — the live Agents-cockpit form) render the same routine SLO, so the field
  * set + the overdue/verdict/artifact derivation live here exactly once —
  * decoupled from BOTH the `RoutineHealthEntry` and the `RoutineSloEntryV1`
  * contracts (either structurally satisfies `RoutineSloView`). Pure fn of an

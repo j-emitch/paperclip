@@ -1,8 +1,8 @@
 # Company OS (`lycaon.company-os`)
 
 The owner/developer **dev cockpit** for Lycaon: an auto-updating Kanban
-(system × spec-prefix family, self-moving chips) plus a docs/reports/routines
-viewer over the multi-repo workspace (juice-bar, arc-scraper, company,
+(system × spec-prefix family, self-moving chips) plus Home, Source, Docs, and
+Agents surfaces over the multi-repo workspace (juice-bar, arc-scraper, company,
 paperclip). Read-only over the product repos; the only writes are the
 plugin-owned `company_os` Postgres namespace (cache + diagnostics), plugin
 state, and an opt-in, reversible, disabled-by-default git hook.

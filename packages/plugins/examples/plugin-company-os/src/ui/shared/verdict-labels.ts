@@ -1,8 +1,8 @@
 /**
  * Shared routine-verdict display vocabulary (keyed off the contract `RoutineVerdict`
- * tuple). Both the Routines tab AND the Home pinned-briefing render a routine's
+ * tuple). Both the Agents cockpit AND the Home pinned-briefing render a routine's
  * SLO verdict, so the label + tone maps live here — neither surface depends on the
- * other (closes a Home→Routines view-model coupling, codex B), and a "fresh"
+ * other (they live here, not in a view-model, so neither couples to the other; codex B), and a "fresh"
  * verdict reads the same green on both. Tones map onto the shared status palette.
  */
 

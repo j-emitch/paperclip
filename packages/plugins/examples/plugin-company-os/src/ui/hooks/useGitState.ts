@@ -2,7 +2,7 @@
  * `useGitState` — the Source tab's data seam. Reads the worker's `git-state`
  * handler (validated, version-gated cache row — the project-grouped branch/worktree
  * tree `deriveGitState` folds). Type-only contract import keeps the browser bundle
- * zod-free, mirroring `useOrientation` / `useRoutineHealth`.
+ * zod-free, mirroring `useOrientation` / `useArtifactIndex`.
  */
 
 import { usePluginData } from "@paperclipai/plugin-sdk/ui";

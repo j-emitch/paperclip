@@ -1,6 +1,6 @@
 /**
  * `deriveArtifactIndex` — pure fold of `ArtifactSignal`s into the persisted
- * `ArtifactIndexV1` the Reports + Routines tabs read. One entry per
+ * `ArtifactIndexV1` the Reports + Agents tabs read. One entry per
  * (repo, relPath); `countsByType` is the sparse per-type tally for the filter
  * chips. No I/O — the signals were already collected.
  */

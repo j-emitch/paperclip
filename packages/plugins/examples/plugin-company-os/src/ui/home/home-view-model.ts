@@ -3,8 +3,8 @@
  * label maps and the taxonomy grouping helper the six Home panels share. Like
  * every cockpit view-model it owns its OWN label/tone maps (the shared `badges`
  * primitives stay enum-free) and reuses the cross-surface verdict palette from
- * the Routines view-model so a "fresh" briefing reads the same green as a "fresh"
- * routine. No JSX, no SDK runtime — deterministic + SSR-faithful.
+ * `shared/verdict-labels` so a "fresh" briefing reads the same green as a "fresh"
+ * routine SLO. No JSX, no SDK runtime — deterministic + SSR-faithful.
  */
 
 import type { ProjectGroupV1, ProjectTaxonomyV1 } from "../../contracts/projects.js";
@@ -17,8 +17,8 @@ import type {
 import { statusColors, tokens } from "../tokens.js";
 
 // The cross-surface verdict palette lives in `shared/verdict-labels` (keyed off
-// the contract vocabulary), so briefing cards read identically to the Routines
-// tab WITHOUT a Home→Routines coupling (codex B).
+// the contract vocabulary), so briefing cards read identically to the Agents
+// cockpit's routine SLOs WITHOUT either surface coupling to the other (codex B).
 export {
   VERDICT_LABELS as BRIEFING_VERDICT_LABELS,
   VERDICT_TONES as BRIEFING_VERDICT_TONES,

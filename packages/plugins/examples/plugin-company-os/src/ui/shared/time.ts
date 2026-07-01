@@ -27,8 +27,8 @@ export function relativeTime(iso: string | null, now: number): string | null {
 
 /**
  * Signed relative-time label that names both directions — "in 3h" for a future
- * instant, "3h ago" for a past one ("now" within a minute). Used by the Routines
- * tab for the next-expected-run countdown. `null`/unparseable → null.
+ * instant, "3h ago" for a past one ("now" within a minute). Used by the shared
+ * `RoutineSloCard` for the next-expected-run countdown. `null`/unparseable → null.
  */
 export function relativeFromNow(iso: string | null, now: number): string | null {
   if (!iso) return null;

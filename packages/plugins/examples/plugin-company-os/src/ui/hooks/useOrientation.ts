@@ -2,7 +2,7 @@
  * `useOrientation` — the Home (default landing) data seam. Reads the worker's
  * `orientation` handler (validated, version-gated cache row — the digest the
  * `deriveOrientation` projection folds). Type-only contract import keeps the
- * browser bundle zod-free, mirroring `useRoutineHealth` / `useArtifactIndex`.
+ * browser bundle zod-free, mirroring `useGitState` / `useArtifactIndex`.
  */
 
 import { usePluginData } from "@paperclipai/plugin-sdk/ui";
