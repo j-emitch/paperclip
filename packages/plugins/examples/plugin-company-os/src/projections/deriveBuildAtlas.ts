@@ -67,7 +67,9 @@ export function deriveBuildAtlas(bundle: SignalBundle, nowMs: number): BuildAtla
   const docsByPrefix = groupBy(docs, (d) => d.prefix);
   const diagnostics: AtlasDiagnosticV1[] = [];
 
-  // Lineage fold — the freshest lineage signal (appended last in DEFAULT_SOURCES).
+  // Lineage fold. `LineageSource` emits exactly ONE company-scoped whole-graph
+  // signal per derive, so the last one in bundle order is the graph (codex 5b P2:
+  // "last", not "freshest" — the guarantee is single-signal, asserted in a test).
   const registered = new Set(taxonomy.keys());
   const lineageSig = signals.filter(isLineageSignal).at(-1) ?? null;
   const { laneGroups, edges, tagsByPrefix } = foldLineage(lineageSig, registered, diagnostics);
@@ -80,9 +82,11 @@ export function deriveBuildAtlas(bundle: SignalBundle, nowMs: number): BuildAtla
     families.push(buildFamily(taxon, famWork, famDocs, tagsByPrefix.get(taxon.prefix) ?? []));
   }
 
-  // Orphan-family completeness: a registered family in NO lane (only when a
-  // lineage graph is present — no graph means "lineage not configured", not orphans).
-  if (laneGroups.length > 0) {
+  // Orphan-family completeness: a registered family in NO lane. Gated on the
+  // lineage SIGNAL being present (codex 5b P1) — a graph with a non-empty `edges`
+  // but empty `laneGroups` is valid to the loader, so gating on laneGroups.length
+  // would wrongly suppress every orphan. No signal = "lineage not configured".
+  if (lineageSig) {
     const laned = new Set(laneGroups.flatMap((g) => g.lanes.flatMap((l) => l.families)));
     for (const fam of families) {
       if (!laned.has(fam.prefix)) {
@@ -185,11 +189,28 @@ function foldLineage(
 ): LineageFold {
   if (!sig) return { laneGroups: [], edges: [], tagsByPrefix: new Map() };
 
+  // Lane family refs are validated against the registry too (codex 5b P1): a
+  // typo'd family in a lane is dropped with a broken_edge diagnostic rather than
+  // silently surviving into the persisted lane-groups (the .mjs loader is a pure
+  // shape validator and deliberately does NOT cross-check the registry).
   const laneGroups: LaneGroupV1[] = sig.laneGroups.map((g) => ({
     id: g.id,
     title: g.title,
     kind: g.kind,
-    lanes: g.lanes.map((l) => ({ id: l.id, title: l.title, families: [...l.families] })),
+    lanes: g.lanes.map((l) => ({
+      id: l.id,
+      title: l.title,
+      families: l.families.filter((f) => {
+        if (registered.has(f)) return true;
+        diagnostics.push({
+          code: "broken_edge",
+          severity: "warn",
+          message: `lane "${l.id}" references unregistered family "${f}"`,
+          prefix: f,
+        });
+        return false;
+      }),
+    })),
   }));
 
   const edges: LineageEdgeV1[] = [];

@@ -229,4 +229,43 @@ describe("deriveBuildAtlas (5b — lineage fold)", () => {
     expect(atlas.diagnostics.some((d) => d.code === "orphan_family")).toBe(false);
     expect(atlas.diagnostics.some((d) => d.code === "broken_edge")).toBe(false);
   });
+
+  it("drops an unregistered LANE family ref with a broken_edge diagnostic (codex 5b P1)", () => {
+    const atlas = deriveBuildAtlas(
+      bundleOf([
+        ...families(),
+        lineageSignal({
+          laneGroups: [{ id: "vc", title: "VC", kind: "flow", lanes: [{ id: "l", title: "L", families: ["MTP", "COX", "TAP", "COS"] }] }],
+          edges: [],
+        }),
+      ]),
+      NOW,
+    );
+    // COX is dropped from the persisted lane...
+    expect(atlas.laneGroups[0].lanes[0].families).toEqual(["MTP", "TAP", "COS"]);
+    // ...with a broken_edge diagnostic naming it.
+    const diag = atlas.diagnostics.find((d) => d.code === "broken_edge" && d.prefix === "COX");
+    expect(diag?.message).toContain("lane");
+  });
+
+  it("flags orphans even when laneGroups is empty but the signal is present (edges-only graph)", () => {
+    const atlas = deriveBuildAtlas(
+      bundleOf([...families(), lineageSignal({ laneGroups: [], edges: [{ from: "TAP", to: "MTP", kind: "consumes" }] })]),
+      NOW,
+    );
+    // Every family is orphaned (no lanes) — the signal is present, so it is flagged.
+    expect(atlas.diagnostics.filter((d) => d.code === "orphan_family").map((d) => d.prefix).sort()).toEqual(["COS", "MTP", "TAP"]);
+  });
+
+  it("uses the last lineage signal when more than one is present (single-signal design)", () => {
+    const atlas = deriveBuildAtlas(
+      bundleOf([
+        ...families(),
+        lineageSignal({ laneGroups: [{ id: "old", title: "Old", kind: "flow", lanes: [{ id: "o", title: "O", families: ["MTP"] }] }], edges: [] }),
+        lineageSignal({ laneGroups: [{ id: "new", title: "New", kind: "flow", lanes: [{ id: "n", title: "N", families: ["MTP", "TAP", "COS"] }] }], edges: [] }),
+      ]),
+      NOW,
+    );
+    expect(atlas.laneGroups.map((g) => g.id)).toEqual(["new"]);
+  });
 });

@@ -39,6 +39,15 @@ beforeAll(async () => {
     path.join(companyRoot, "config", "lib", "prefix-registry.mjs"),
     `import { readFileSync } from "node:fs";\nexport function loadRegistry(jsonPath) { return JSON.parse(readFileSync(jsonPath, "utf-8")); }\n`,
   );
+  // COS-5 lineage graph + its canonical parser stand-in (mirrors build-atlas-lineage.mjs).
+  await writeFile(path.join(companyRoot, "config", "build-atlas-lineage.json"), JSON.stringify({
+    laneGroups: [{ id: "vc", title: "VC", kind: "flow", lanes: [{ id: "l", title: "L", families: ["COS"] }] }],
+    edges: [{ from: "COS", to: "COS", kind: "part" }],
+  }));
+  await writeFile(
+    path.join(companyRoot, "config", "lib", "build-atlas-lineage.mjs"),
+    `import { readFileSync } from "node:fs";\nexport function loadLineage(jsonPath) { return JSON.parse(readFileSync(jsonPath, "utf-8")); }\n`,
+  );
   // A symlink escaping the workspace root — readText must reject it.
   await symlink(path.join(parent, "outside.txt"), path.join(companyRoot, "specs", "escape.md")).catch(() => {});
 
@@ -99,6 +108,43 @@ describe("makeCollectionContext (real fs + git)", () => {
     const { entries, errors } = await ctx.registry.load();
     expect(errors).toEqual([]);
     expect(entries.map((e) => e.prefix)).toEqual(["COS"]);
+  });
+
+  it("loads the lineage graph through the canonical parser module", async () => {
+    const ctx = await makeCollectionContext({ repoRoots: [companyRoot], scopeRepo: null, logger: silentLogger });
+    const { data, errors } = await ctx.lineage.load();
+    expect(errors).toEqual([]);
+    expect(data?.laneGroups.map((g) => g.id)).toEqual(["vc"]);
+    expect(data?.edges).toHaveLength(1);
+  });
+
+  it("lineage degrades (no throw) when the .mjs has no loadLineage export", async () => {
+    // The repo KEY derives from the dir basename, and the loader looks up
+    // `company` — so the root dir must itself be named `company`.
+    const root = path.join(await mkdtemp(path.join(tmpdir(), "cos-lin-noexport-")), "company");
+    await mkdir(path.join(root, "config", "lib"), { recursive: true });
+    await execFileAsync("git", ["init", "-q"], { cwd: root });
+    await writeFile(path.join(root, "config", "build-atlas-lineage.json"), "{}");
+    await writeFile(path.join(root, "config", "lib", "build-atlas-lineage.mjs"), `export const nope = 1;\n`);
+    const ctx = await makeCollectionContext({ repoRoots: [root], scopeRepo: null, logger: silentLogger });
+    const { data, errors } = await ctx.lineage.load();
+    expect(data).toBeNull();
+    expect(errors[0]?.code).toBe("parse_error");
+  });
+
+  it("lineage degrades (no throw) when loadLineage throws (malformed JSON)", async () => {
+    const root = path.join(await mkdtemp(path.join(tmpdir(), "cos-lin-badjson-")), "company");
+    await mkdir(path.join(root, "config", "lib"), { recursive: true });
+    await execFileAsync("git", ["init", "-q"], { cwd: root });
+    await writeFile(path.join(root, "config", "build-atlas-lineage.json"), "{ not valid json");
+    await writeFile(
+      path.join(root, "config", "lib", "build-atlas-lineage.mjs"),
+      `import { readFileSync } from "node:fs";\nexport function loadLineage(p) { return JSON.parse(readFileSync(p, "utf-8")); }\n`,
+    );
+    const ctx = await makeCollectionContext({ repoRoots: [root], scopeRepo: null, logger: silentLogger });
+    const { data, errors } = await ctx.lineage.load();
+    expect(data).toBeNull();
+    expect(errors[0]?.code).toBe("parse_error");
   });
 
   it("an unknown repo key degrades (no throw) on the git runner", async () => {
