@@ -50,10 +50,17 @@ export function DocsIcon({ size = 16, strokeWidth = 1.8 }: IconProps) {
   ));
 }
 
-export function RoutinesIcon({ size = 16, strokeWidth = 1.8 }: IconProps) {
+export function AgentsIcon({ size = 16, strokeWidth = 1.8 }: IconProps) {
+  // An org constellation — a CEO apex fanning to three reports (COO / CTO /
+  // Librarian). Echoes the Agents cockpit's signature AgentConstellation, so the
+  // tab icon is a synecdoche of the surface it opens.
   return svg(size, strokeWidth, (
     <>
-      <path d="M3 12h4l2.5 6 5-12L17 12h4" />
+      <circle cx="12" cy="5" r="2.3" />
+      <circle cx="5.5" cy="18" r="2" />
+      <circle cx="12" cy="18" r="2" />
+      <circle cx="18.5" cy="18" r="2" />
+      <path d="M12 7.3 6.6 16.1M12 7.3V16M12 7.3 17.4 16.1" />
     </>
   ));
 }
@@ -238,7 +245,7 @@ export const TAB_ICONS: Record<CompanyOsTabKey, (props: IconProps) => ReactEleme
   board: BoardIcon,
   source: SourceIcon,
   docs: DocsIcon,
-  routines: RoutinesIcon,
+  agents: AgentsIcon,
   skills: SkillsIcon,
   teaching: TeachingIcon,
   knowledge: KnowledgeIcon,

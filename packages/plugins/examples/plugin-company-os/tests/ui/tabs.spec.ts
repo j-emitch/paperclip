@@ -22,7 +22,7 @@ const EXPECTED_ORDER: readonly CompanyOsTabKey[] = [
   "board",
   "source",
   "docs",
-  "routines",
+  "agents",
   "skills",
   "teaching",
   "knowledge",
@@ -46,6 +46,15 @@ describe("tab taxonomy", () => {
     const docs = COMPANY_OS_TABS.find((t) => t.key === "docs");
     expect(docs?.label).toBe("Docs");
     expect(isCompanyOsTabKey("reports")).toBe(false);
+  });
+
+  it("has fully retired the `routines` key in favour of `agents` (COS-1R)", () => {
+    const keys = COMPANY_OS_TABS.map((t) => t.key);
+    expect(keys).not.toContain("routines" as CompanyOsTabKey);
+    expect(keys).toContain("agents");
+    const agents = COMPANY_OS_TABS.find((t) => t.key === "agents");
+    expect(agents?.label).toBe("Agents");
+    expect(isCompanyOsTabKey("routines")).toBe(false);
   });
 
   it("orders every live surface ahead of every placeholder", () => {
@@ -73,6 +82,10 @@ describe("tab taxonomy", () => {
 describe("normalizeTabKey", () => {
   it("maps the legacy `reports` key forward to `docs`", () => {
     expect(normalizeTabKey("reports")).toBe("docs");
+  });
+
+  it("maps the legacy `routines` key forward to `agents`", () => {
+    expect(normalizeTabKey("routines")).toBe("agents");
   });
 
   it("passes every current tab key through unchanged", () => {

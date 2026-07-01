@@ -16,8 +16,8 @@ import { DEFAULT_TAB_KEY, normalizeTabKey, type CompanyOsTabKey } from "./tabs.j
  * (`usePersistedTabHydration`). So server render and first client render agree on
  * the default — no hydration mismatch — then the store settles on the persisted
  * tab. The persisted key is passed through `normalizeTabKey`, so a value saved
- * before the `reports` -> `docs` rename (or any stale/unknown key) resolves
- * forward instead of onto a dead tab. All storage access is feature-detected AND
+ * before the `reports` -> `docs` or `routines` -> `agents` rename (or any
+ * stale/unknown key) resolves forward instead of onto a dead tab. All storage access is feature-detected AND
  * try/caught, so SSR (no `localStorage`), sandboxed-iframe access throws,
  * private-mode, and quota failures degrade to the default — never throw.
  */

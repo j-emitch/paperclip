@@ -8,7 +8,7 @@
 import { useState } from "react";
 import { tokens } from "../tokens.js";
 import { Frame, Glyph, LocalSpinner, ghostButtonStyle } from "../shared/feedback.js";
-import { AlertIcon, RefreshIcon, RoutinesIcon } from "../icons.js";
+import { AlertIcon, RefreshIcon, AgentsIcon } from "../icons.js";
 import { useAgentSystem } from "../hooks/useAgentSystem.js";
 import { useIsMobile } from "../hooks/useMediaQuery.js";
 import { useNow } from "../hooks/useNow.js";
@@ -55,7 +55,7 @@ export function Agents({ companyId }: { companyId: string | null }) {
     return (
       <Frame>
         <Glyph tone={tokens.accent}>
-          <RoutinesIcon size={24} />
+          <AgentsIcon size={24} />
         </Glyph>
         <div>
           <p style={{ margin: 0, fontSize: 15, fontWeight: 650, color: tokens.fg }}>No agent system yet</p>
