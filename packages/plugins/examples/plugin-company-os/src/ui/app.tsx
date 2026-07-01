@@ -15,7 +15,7 @@ import { CompanyOsBoard } from "./board/CompanyOsBoard.js";
 import { Home } from "./home/Home.js";
 import { Source } from "./source/Source.js";
 import { Docs } from "./docs/Docs.js";
-import { Routines } from "./routines/Routines.js";
+import { Agents } from "./agents/Agents.js";
 import { Skills } from "./skills/Skills.js";
 
 // ---------------------------------------------------------------------------
@@ -187,8 +187,10 @@ function TabPanel({
       return <CompanyOsBoard key={key} companyId={companyId} />;
     case "docs":
       return <Docs key={key} companyId={companyId} />;
+    // COS-1R-e: the `routines` tab now renders the Agents cockpit (Agents subsumes
+    // the standalone routine board; the tab key/label rename to `agents` is 1R-f).
     case "routines":
-      return <Routines key={key} companyId={companyId} />;
+      return <Agents key={key} companyId={companyId} />;
     case "skills":
       return <Skills key={key} companyId={companyId} />;
     case "home":

@@ -20,6 +20,7 @@ const CSS = `
 @keyframes cos-fx-drawer-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
 @keyframes cos-fx-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes cos-fx-pulse { 0%, 100% { box-shadow: 0 0 0 0 ${withAlpha(statusColors.danger, 0.5)}; } 50% { box-shadow: 0 0 0 4px ${withAlpha(statusColors.danger, 0)}; } }
+@keyframes cos-fx-agent-pulse { 0%, 100% { opacity: 0.12; } 50% { opacity: 0.42; } }
 
 .cos-fx-enter { animation: cos-fx-rise 460ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 
@@ -66,9 +67,15 @@ const CSS = `
 .cos-fx-scrim { animation: cos-fx-fade-in 200ms ease both; }
 .cos-fx-fade { animation: cos-fx-fade-in 220ms ease both; }
 .cos-fx-pulse-dot { animation: cos-fx-pulse 2200ms ease-in-out infinite; }
+.cos-fx-agent-pulse { animation: cos-fx-agent-pulse 2800ms ease-in-out infinite; }
+
+summary.cos-fx-summary { list-style: none; }
+summary.cos-fx-summary::-webkit-details-marker { display: none; }
+summary.cos-fx-summary .cos-fx-caret { transform: rotate(-90deg); }
+details[open] > summary.cos-fx-summary .cos-fx-caret { transform: rotate(0deg); }
 
 @media (prefers-reduced-motion: reduce) {
-  .cos-fx-enter, .cos-fx-drawer, .cos-fx-scrim, .cos-fx-fade, .cos-fx-pulse-dot { animation: none; }
+  .cos-fx-enter, .cos-fx-drawer, .cos-fx-scrim, .cos-fx-fade, .cos-fx-pulse-dot, .cos-fx-agent-pulse { animation: none; }
   .cos-fx-card, .cos-fx-tile, .cos-fx-row, .cos-fx-seeall, .cos-fx-seeall span, .cos-fx-caret,
   .cos-fx-tile-arrow, .cos-fx-row-go { transition: none; }
   .cos-fx-card:hover, .cos-fx-tile:hover, .cos-fx-row:hover,
