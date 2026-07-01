@@ -1,18 +1,18 @@
 /**
  * Pure view for the Routines tab — the report-routine SLO board. Renders, per
  * owning agent (CEO / COO / CTO / Librarian), each routine's verdict, cadence,
- * last run, next-expected run, and whether its expected artifact is present. A
- * summary bar tallies the verdicts worst-first. No SDK runtime — SSR-faithful, so
- * the Playwright harness screenshots the exact live tree.
+ * last run, next-expected run, and whether its expected artifact is present, via
+ * the shared `RoutineSloCard` (also nested inside the Agents cockpit's AgentCard
+ * drawers, so a routine reads identically in both places). A summary bar tallies
+ * the verdicts worst-first. No SDK runtime — SSR-faithful, so the Playwright
+ * harness screenshots the exact live tree.
  */
 
-import type { ReactNode } from "react";
-import type { RoutineHealthEntry, RoutineHealthV1, SourceFreshness } from "../../contracts/index.js";
+import type { RoutineHealthV1, SourceFreshness } from "../../contracts/index.js";
 import { tokens } from "../tokens.js";
 import { Pill } from "../shared/badges.js";
 import { CockpitSurfaceStyles } from "../shared/surface-styles.js";
-import { CheckIcon, ClockIcon, AlertIcon } from "../icons.js";
-import { relativeTime, relativeFromNow } from "../shared/time.js";
+import { RoutineSloCard } from "../shared/RoutineSloCard.js";
 import {
   buildRoutinesView,
   VERDICT_LABELS,
@@ -20,7 +20,6 @@ import {
   VERDICT_TONES,
   type AgentGroup,
 } from "./routines-view-model.js";
-import { labelForNullableVerdict, toneForNullableVerdict } from "../shared/verdict-labels.js";
 
 export interface RoutinesViewProps {
   health: RoutineHealthV1;
@@ -51,9 +50,7 @@ export function RoutinesView({ health, now, isMobile = false }: RoutinesViewProp
       </header>
 
       {view.groups.length === 0 ? (
-        <p style={{ margin: 0, fontSize: 13, color: tokens.muted }}>
-          No routine contracts found yet.
-        </p>
+        <p style={{ margin: 0, fontSize: 13, color: tokens.muted }}>No routine contracts found yet.</p>
       ) : (
         view.groups.map((group) => <AgentSection key={group.ownerAgent} group={group} now={now} isMobile={isMobile} />)
       )}
@@ -80,112 +77,10 @@ function AgentSection({ group, now, isMobile }: { group: AgentGroup; now: number
         }}
       >
         {group.routines.map((r) => (
-          <RoutineCard key={r.routineKey} routine={r} now={now} />
+          <RoutineSloCard key={r.routineKey} routine={r} now={now} variant="card" />
         ))}
       </div>
     </section>
-  );
-}
-
-function RoutineCard({ routine, now }: { routine: RoutineHealthEntry; now: number }) {
-  const tone = toneForNullableVerdict(routine.verdict);
-  const lastRun = relativeTime(routine.lastRunAt, now);
-  // A past `nextExpectedAt` means the routine is overdue — label it as such rather
-  // than rendering a contradictory "Next: 6d ago".
-  const nextMs = routine.nextExpectedAt ? Date.parse(routine.nextExpectedAt) : NaN;
-  const overdue = Number.isFinite(nextMs) && nextMs < now;
-  const nextLabel = overdue ? "Overdue" : "Next";
-  const nextValue = overdue ? relativeTime(routine.nextExpectedAt, now) : relativeFromNow(routine.nextExpectedAt, now);
-  return (
-    <article
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 9,
-        padding: 14,
-        background: tokens.card,
-        border: `1px solid ${tokens.border}`,
-        borderRadius: tokens.radius,
-        borderLeft: `3px solid ${tone}`,
-        minWidth: 0,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p
-            title={routine.displayName}
-            style={{
-              margin: 0,
-              fontSize: 13.5,
-              fontWeight: 650,
-              color: tokens.fg,
-              display: "-webkit-box",
-              WebkitBoxOrient: "vertical",
-              WebkitLineClamp: 2,
-              overflow: "hidden",
-              lineHeight: 1.3,
-            }}
-          >
-            {routine.displayName}
-          </p>
-          <p style={{ margin: "2px 0 0", fontSize: 11.5, color: tokens.muted, fontFamily: tokens.mono }}>
-            {routine.cadence}
-          </p>
-        </div>
-        <Pill label={labelForNullableVerdict(routine.verdict)} tone={tone} soft withDot />
-      </div>
-
-      <dl style={{ margin: 0, display: "flex", flexDirection: "column", gap: 5, fontSize: 12 }}>
-        <MetaRow icon={<ClockIcon size={12} />} label="Last run" value={lastRun ?? "never"} />
-        {nextValue ? <MetaRow icon={<ClockIcon size={12} />} label={nextLabel} value={nextValue} iconTone={overdue ? VERDICT_TONES.missing : undefined} /> : null}
-        {routine.freshnessKind === "embedded" ? (
-          <MetaRow icon={<CheckIcon size={12} />} iconTone={tone} label="SLO" value="duties only" />
-        ) : (
-          <MetaRow
-            icon={routine.expectedArtifactPresent ? <CheckIcon size={12} /> : <AlertIcon size={12} />}
-            iconTone={routine.expectedArtifactPresent ? VERDICT_TONES.fresh : VERDICT_TONES.missing}
-            label={routine.freshnessKind === "proposal" ? "Proposal" : "Artifact"}
-            value={routine.expectedArtifactPresent ? "present" : "missing"}
-          />
-        )}
-      </dl>
-
-      {routine.latestArtifactPath ? (
-        <code
-          title={routine.latestArtifactPath}
-          style={{
-            fontFamily: tokens.mono,
-            fontSize: 10.5,
-            color: tokens.muted,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {routine.latestArtifactPath}
-        </code>
-      ) : routine.expectedArtifactGlob ? (
-        <code style={{ fontFamily: tokens.mono, fontSize: 10.5, color: tokens.muted, opacity: 0.7 }} title={routine.expectedArtifactGlob}>
-          {routine.expectedArtifactGlob}
-        </code>
-      ) : (
-        null
-      )}
-
-      {routine.detail ? <p style={{ margin: 0, fontSize: 11.5, color: tokens.muted, lineHeight: 1.4 }}>{routine.detail}</p> : null}
-    </article>
-  );
-}
-
-function MetaRow({ icon, iconTone, label, value }: { icon: ReactNode; iconTone?: string; label: string; value: string }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-      <span aria-hidden="true" style={{ display: "inline-flex", color: iconTone ?? tokens.muted }}>
-        {icon}
-      </span>
-      <dt style={{ color: tokens.muted, margin: 0 }}>{label}</dt>
-      <dd style={{ margin: 0, marginLeft: "auto", color: tokens.fg, fontWeight: 550 }}>{value}</dd>
-    </div>
   );
 }
 
