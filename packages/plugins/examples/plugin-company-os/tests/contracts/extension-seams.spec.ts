@@ -8,6 +8,7 @@ import {
   columnIdSchema,
   isBranchSignal,
   isDocSignal,
+  isAgentSignal,
   isRepoGitSignal,
   parseArtifactIndexV1,
   parseBoardStateV1,
@@ -27,7 +28,7 @@ import {
   reposResponsibleFor,
   reposReadableInScope,
 } from "../../src/contracts/index.js";
-import { branchSignal, docSignal, repoGitSignal } from "../fixtures/signals.js";
+import { agentSignal, branchSignal, docSignal, repoGitSignal, routine } from "../fixtures/signals.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures — a minimal in-memory CollectionContext (no git/gh/fs touched).
@@ -297,7 +298,7 @@ describe("projection contracts validate", () => {
 // ---------------------------------------------------------------------------
 
 /**
- * Exhaustive `switch (kind)` over ALL nine signal kinds. The `never` default is
+ * Exhaustive `switch (kind)` over ALL ten signal kinds. The `never` default is
  * the guard: add a tenth kind to the union without a case here and this file
  * stops compiling — so no projection fold can silently absorb a new kind.
  */
@@ -321,6 +322,8 @@ function kindOf(signal: Signal): Signal["kind"] {
       return "doc";
     case "skill":
       return "skill";
+    case "agent":
+      return "agent";
     default: {
       const _exhaustive: never = signal;
       return _exhaustive;
@@ -381,8 +384,44 @@ describe("COS-1 signal kinds", () => {
     expect(docs[1]?.checkoutKey).toBe("company::wt::abc");
   });
 
-  it("the kind switch is exhaustive over all eight kinds (compile-time never-guard)", () => {
-    const samples: Signal[] = [branchSignal("main"), repoGitSignal("company"), docSignal("specs/x.md")];
+  it("an AgentSource-shaped source composes through the WorkSignalSource seam", async () => {
+    const source: WorkSignalSource = {
+      id: "agent",
+      async collect(ctx): Promise<SignalBatch> {
+        return {
+          source: "agent",
+          collectedAt: ctx.clock.now(),
+          signals: [agentSignal("cto", { displayName: "CTO" })],
+          repoFreshness: [{ repo: "company", freshness: "live", lastOkAt: null, errors: [] }],
+        };
+      },
+    };
+    const batch = await source.collect(fakeContext());
+    expect(batch.signals).toHaveLength(1);
+    expect(batch.signals.every(isAgentSignal)).toBe(true);
+    expect(batch.signals[0]?.kind).toBe("agent");
+  });
+
+  it("routine signals can carry optional freshness metadata while legacy routines stay additive", () => {
+    expect(routine("daily-standup", "daily", "company/reports/standup/*.md").freshnessKind).toBeUndefined();
+
+    const proposal = routine("R9f-context-rollup-stewardship", "weekly", "company/reports/paperclip/tickets/*.md", {
+      freshnessKind: "proposal",
+      proposalSource: "company/reports/paperclip/tickets/*.md",
+      exclude: ["company/reports/paperclip/tickets/archive/**"],
+    });
+    expect(proposal.freshnessKind).toBe("proposal");
+    expect(proposal.proposalSource).toBe("company/reports/paperclip/tickets/*.md");
+    expect(proposal.exclude).toEqual(["company/reports/paperclip/tickets/archive/**"]);
+  });
+
+  it("the kind switch is exhaustive over all ten kinds (compile-time never-guard)", () => {
+    const samples: Signal[] = [
+      branchSignal("main"),
+      repoGitSignal("company"),
+      docSignal("specs/x.md"),
+      agentSignal("cto"),
+    ];
     for (const s of samples) {
       expect(kindOf(s)).toBe(s.kind);
     }

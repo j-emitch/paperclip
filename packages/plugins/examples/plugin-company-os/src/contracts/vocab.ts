@@ -120,6 +120,10 @@ export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
 export const ROUTINE_VERDICTS = ["fresh", "stale", "missing", "never_ran"] as const;
 export type RoutineVerdict = (typeof ROUTINE_VERDICTS)[number];
 
+/** What kind of freshness promise a routine-like duty makes in the Agents cockpit. */
+export const FRESHNESS_KINDS = ["artifact", "proposal", "embedded"] as const;
+export type FreshnessKind = (typeof FRESHNESS_KINDS)[number];
+
 /**
  * Outcome of a docs-viewer `report-content` read (spec §7 safety states). `ok` is
  * the only status that carries `content`; every other is a typed refusal the UI

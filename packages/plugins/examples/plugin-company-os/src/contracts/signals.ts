@@ -17,6 +17,8 @@ import type {
   BranchComparison,
   BranchStatus,
   DocType,
+  FreshnessKind,
+  OwnerAgent,
   RepoAvailability,
   ReviewReportKind,
   ReviewVerdict,
@@ -66,9 +68,9 @@ export interface SignalProvenance {
 }
 
 // ---------------------------------------------------------------------------
-// The signal kinds (discriminated by `kind`) — five COS-0 kinds below, three
-// COS-1 git/doc kinds further down. The `Signal` union + the narrowing helpers
-// at the bottom are the single branch point for all of them.
+// The signal kinds (discriminated by `kind`) — COS-0 kinds below, COS-1 git/doc
+// kinds further down, and the COS-1R agent kind. The `Signal` union + the
+// narrowing helpers at the bottom are the single branch point for all of them.
 // ---------------------------------------------------------------------------
 
 /** Places a ticket into a board column. The board's chips are projected from these. */
@@ -131,8 +133,41 @@ export interface RoutineSignal extends SignalProvenance {
   readonly cadence: string;
   /** Workspace glob the routine is expected to write (e.g. "company/reports/standup/*.md"). */
   readonly expectedArtifactGlob: string;
+  /** Freshness model for this routine-like duty. Omitted for legacy artifact routines until sidecars land. */
+  readonly freshnessKind?: FreshnessKind;
+  /** Source glob/path used when freshnessKind === "proposal". */
+  readonly proposalSource?: string;
+  /** Routine-specific artifact excludes for same-owner sibling outputs sharing a directory. */
+  readonly exclude?: readonly string[];
   /** Last-run timestamp (ISO-8601) from issues.read, when known. */
   readonly lastRunAt?: string;
+}
+
+export interface AgentDutySignal {
+  readonly id: string;
+  readonly surface: string | null;
+}
+
+/** Agent identity + coordination facts for the Agents cockpit. */
+export interface AgentSignal extends SignalProvenance {
+  readonly kind: "agent";
+  /** Directory/config slug; identity only. */
+  readonly agentKey: string;
+  /** Display name and join key for routine ownership. */
+  readonly displayName: OwnerAgent;
+  /** Paperclip role slug from config; rendered honestly (COO is "pm"). */
+  readonly role: string;
+  /** Configured model value; live drift is surfaced later as a diagnostic. */
+  readonly model: string;
+  readonly reportsTo: string | null;
+  readonly budgetMonthlyCents: number | null;
+  readonly canCreateAgents: boolean;
+  readonly maxTurnsPerRun: number | null;
+  readonly heartbeatIntervalSec: number | null;
+  readonly summary: string | null;
+  readonly duties: readonly AgentDutySignal[];
+  readonly handsOffTo: readonly string[];
+  readonly receivesFrom: readonly string[];
 }
 
 /** A prefix→family→system mapping from the canonical registry. */
@@ -335,6 +370,7 @@ export type Signal =
   | RoutineSignal
   | TaxonomySignal
   | ReviewSignal
+  | AgentSignal
   | BranchSignal
   | RepoGitSignal
   | DocSignal
@@ -346,6 +382,7 @@ export const isArtifactSignal = (s: Signal): s is ArtifactSignal => s.kind === "
 export const isRoutineSignal = (s: Signal): s is RoutineSignal => s.kind === "routine";
 export const isTaxonomySignal = (s: Signal): s is TaxonomySignal => s.kind === "taxonomy";
 export const isReviewSignal = (s: Signal): s is ReviewSignal => s.kind === "review";
+export const isAgentSignal = (s: Signal): s is AgentSignal => s.kind === "agent";
 export const isBranchSignal = (s: Signal): s is BranchSignal => s.kind === "branch";
 export const isRepoGitSignal = (s: Signal): s is RepoGitSignal => s.kind === "repo_git";
 export const isDocSignal = (s: Signal): s is DocSignal => s.kind === "doc";

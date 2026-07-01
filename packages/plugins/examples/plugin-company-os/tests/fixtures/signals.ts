@@ -7,6 +7,7 @@
 import type { SignalBatch, SignalBundle, RepoFreshness } from "../../src/contracts/WorkSignalSource.js";
 import type {
   ArtifactSignal,
+  AgentSignal,
   BranchSignal,
   DocSignal,
   RepoGitSignal,
@@ -115,6 +116,31 @@ export function routine(
     ownerAgent: over.ownerAgent ?? "CTO",
     cadence,
     expectedArtifactGlob,
+    ...over,
+  };
+}
+
+export function agentSignal(agentKey: string, over: Partial<AgentSignal> = {}): AgentSignal {
+  return {
+    kind: "agent",
+    source: over.source ?? "agent",
+    repo: over.repo ?? "company",
+    confidence: over.confidence ?? "high",
+    freshness: over.freshness ?? "live",
+    errors: over.errors ?? [],
+    agentKey,
+    displayName: over.displayName ?? "CTO",
+    role: over.role ?? "cto",
+    model: over.model ?? "gpt-5.5",
+    reportsTo: over.reportsTo ?? "CEO",
+    budgetMonthlyCents: over.budgetMonthlyCents ?? 2000,
+    canCreateAgents: over.canCreateAgents ?? false,
+    maxTurnsPerRun: over.maxTurnsPerRun ?? 100,
+    heartbeatIntervalSec: over.heartbeatIntervalSec ?? 86_400,
+    summary: over.summary ?? null,
+    duties: over.duties ?? [{ id: "technical-analysis", surface: "company/reports/analysis" }],
+    handsOffTo: over.handsOffTo ?? [],
+    receivesFrom: over.receivesFrom ?? ["CEO"],
     ...over,
   };
 }

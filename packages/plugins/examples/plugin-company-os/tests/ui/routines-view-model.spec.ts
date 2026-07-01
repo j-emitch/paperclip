@@ -12,6 +12,7 @@ import {
   VERDICT_TONES,
   VERDICT_ORDER,
 } from "../../src/ui/routines/routines-view-model.js";
+import { labelForNullableVerdict, toneForNullableVerdict } from "../../src/ui/shared/verdict-labels.js";
 import type { RoutineHealthV1 } from "../../src/contracts/index.js";
 import { goldenRoutineHealth } from "./fixtures/reports.js";
 
@@ -58,6 +59,13 @@ describe("buildRoutinesView", () => {
       expect(VERDICT_TONES[v]).toMatch(/oklch/);
     }
     expect(VERDICT_ORDER).toEqual(["missing", "stale", "never_ran", "fresh"]);
+  });
+
+  it("exposes calm nullable-verdict helpers before any contract widens", () => {
+    expect(labelForNullableVerdict("fresh")).toBe(VERDICT_LABELS.fresh);
+    expect(toneForNullableVerdict("fresh")).toBe(VERDICT_TONES.fresh);
+    expect(labelForNullableVerdict(null)).toBe("Duties only");
+    expect(toneForNullableVerdict(null)).toMatch(/oklch/);
   });
 
   it("handles an empty health snapshot without throwing", () => {

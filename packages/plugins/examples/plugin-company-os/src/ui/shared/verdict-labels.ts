@@ -22,3 +22,13 @@ export const VERDICT_TONES: Record<RoutineVerdict, string> = {
   missing: statusColors.danger,
   never_ran: statusColors.reviewUnknown,
 };
+
+export type NullableRoutineVerdict = RoutineVerdict | null;
+
+export function labelForNullableVerdict(verdict: NullableRoutineVerdict): string {
+  return verdict === null ? "Duties only" : VERDICT_LABELS[verdict];
+}
+
+export function toneForNullableVerdict(verdict: NullableRoutineVerdict): string {
+  return verdict === null ? statusColors.reviewUnknown : VERDICT_TONES[verdict];
+}

@@ -26,6 +26,7 @@ export * from "./WorkSignalSource.js";
 export * from "./board-state.js";
 export * from "./artifact-index.js";
 export * from "./routine-health.js";
+export * from "./agent-system.js";
 
 // Layer 2 — COS-1 project taxonomy + daily-driver projection contracts
 export * from "./projects.js";
