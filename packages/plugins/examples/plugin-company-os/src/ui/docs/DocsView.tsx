@@ -38,7 +38,7 @@ export function DocsView({ docIndex, selectedDocId, onSelect, now, isMobile = fa
   const showViewerOnly = isMobile && selectedDocId !== null;
 
   return (
-    <div role="tabpanel" aria-label="Docs" style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
       <CockpitSurfaceStyles />
       <CockpitMotionStyles />
 

@@ -25,7 +25,7 @@ import { useReportContent } from "../hooks/useReportContent.js";
 import { useIsMobile } from "../hooks/useMediaQuery.js";
 import { useNow } from "../hooks/useNow.js";
 import { useFocusTrap } from "../hooks/useFocusTrap.js";
-import { ReportViewerPanel } from "../reports/ReportViewerPanel.js";
+import { DocumentViewerPanel } from "../shared/DocumentViewerPanel.js";
 import { HomeView } from "./HomeView.js";
 
 /** Production markdown slot — host renderer, wikilinks on, raw HTML inert (react-markdown). */
@@ -134,7 +134,7 @@ function ConnectedBriefingViewer({
 }) {
   const { content, loading, error, refresh } = useReportContent(companyId, repo, relPath);
   return (
-    <ReportViewerPanel
+    <DocumentViewerPanel
       content={content}
       loading={loading}
       error={error ? error.message : null}

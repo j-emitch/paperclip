@@ -7,15 +7,14 @@
 import { describe, expect, it } from "vitest";
 import {
   ALL,
-  ARTIFACT_TYPE_LABELS,
-  baseName,
   buildReportsView,
   EMPTY_FILTER,
   selectionKey,
-  stripFrontmatter,
   UNSET_FACET,
   type ReportsFilter,
 } from "../../src/ui/reports/reports-view-model.js";
+import { baseName, stripFrontmatter } from "../../src/ui/shared/document-text.js";
+import { ARTIFACT_TYPE_LABELS } from "../../src/ui/shared/document-labels.js";
 import { goldenArtifactIndex } from "./fixtures/reports.js";
 
 const filter = (over: Partial<ReportsFilter> = {}): ReportsFilter => ({ ...EMPTY_FILTER, ...over });

@@ -105,44 +105,50 @@ export function HomeView({
   );
 
   return (
-    <div role="tabpanel" aria-label="Home" style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
       <CockpitSurfaceStyles />
       <CockpitMotionStyles />
 
-      <header style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 650, color: tokens.fg }}>Orientation</h2>
-        {derivedAge ? (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: tokens.muted }}>
-            <span aria-hidden="true" style={{ display: "inline-flex" }}>
-              <ClockIcon size={12} />
+      {/* While the briefing drawer is open, hide the cockpit behind it from
+          assistive tech. The drawer traps focus (keyboard users are already
+          contained), so this only needs to keep the SR virtual cursor out of the
+          background — aria-hidden is enough and universally supported. */}
+      <div aria-hidden={drawer != null || undefined} style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
+        <header style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 650, color: tokens.fg }}>Orientation</h2>
+          {derivedAge ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: tokens.muted }}>
+              <span aria-hidden="true" style={{ display: "inline-flex" }}>
+                <ClockIcon size={12} />
+              </span>
+              as of {derivedAge}
             </span>
-            as of {derivedAge}
-          </span>
-        ) : null}
-        <StaleSourcePills sources={orientation.sources} />
-      </header>
+          ) : null}
+          <StaleSourcePills sources={orientation.sources} />
+        </header>
 
-      {snapshot}
+        {snapshot}
 
-      {isMobile ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          {alerts}
-          {briefing}
-          {branches}
-          {work}
-          {commits}
-        </div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 324px", gap: 18, alignItems: "start" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
+        {isMobile ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            {alerts}
             {briefing}
             {branches}
             {work}
             {commits}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 18, position: "sticky", top: 12 }}>{alerts}</div>
-        </div>
-      )}
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 324px", gap: 18, alignItems: "start" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
+              {briefing}
+              {branches}
+              {work}
+              {commits}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 18, position: "sticky", top: 12 }}>{alerts}</div>
+          </div>
+        )}
+      </div>
 
       {drawer ? (
         <BriefingDrawer title={drawerTitle ?? null} isMobile={isMobile} onClose={onCloseDrawer} panelRef={drawerRef}>

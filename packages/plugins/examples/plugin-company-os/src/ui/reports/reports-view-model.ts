@@ -8,18 +8,10 @@
  */
 
 import type { ArtifactEntry, ArtifactIndexV1, ArtifactType } from "../../contracts/index.js";
+import { ARTIFACT_TYPE_LABELS } from "../shared/document-labels.js";
 
 /** Sentinel for "no filter on this dimension". */
 export const ALL = "all" as const;
-
-export const ARTIFACT_TYPE_LABELS: Record<ArtifactType, string> = {
-  spec: "Specs",
-  handoff: "Handoffs",
-  cannons: "Reviews",
-  routine_output: "Routine output",
-  teaching: "Teaching",
-  knowledge: "Knowledge",
-};
 
 /** Display order for the type filter chips (matches the lifecycle the cockpit cares about). */
 export const ARTIFACT_TYPE_ORDER: readonly ArtifactType[] = [
@@ -75,22 +67,6 @@ export function selectionKey(entry: Pick<ArtifactEntry, "repo" | "relPath">): st
   return `${entry.repo}::${entry.relPath}`;
 }
 
-/** The base name of a workspace-relative path (the docs list's primary line when no title). */
-export function baseName(relPath: string): string {
-  const parts = relPath.split("/");
-  return parts[parts.length - 1] || relPath;
-}
-
-/**
- * Strip a leading YAML frontmatter block (`--- … ---`) from markdown before
- * render, so the viewer body doesn't show raw `key: value` lines — the header
- * already surfaces the title / type / status the frontmatter held. Only a block
- * anchored at the very start is removed; a mid-document `---` rule is untouched.
- */
-export function stripFrontmatter(markdown: string): string {
-  const m = /^﻿?\s*---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/.exec(markdown);
-  return m ? markdown.slice(m[0].length) : markdown;
-}
 
 type FacetDim = "type" | "system" | "prefix" | "repo";
 

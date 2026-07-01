@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactNode } from "react";
 import { ReportsView } from "../../src/ui/reports/ReportsView.js";
-import { ReportViewerPanel } from "../../src/ui/reports/ReportViewerPanel.js";
+import { DocumentViewerPanel } from "../../src/ui/shared/DocumentViewerPanel.js";
 import { RoutinesView } from "../../src/ui/routines/RoutinesView.js";
 import { EMPTY_FILTER } from "../../src/ui/reports/reports-view-model.js";
 import {
@@ -26,9 +26,9 @@ import {
 const noop = () => {};
 const pre = (md: string): ReactNode => <pre data-testid="md">{md}</pre>;
 
-function viewerPanel(content: Parameters<typeof ReportViewerPanel>[0]["content"]) {
+function viewerPanel(content: Parameters<typeof DocumentViewerPanel>[0]["content"]) {
   return renderToStaticMarkup(
-    <ReportViewerPanel content={content} loading={false} error={null} now={REPORTS_NOW} renderMarkdown={pre} />,
+    <DocumentViewerPanel content={content} loading={false} error={null} now={REPORTS_NOW} renderMarkdown={pre} />,
   );
 }
 
@@ -42,7 +42,7 @@ describe("Reports SSR", () => {
         selectedKey={null}
         onSelect={noop}
         now={REPORTS_NOW}
-        viewer={<ReportViewerPanel content={okMarkdownContent()} loading={false} error={null} now={REPORTS_NOW} renderMarkdown={pre} />}
+        viewer={<DocumentViewerPanel content={okMarkdownContent()} loading={false} error={null} now={REPORTS_NOW} renderMarkdown={pre} />}
       />,
     );
     expect(html).toContain("Reports");
@@ -82,7 +82,7 @@ describe("Reports SSR", () => {
 
   it("viewer: a bridge error renders a retry affordance", () => {
     const html = renderToStaticMarkup(
-      <ReportViewerPanel content={null} loading={false} error="worker offline" now={REPORTS_NOW} renderMarkdown={pre} onRetry={noop} />,
+      <DocumentViewerPanel content={null} loading={false} error="worker offline" now={REPORTS_NOW} renderMarkdown={pre} onRetry={noop} />,
     );
     expect(html).toContain("Couldn’t load the document");
     expect(html).toContain("Try again");

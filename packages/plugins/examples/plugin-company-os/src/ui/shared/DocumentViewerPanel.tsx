@@ -1,9 +1,10 @@
 /**
- * Pure detail pane for a selected report. Renders the document header (title,
- * type, repo, prefix, status, mtime, size) + the body, which is one of: an `ok`
- * markdown/plaintext render, a typed safety notice (too-large / unsupported /
- * not-indexed / not-found / denied), a loading spinner, a bridge error, or the
- * "nothing selected" placeholder.
+ * `DocumentViewerPanel` — the shared detail pane for a selected document, reused
+ * by Docs, Skills, Home (briefing), and the Reports artifact browser. Renders the
+ * header (title, type, repo, prefix, status, mtime, size) + the body, which is one
+ * of: an `ok` markdown/plaintext render, a typed safety notice (too-large /
+ * unsupported / not-indexed / not-found / denied), a loading spinner, a bridge
+ * error, or the "nothing selected" placeholder.
  *
  * The markdown body is a render-PROP slot (`renderMarkdown`) so this component
  * stays bridge-free + SSR/Playwright-screenshottable: production injects the host
@@ -14,13 +15,14 @@
 import type { ReactNode } from "react";
 import type { ReportContentStatus, ReportContentV1 } from "../../contracts/index.js";
 import { statusColors, tokens } from "../tokens.js";
-import { Frame, Glyph, LocalSpinner, ghostButtonStyle } from "../shared/feedback.js";
-import { Pill, RepoBadge } from "../shared/badges.js";
+import { Frame, Glyph, LocalSpinner, ghostButtonStyle } from "./feedback.js";
+import { Pill, RepoBadge } from "./badges.js";
 import { AlertIcon, ClockIcon, CloseIcon, DocIcon, FileWarningIcon, RefreshIcon } from "../icons.js";
-import { relativeTime, formatBytes } from "../shared/time.js";
-import { ARTIFACT_TYPE_LABELS, baseName, stripFrontmatter } from "./reports-view-model.js";
+import { relativeTime, formatBytes } from "./time.js";
+import { baseName, stripFrontmatter } from "./document-text.js";
+import { ARTIFACT_TYPE_LABELS } from "./document-labels.js";
 
-export interface ReportViewerPanelProps {
+export interface DocumentViewerPanelProps {
   /** The selected document payload, or null when nothing is selected. */
   content: ReportContentV1 | null;
   loading: boolean;
@@ -51,7 +53,7 @@ export interface ReportViewerPanelProps {
   backLabel?: string;
 }
 
-export function ReportViewerPanel({
+export function DocumentViewerPanel({
   content,
   loading,
   error,
@@ -66,7 +68,7 @@ export function ReportViewerPanel({
   emptyTitle = "Pick a report to read",
   emptyBody = "Specs, handoffs, and review reports render here in place — filter the list and choose one.",
   backLabel = "Back to the report list",
-}: ReportViewerPanelProps) {
+}: DocumentViewerPanelProps) {
   if (!content && loading) {
     return (
       <Frame minHeight={isMobile ? 200 : 320}>

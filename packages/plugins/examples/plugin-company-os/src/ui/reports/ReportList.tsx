@@ -9,7 +9,9 @@ import type { ArtifactEntry } from "../../contracts/index.js";
 import { tokens } from "../tokens.js";
 import { Pill, RepoBadge } from "../shared/badges.js";
 import { relativeTime } from "../shared/time.js";
-import { ARTIFACT_TYPE_LABELS, baseName, selectionKey } from "./reports-view-model.js";
+import { selectionKey } from "./reports-view-model.js";
+import { baseName } from "../shared/document-text.js";
+import { ARTIFACT_TYPE_LABELS } from "../shared/document-labels.js";
 
 export interface ReportListProps {
   entries: ArtifactEntry[];

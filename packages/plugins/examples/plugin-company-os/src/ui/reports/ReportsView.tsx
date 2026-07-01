@@ -37,7 +37,7 @@ export function ReportsView({ index, filter, onFilterChange, selectedKey, onSele
   const showViewerOnly = isMobile && selectedKey !== null;
 
   return (
-    <div role="tabpanel" aria-label="Reports" style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
       <CockpitSurfaceStyles />
       {!showViewerOnly ? (
         <>

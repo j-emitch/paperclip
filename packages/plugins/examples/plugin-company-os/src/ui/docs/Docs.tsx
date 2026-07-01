@@ -19,7 +19,7 @@ import { useDocIndex } from "../hooks/useDocIndex.js";
 import { useDocContent } from "../hooks/useDocContent.js";
 import { useIsMobile } from "../hooks/useMediaQuery.js";
 import { useNow } from "../hooks/useNow.js";
-import { ReportViewerPanel } from "../reports/ReportViewerPanel.js";
+import { DocumentViewerPanel } from "../shared/DocumentViewerPanel.js";
 import { DocsView } from "./DocsView.js";
 import { type DocSelection } from "./DocTree.js";
 import { DOC_TYPE_LABEL_SINGULAR } from "./docs-view-model.js";
@@ -83,7 +83,16 @@ export function Docs({ companyId }: { companyId: string | null }) {
       onClose={isMobile ? onClose : undefined}
     />
   ) : (
-    <ReportViewerPanel content={null} loading={false} error={null} now={now} isMobile={isMobile} renderMarkdown={renderHostMarkdown} />
+    <DocumentViewerPanel
+      content={null}
+      loading={false}
+      error={null}
+      now={now}
+      isMobile={isMobile}
+      renderMarkdown={renderHostMarkdown}
+      emptyTitle="Pick a document to read"
+      emptyBody="Specs, plans, handoffs, backlog, and reviews render here in place — choose one from the tree."
+    />
   );
 
   return (
@@ -113,7 +122,7 @@ function ConnectedDocViewer({
 }) {
   const { content, loading, error, refresh } = useDocContent(companyId, selection.entry.docId);
   return (
-    <ReportViewerPanel
+    <DocumentViewerPanel
       content={content}
       loading={loading}
       error={error ? error.message : null}
@@ -123,6 +132,7 @@ function ConnectedDocViewer({
       onRetry={refresh}
       onClose={onClose}
       typeLabel={DOC_TYPE_LABEL_SINGULAR[selection.type]}
+      backLabel="Back to the docs list"
     />
   );
 }

@@ -48,7 +48,7 @@ export function SkillsView({
   const showViewerOnly = isMobile && selectedSkillId !== null;
 
   return (
-    <div role="tabpanel" aria-label="Skills" style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
       <CockpitSurfaceStyles />
       <CockpitMotionStyles />
 

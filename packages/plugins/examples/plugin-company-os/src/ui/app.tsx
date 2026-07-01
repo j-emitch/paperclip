@@ -152,7 +152,9 @@ export function CompanyOsPage({ context }: PluginPageProps) {
       <TabBar isMobile={isMobile} activeKey={activeTab} onSelect={setTab} />
 
       <section
-        aria-live="polite"
+        role="tabpanel"
+        id={`cos-panel-${current.key}`}
+        aria-labelledby={`cos-tab-${current.key}`}
         style={{
           background: isLive ? "transparent" : tokens.card,
           border: isLive ? "none" : `1px solid ${tokens.border}`,
@@ -262,7 +264,9 @@ function TabBar({
             key={tab.key}
             type="button"
             role="tab"
+            id={`cos-tab-${tab.key}`}
             aria-selected={selected}
+            aria-controls={`cos-panel-${tab.key}`}
             onClick={() => onSelect(tab.key)}
             style={{
               display: "inline-flex",
@@ -296,7 +300,7 @@ function TabBar({
 function PlaceholderPanel({ tab }: { tab: CompanyOsTab }) {
   const Icon = TAB_ICONS[tab.key];
   return (
-    <div role="tabpanel" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <h2 style={{ margin: 0, fontSize: 17, fontWeight: 650 }}>{tab.label}</h2>
         <PhasePill label={`live in ${tab.liveIn}`} />

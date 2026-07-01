@@ -9,7 +9,7 @@
 import type { DocEntryV1 } from "../../contracts/index.js";
 import type { DocIndexType } from "../../contracts/vocab.js";
 import { statusColors, tokens } from "../tokens.js";
-import { baseName } from "../reports/reports-view-model.js";
+import { baseName } from "../shared/document-text.js";
 
 /** Bucket headers (plural) in the order they render within a project. */
 export const DOC_TYPE_ORDER: readonly DocIndexType[] = ["spec", "plan", "handoff", "backlog", "review"];

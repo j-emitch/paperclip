@@ -50,7 +50,7 @@ function skillMatches(skill: SkillEntryV1, q: string): boolean {
     skill.name.toLowerCase().includes(q) ||
     skill.slug.toLowerCase().includes(q) ||
     skill.collection.toLowerCase().includes(q) ||
-    ORIGIN_MATCH_LABEL[skill.origin].includes(q) ||
+    ORIGIN_MATCH_LABEL[skill.origin].toLowerCase().includes(q) ||
     (skill.summary?.toLowerCase().includes(q) ?? false)
   );
 }

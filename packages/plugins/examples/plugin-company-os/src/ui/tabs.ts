@@ -96,10 +96,9 @@ export function isCompanyOsTabKey(value: string): value is CompanyOsTabKey {
 
 /**
  * Tab keys that were renamed, mapped to their current key. `reports` became
- * `docs` when the Docs surface superseded the Reports tab (COS-1g/1h). Kept in
- * lockstep with the deep-link migrator in `docs/legacy-link.ts`, which performs
- * the equivalent `{tab:"reports",…}` -> `{tab:"docs",…}` remap for deep-link
- * payloads; this map is the tab-KEY side.
+ * `docs` when the Docs surface superseded the Reports tab (COS-1g/1h). Single
+ * source of the legacy tab-key map, consumed by the active-tab store to resolve a
+ * persisted pre-rename key forward instead of onto a dead tab.
  */
 const LEGACY_TAB_KEYS: Readonly<Record<string, CompanyOsTabKey>> = {
   reports: "docs",

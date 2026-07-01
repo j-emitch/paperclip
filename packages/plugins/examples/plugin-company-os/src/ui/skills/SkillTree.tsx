@@ -96,7 +96,7 @@ function OriginSection({
           <CalmNote>
             {isStar
               ? "No company skills indexed yet — they appear on the next derive."
-              : "No installed-plugin skills found. Point the plugin at a skills cache to populate this."}
+              : "No installed-plugin skills indexed yet — they appear on the next derive."}
           </CalmNote>
         ) : null}
         {origin.collections.map((collection) => (

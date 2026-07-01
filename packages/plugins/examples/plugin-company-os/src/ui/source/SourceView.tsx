@@ -44,7 +44,7 @@ export function SourceView({ gitState, now, isMobile = false, expandKey = null }
   const hasAnyRepo = gitState.groups.some((g) => g.repos.length > 0);
 
   return (
-    <div role="tabpanel" aria-label="Source" style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
       <CockpitSurfaceStyles />
       <CockpitMotionStyles />
 

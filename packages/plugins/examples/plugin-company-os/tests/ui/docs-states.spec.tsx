@@ -11,7 +11,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactNode } from "react";
 import { DocsView } from "../../src/ui/docs/DocsView.js";
 import { DocTree } from "../../src/ui/docs/DocTree.js";
-import { ReportViewerPanel } from "../../src/ui/reports/ReportViewerPanel.js";
+import { DocumentViewerPanel } from "../../src/ui/shared/DocumentViewerPanel.js";
 import { goldenDocIndex, emptyDocIndex, dogfoodSpecDocId, DOCS_NOW } from "./fixtures/docs.js";
 
 const noop = () => {};
@@ -74,7 +74,7 @@ describe("Docs SSR", () => {
       message: null,
     };
     const html = renderToStaticMarkup(
-      <ReportViewerPanel content={planContent} loading={false} error={null} now={DOCS_NOW} renderMarkdown={pre} typeLabel="Plan" />,
+      <DocumentViewerPanel content={planContent} loading={false} error={null} now={DOCS_NOW} renderMarkdown={pre} typeLabel="Plan" />,
     );
     expect(html).toContain("Plan"); // the index-derived type pill
     expect(html).toContain("approved"); // docStatus

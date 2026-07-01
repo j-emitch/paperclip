@@ -1,14 +1,18 @@
 /**
- * `Reports` — the data-connected Docs/Reports tab. Owns the artifact-index fetch,
- * the filter + selection state, and the live `report-content` read for the
- * selected doc. Everything visual is delegated to the pure `ReportsView` +
- * `ReportViewerPanel`; the markdown body is rendered with the host
- * `<MarkdownBlock>` (react-markdown — raw HTML inert), injected only here so the
- * pure views stay bridge-free.
+ * `Reports` — the artifact-index browser. NOTE: this is NOT a routed cockpit tab.
+ * The Docs surface (COS-1g) superseded the old Reports tab; `app.tsx` routes the
+ * `docs` key to `<Docs>`, so this connected container is never mounted. It is
+ * RETAINED as the working reference consumer of the still-live `artifact-index`
+ * seam (ArtifactSource walks `docs/teachings/**` into `cos_artifact_index`; COS-2
+ * Teaching is its declared next consumer) — it stays compile-checked + type-aligned
+ * to `ArtifactIndexV1` at zero runtime cost. Do not mistake it for the Docs tab.
  *
- * Selection resets when the company changes (one company's open doc never leaks
- * to another). The connected viewer is mounted only when a doc is selected, so we
- * never issue a `report-content` fetch for an empty selection.
+ * Owns the artifact-index fetch, the filter + selection state, and the live
+ * `report-content` read for a selected doc. Visuals delegate to the pure
+ * `ReportsView` + the shared `DocumentViewerPanel`; the markdown body is the host
+ * `<MarkdownBlock>`, injected only here so the pure views stay bridge-free.
+ * Selection resets when the company changes; the viewer mounts only when a doc is
+ * selected, so no `report-content` fetch fires for an empty selection.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -22,7 +26,7 @@ import { useReportContent } from "../hooks/useReportContent.js";
 import { useIsMobile } from "../hooks/useMediaQuery.js";
 import { useNow } from "../hooks/useNow.js";
 import { ReportsView } from "./ReportsView.js";
-import { ReportViewerPanel } from "./ReportViewerPanel.js";
+import { DocumentViewerPanel } from "../shared/DocumentViewerPanel.js";
 import { EMPTY_FILTER, selectionKey, type ReportsFilter } from "./reports-view-model.js";
 
 /** Production markdown slot — host renderer, wikilinks on, raw HTML inert (react-markdown). */
@@ -65,7 +69,7 @@ export function Reports({ companyId }: { companyId: string | null }) {
       onClose={isMobile ? onClose : undefined}
     />
   ) : (
-    <ReportViewerPanel content={null} loading={false} error={null} now={now} isMobile={isMobile} renderMarkdown={renderHostMarkdown} />
+    <DocumentViewerPanel content={null} loading={false} error={null} now={now} isMobile={isMobile} renderMarkdown={renderHostMarkdown} />
   );
 
   return (
@@ -99,7 +103,7 @@ function ConnectedReportViewer({
 }) {
   const { content, loading, error, refresh } = useReportContent(companyId, repo, relPath);
   return (
-    <ReportViewerPanel
+    <DocumentViewerPanel
       content={content}
       loading={loading}
       error={error ? error.message : null}

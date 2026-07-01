@@ -18,7 +18,7 @@ import { useSkillsCatalog } from "../hooks/useSkillsCatalog.js";
 import { useSkillContent } from "../hooks/useSkillContent.js";
 import { useIsMobile } from "../hooks/useMediaQuery.js";
 import { useNow } from "../hooks/useNow.js";
-import { ReportViewerPanel } from "../reports/ReportViewerPanel.js";
+import { DocumentViewerPanel } from "../shared/DocumentViewerPanel.js";
 import { SkillsView } from "./SkillsView.js";
 import { type SkillSelection } from "./SkillTree.js";
 import { filterCatalog } from "./skills-view-model.js";
@@ -77,7 +77,7 @@ export function Skills({ companyId }: { companyId: string | null }) {
       onClose={isMobile ? onClose : undefined}
     />
   ) : (
-    <ReportViewerPanel
+    <DocumentViewerPanel
       content={null}
       loading={false}
       error={null}
@@ -124,7 +124,7 @@ function ConnectedSkillViewer({
 }) {
   const { content, loading, error, refresh } = useSkillContent(companyId, selection.entry.skillId);
   return (
-    <ReportViewerPanel
+    <DocumentViewerPanel
       content={content}
       loading={loading}
       error={error ? error.message : null}

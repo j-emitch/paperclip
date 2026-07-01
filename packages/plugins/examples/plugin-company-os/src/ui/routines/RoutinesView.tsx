@@ -32,7 +32,7 @@ export function RoutinesView({ health, now, isMobile = false }: RoutinesViewProp
   const stale = health.sources.filter((s) => s.freshness !== "live");
 
   return (
-    <div role="tabpanel" aria-label="Routines" style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
       <CockpitSurfaceStyles />
       <header style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 650, color: tokens.fg }}>Routines</h2>

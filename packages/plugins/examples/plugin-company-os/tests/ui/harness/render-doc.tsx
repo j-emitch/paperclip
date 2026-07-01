@@ -12,7 +12,7 @@ import type { ReactElement, ReactNode } from "react";
 import { CompanyOsBoardView } from "../../../src/ui/board/CompanyOsBoardView.js";
 import { EmptyState, ErrorState, LoadingState } from "../../../src/ui/board/states.js";
 import { ReportsView } from "../../../src/ui/reports/ReportsView.js";
-import { ReportViewerPanel } from "../../../src/ui/reports/ReportViewerPanel.js";
+import { DocumentViewerPanel } from "../../../src/ui/shared/DocumentViewerPanel.js";
 import { RoutinesView } from "../../../src/ui/routines/RoutinesView.js";
 import { HomeView } from "../../../src/ui/home/HomeView.js";
 import { SourceView } from "../../../src/ui/source/SourceView.js";
@@ -82,7 +82,7 @@ function reports(isMobile: boolean): ReactElement {
       onSelect={noop}
       now={REPORTS_NOW}
       isMobile={isMobile}
-      viewer={<ReportViewerPanel content={okMarkdownContent()} loading={false} error={null} now={REPORTS_NOW} isMobile={isMobile} renderMarkdown={preMarkdown} />}
+      viewer={<DocumentViewerPanel content={okMarkdownContent()} loading={false} error={null} now={REPORTS_NOW} isMobile={isMobile} renderMarkdown={preMarkdown} />}
     />
   );
 }
@@ -93,7 +93,7 @@ function routines(isMobile: boolean): ReactElement {
 
 function home(isMobile: boolean, opts?: { empty?: boolean; drawer?: boolean }): ReactElement {
   const drawer = opts?.drawer ? (
-    <ReportViewerPanel content={okMarkdownContent()} loading={false} error={null} now={HOME_NOW} isMobile={isMobile} renderMarkdown={preMarkdown} />
+    <DocumentViewerPanel content={okMarkdownContent()} loading={false} error={null} now={HOME_NOW} isMobile={isMobile} renderMarkdown={preMarkdown} />
   ) : undefined;
   return (
     <HomeView
@@ -117,9 +117,9 @@ function source(isMobile: boolean, opts?: { empty?: boolean }): ReactElement {
 function docs(isMobile: boolean, opts?: { empty?: boolean; selected?: boolean }): ReactElement {
   const selectedDocId = opts?.selected ? dogfoodSpecDocId() : null;
   const viewer = opts?.selected ? (
-    <ReportViewerPanel content={okMarkdownContent()} loading={false} error={null} now={DOCS_NOW} isMobile={isMobile} renderMarkdown={preMarkdown} typeLabel="Spec" />
+    <DocumentViewerPanel content={okMarkdownContent()} loading={false} error={null} now={DOCS_NOW} isMobile={isMobile} renderMarkdown={preMarkdown} typeLabel="Spec" />
   ) : (
-    <ReportViewerPanel content={null} loading={false} error={null} now={DOCS_NOW} isMobile={isMobile} renderMarkdown={preMarkdown} />
+    <DocumentViewerPanel content={null} loading={false} error={null} now={DOCS_NOW} isMobile={isMobile} renderMarkdown={preMarkdown} />
   );
   return (
     <DocsView
