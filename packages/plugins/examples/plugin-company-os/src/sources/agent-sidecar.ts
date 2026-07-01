@@ -77,8 +77,8 @@ function parseAgent(raw: unknown, errors: string[]): AgentSidecarAgent | null {
     reportsTo: stringOrNull(raw.reports_to),
     summary: stringOrNull(raw.summary),
     duties: parseDuties(raw.duties, errors),
-    handsOffTo: stringArray(raw.hands_off_to),
-    receivesFrom: stringArray(raw.receives_from),
+    handsOffTo: parseAgentRefs(raw.hands_off_to, "hands_off_to", errors),
+    receivesFrom: parseAgentRefs(raw.receives_from, "receives_from", errors),
   };
 }
 
@@ -174,4 +174,27 @@ function stringOrNull(value: unknown): string | null {
 function stringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === "string");
+}
+
+function parseAgentRefs(raw: unknown, field: "hands_off_to" | "receives_from", errors: string[]): string[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) {
+    errors.push(`agent.${field} must be an array`);
+    return [];
+  }
+
+  const refs: string[] = [];
+  raw.forEach((item, index) => {
+    if (typeof item !== "string") {
+      errors.push(`agent.${field}[${index}] must be a string`);
+      return;
+    }
+    const ref = item.trim();
+    if (ref === "") {
+      errors.push(`agent.${field}[${index}] must be non-empty`);
+      return;
+    }
+    refs.push(ref);
+  });
+  return refs;
 }

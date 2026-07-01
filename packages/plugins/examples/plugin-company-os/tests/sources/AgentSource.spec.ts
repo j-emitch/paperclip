@@ -286,6 +286,39 @@ describe("AgentSource", () => {
     expect(batch.repoFreshness[0]?.freshness).toBe("stale");
   });
 
+  it("filters blank sidecar coordination refs and records parse diagnostics", async () => {
+    const sidecar = JSON.stringify({
+      agent: {
+        name: "CTO",
+        reports_to: "ceo",
+        summary: "Technical analysis.",
+        duties: [{ id: "technical-analysis", surface: "company/reports/analysis" }],
+        hands_off_to: ["coo", "", "  ", " librarian "],
+        receives_from: ["ceo", "", " cto "],
+      },
+      routines: [],
+    });
+    const ctx = ctxWithSidecars({ cto: sidecar });
+
+    const batch = await agentSource.collect(ctx);
+    const cto = batch.signals.filter(isAgentSignal).find((a) => a.agentKey === "cto");
+
+    expect(cto).toMatchObject({
+      reportsTo: "CEO",
+      handsOffTo: ["COO", "Librarian"],
+      receivesFrom: ["CEO", "CTO"],
+      freshness: "stale",
+    });
+    expect(cto?.errors.map((e) => e.message)).toEqual(
+      expect.arrayContaining([
+        "config/paperclip/agents/cto/company-os.json: agent.hands_off_to[1] must be non-empty",
+        "config/paperclip/agents/cto/company-os.json: agent.hands_off_to[2] must be non-empty",
+        "config/paperclip/agents/cto/company-os.json: agent.receives_from[1] must be non-empty",
+      ]),
+    );
+    expect(batch.repoFreshness[0]?.freshness).toBe("stale");
+  });
+
   it("nulls invalid numeric agent config and records parse diagnostics", async () => {
     const ctx = makeFixtureContext({
       repos: [{ repo: "company", available: true }],
