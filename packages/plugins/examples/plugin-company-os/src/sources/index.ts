@@ -11,6 +11,7 @@ import { specBacklogSource } from "./SpecBacklogSource.js";
 import { pullRequestSource } from "./PullRequestSource.js";
 import { reviewReportSource } from "./ReviewReportSource.js";
 import { routineContractSource } from "./RoutineContractSource.js";
+import { agentSource } from "./AgentSource.js";
 import { artifactSource } from "./ArtifactSource.js";
 import { prefixRegistrySource } from "./PrefixRegistrySource.js";
 import { branchSource } from "./BranchSource.js";
@@ -23,6 +24,7 @@ export const DEFAULT_SOURCES: readonly WorkSignalSource[] = [
   pullRequestSource,
   reviewReportSource,
   routineContractSource,
+  agentSource,
   artifactSource,
   prefixRegistrySource,
   // COS-1 daily-driver sources (additive — appended so existing order is stable).
@@ -37,6 +39,7 @@ export * from "./SpecBacklogSource.js";
 export * from "./PullRequestSource.js";
 export * from "./ReviewReportSource.js";
 export * from "./RoutineContractSource.js";
+export * from "./AgentSource.js";
 export * from "./ArtifactSource.js";
 export * from "./PrefixRegistrySource.js";
 export * from "./BranchSource.js";
