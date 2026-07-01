@@ -18,6 +18,7 @@ import { HomeView } from "../../../src/ui/home/HomeView.js";
 import { SourceView } from "../../../src/ui/source/SourceView.js";
 import { BranchRow } from "../../../src/ui/source/BranchRow.js";
 import { DocsView } from "../../../src/ui/docs/DocsView.js";
+import { AgentsView } from "../../../src/ui/agents/AgentsView.js";
 import { CockpitMotionStyles } from "../../../src/ui/shared/cockpit-motion.js";
 import { EMPTY_FILTER } from "../../../src/ui/reports/reports-view-model.js";
 import type { BoardStateV1 } from "../../../src/contracts/index.js";
@@ -26,6 +27,7 @@ import { goldenArtifactIndex, goldenRoutineHealth, okMarkdownContent, REPORTS_NO
 import { goldenOrientation, emptyOrientation, HOME_NOW } from "../fixtures/home.js";
 import { goldenGitState, emptyGitState, SOURCE_NOW } from "../fixtures/source.js";
 import { goldenDocIndex, emptyDocIndex, dogfoodSpecDocId, DOCS_NOW } from "../fixtures/docs.js";
+import { goldenAgentSystem, emptyAgentSystem, AGENTS_NOW } from "../fixtures/agents.js";
 import { NOW } from "../../fixtures/signals.js";
 
 const noop = () => {};
@@ -133,6 +135,17 @@ function docs(isMobile: boolean, opts?: { empty?: boolean; selected?: boolean })
   );
 }
 
+function agents(isMobile: boolean, opts?: { empty?: boolean; selected?: string }): ReactElement {
+  return (
+    <AgentsView
+      system={opts?.empty ? emptyAgentSystem() : goldenAgentSystem()}
+      now={AGENTS_NOW}
+      isMobile={isMobile}
+      selectedAgentKey={opts?.selected ?? null}
+    />
+  );
+}
+
 /** A single expanded BranchRow — proves the commit list renders (the harness is
  *  SSR-only with no hydration, so an open row is screenshotted via `defaultExpanded`,
  *  not a click). */
@@ -178,5 +191,9 @@ export function harnessDocs(): HarnessDoc[] {
     { name: "docs-mobile", width: 390, html: document("Docs · mobile", renderToStaticMarkup(docs(true)), 390) },
     { name: "docs-empty", width: 1180, html: document("Docs · empty", renderToStaticMarkup(docs(false, { empty: true })), 1180) },
     { name: "docs-selected", width: 1180, html: document("Docs · doc open", renderToStaticMarkup(docs(false, { selected: true })), 1180) },
+    { name: "agents-desktop", width: 1180, html: document("Agents · populated", renderToStaticMarkup(agents(false)), 1180) },
+    { name: "agents-mobile", width: 390, html: document("Agents · mobile", renderToStaticMarkup(agents(true)), 390) },
+    { name: "agents-empty", width: 1180, html: document("Agents · empty (all 0-states)", renderToStaticMarkup(agents(false, { empty: true })), 1180) },
+    { name: "agents-selected", width: 1180, html: document("Agents · CTO selected", renderToStaticMarkup(agents(false, { selected: "cto" })), 1180) },
   ];
 }

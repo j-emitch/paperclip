@@ -8,6 +8,7 @@
  * card-in-card.
  */
 
+import type { ReactNode } from "react";
 import type { AgentSystemV1, AgentSystemVitalsV1, RoutineVerdict } from "../../contracts/index.js";
 import { tokens } from "../tokens.js";
 import { Pill } from "../shared/badges.js";
@@ -41,10 +42,12 @@ export function AgentsView({ system, now, isMobile = false, selectedAgentKey = n
       <CockpitSurfaceStyles />
       <CockpitMotionStyles />
 
-      <Masthead vitals={vm.vitals} isMobile={isMobile} />
+      <Reveal delayMs={0}>
+        <Masthead vitals={vm.vitals} isMobile={isMobile} />
+      </Reveal>
 
       {vm.hasAnyData ? (
-        <div className="cos-fx-enter">
+        <Reveal delayMs={70}>
           <AgentConstellation
             agents={vm.agents}
             handoffs={vm.handoffs}
@@ -52,14 +55,30 @@ export function AgentsView({ system, now, isMobile = false, selectedAgentKey = n
             onSelectAgent={onSelectAgent}
             isMobile={isMobile}
           />
-        </div>
+        </Reveal>
       ) : null}
 
-      <Roster vm={vm} now={now} isMobile={isMobile} selectedAgentKey={selectedAgentKey} onSelectAgent={onSelectAgent} />
+      <Reveal delayMs={140}>
+        <Roster vm={vm} now={now} isMobile={isMobile} selectedAgentKey={selectedAgentKey} onSelectAgent={onSelectAgent} />
+      </Reveal>
 
-      <Coordination vm={vm} isMobile={isMobile} />
+      <Reveal delayMs={210}>
+        <Coordination vm={vm} isMobile={isMobile} />
+      </Reveal>
 
-      <DiagnosticsRail diagnostics={vm.diagnostics} warnCount={vm.warnCount} infoCount={vm.infoCount} />
+      <Reveal delayMs={280}>
+        <DiagnosticsRail diagnostics={vm.diagnostics} warnCount={vm.warnCount} infoCount={vm.infoCount} />
+      </Reveal>
+    </div>
+  );
+}
+
+/** A staggered entrance wrapper — the cockpit's regions cascade in top-to-bottom.
+ *  `cos-fx-enter` is `prefers-reduced-motion`-gated, so this is a no-op when reduced. */
+function Reveal({ delayMs, children }: { delayMs: number; children: ReactNode }) {
+  return (
+    <div className="cos-fx-enter" style={{ animationDelay: delayMs + "ms" }}>
+      {children}
     </div>
   );
 }
@@ -80,7 +99,6 @@ function Masthead({ vitals, isMobile }: { vitals: AgentSystemVitalsV1; isMobile:
 
   return (
     <header
-      className="cos-fx-enter"
       style={{
         display: "flex",
         flexDirection: "column",

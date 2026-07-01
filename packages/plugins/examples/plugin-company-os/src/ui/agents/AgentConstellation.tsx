@@ -34,7 +34,7 @@ export function AgentConstellation({ agents, handoffs, selectedAgentKey = null, 
     <div
       data-selected-agent={selectedAgentKey ?? undefined}
       style={{
-        background: tokens.card,
+        background: "radial-gradient(120% 90% at 50% 0%, " + withAlpha(tokens.accent, 0.06) + ", " + tokens.card + " 62%)",
         border: `1px solid ${tokens.border}`,
         borderRadius: tokens.radius,
         padding: isMobile ? 12 : 18,
@@ -136,6 +136,8 @@ function ConstellationNodeMark({
       onClick={clickable ? () => onSelect?.(selected ? null : node.agentKey) : undefined}
       style={{ cursor: clickable ? "pointer" : "default", opacity: dimmed ? 0.5 : 1, transition: "opacity 180ms ease" }}
     >
+      {/* Soft tone-tinted glow disc — gives each node presence in the field. */}
+      <circle cx={node.x} cy={node.y} r={node.r + 14} fill={withAlpha(node.tone, 0.1)} />
       {/* Slow health-tinted heartbeat pulse (opacity-only; reduced-motion → static). */}
       <circle cx={node.x} cy={node.y} r={node.r + 5} fill="none" stroke={node.tone} strokeWidth={1.5} className="cos-fx-agent-pulse" style={{ opacity: 0.22 }} />
       {/* Selection halo. */}

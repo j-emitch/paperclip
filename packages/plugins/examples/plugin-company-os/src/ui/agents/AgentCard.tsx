@@ -226,7 +226,7 @@ function RoutinesDrawer({
           <Pill label={rollupLabel} tone={rollupTone} soft withDot />
         </span>
       </summary>
-      <div style={{ marginTop: 6 }}>
+      <div className="cos-fx-drawer-body" style={{ marginTop: 6 }}>
         {count === 0 ? (
           <p style={{ margin: 0, fontSize: 11.5, color: tokens.muted, padding: "6px 0" }}>Duties only — no standalone SLO routines.</p>
         ) : (
