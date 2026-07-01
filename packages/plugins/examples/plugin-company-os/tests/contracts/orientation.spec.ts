@@ -107,10 +107,11 @@ describe("OrientationV1", () => {
   it("exposes the stable default-pinned-role contract", () => {
     expect([...DEFAULT_PINNED_ROLES]).toEqual([
       "daily-standup",
+      "health-scan",
       "codebase-health",
       "strategy",
-      "weekly-summary",
       "process-audit",
+      "weekly-summary",
     ]);
     expect(HOME_RECENT_COMMITS_LIMIT).toBe(20);
   });

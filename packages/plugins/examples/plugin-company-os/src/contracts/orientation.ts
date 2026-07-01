@@ -42,18 +42,21 @@ export const HOME_RECENT_COMMITS_LIMIT = 20 as const;
 export const HOME_RECENT_WORK_LIMIT = 20 as const;
 
 /**
- * The COS-1 default pinned briefing set (spec §5.3) — the ORDERED stable role
- * ids. Each resolves to a live routine key via `PINNED_ROLE_TO_ROUTINE` (bound
- * in `deriveOrientation` from routine-contract signals), skipping any role whose
- * routine isn't present. The role ids are the stable contract (used in the
- * §11 AC); COS-1R (§17) later replaces this default with an evidence-driven set.
+ * The default pinned briefing set (spec §5.3) — the ORDERED stable role ids. Each
+ * resolves to a live routine key via `PINNED_ROLE_TO_ROUTINE` (bound in
+ * `deriveOrientation` from routine-contract signals), skipping any role whose
+ * routine isn't present. The role ids are the stable contract (used in the §11 AC).
+ * COS-1R-f replaced the COS-1 seed with the 1R-a report-cohesion-audit-ratified set
+ * + order: daily standup, daily health scan, daily codebase awareness, weekly
+ * strategic summary, weekly process enforcement, weekly engineering report.
  */
 export const DEFAULT_PINNED_ROLES = [
   "daily-standup",
+  "health-scan",
   "codebase-health",
   "strategy",
-  "weekly-summary",
   "process-audit",
+  "weekly-summary",
 ] as const;
 
 export const healthSeveritySchema = z.enum(HEALTH_SEVERITIES);

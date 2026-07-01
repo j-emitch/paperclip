@@ -7,19 +7,28 @@ import { taxonomyFixture } from "../fixtures/taxonomy.js";
 const TAX = taxonomyFixture();
 
 describe("deriveOrientation", () => {
-  it("renders the default pinned briefing via PINNED_ROLE_TO_ROUTINE, skipping unresolved roles", () => {
+  it("renders the default pinned briefing in the ratified order via PINNED_ROLE_TO_ROUTINE, skipping unresolved roles", () => {
     const o = deriveOrientation(
       bundleOf([
         routine("daily-standup", "daily", "company/reports/standup/*.md"),
+        routine("daily-health-scan", "daily", "company/reports/health/*.md", { ownerAgent: "COO" }),
         routine("weekly-strategic-summary", "weekly", "company/reports/strategy/*.md"),
         artifact("reports/standup/2026-06-23.md", { repo: "company", mtime: "2026-06-23T11:00:00.000Z" }),
+        artifact("reports/health/2026-06-23.md", { repo: "company", mtime: "2026-06-23T11:00:00.000Z" }),
       ]),
       NOW,
       TAX,
     );
-    expect(o.briefing.map((c) => c.routineKey)).toEqual(["daily-standup", "weekly-strategic-summary"]);
+    // daily-health-scan pins 2nd (COS-1R-f ratified order); the absent
+    // codebase-health / process-audit / weekly-summary roles are skipped.
+    expect(o.briefing.map((c) => c.routineKey)).toEqual([
+      "daily-standup",
+      "daily-health-scan",
+      "weekly-strategic-summary",
+    ]);
     expect(o.briefing[0]!.verdict).toBe("fresh"); // standup artifact within the daily window
-    expect(o.briefing[1]!.verdict).toBe("never_ran"); // no strategy artifact
+    expect(o.briefing[1]!.verdict).toBe("fresh"); // health-scan artifact within the daily window
+    expect(o.briefing[2]!.verdict).toBe("never_ran"); // no strategy artifact
     expect(() => parseOrientationV1(o)).not.toThrow();
   });
 

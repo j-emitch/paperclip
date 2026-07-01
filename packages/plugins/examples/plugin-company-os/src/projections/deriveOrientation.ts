@@ -43,14 +43,16 @@ import { aggregateSourceFreshness, diagnosticsFromFreshness, isoFrom } from "./_
  * The stable role id → live routine key binding (spec §5.3, OI-3). Bound from the
  * routine-contract source (sidecars first, legacy AGENTS fallback during
  * activation); a role whose routine isn't present is skipped, so the briefing is
- * non-empty whenever ≥1 resolves.
+ * non-empty whenever ≥1 resolves. Order + membership are the 1R-a-ratified set
+ * (report-cohesion audit); `health-scan` was the previously-missing COO daily pin.
  */
 const PINNED_ROLE_TO_ROUTINE: Record<string, string> = {
   "daily-standup": "daily-standup",
+  "health-scan": "daily-health-scan",
   "codebase-health": "daily-codebase-awareness",
   strategy: "weekly-strategic-summary",
-  "weekly-summary": "weekly-report",
   "process-audit": "weekly-process-enforcement",
+  "weekly-summary": "weekly-report",
 };
 
 const STATUS_SEVERITY: Record<BranchStatus, HealthSeverity> = {
