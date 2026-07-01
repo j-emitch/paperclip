@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ArtifactSignal } from "../../src/contracts/signals.js";
 import { evaluateRoutine } from "../../src/projections/routine-freshness.js";
 import { NOW, artifact, routine } from "../fixtures/signals.js";
 
@@ -56,6 +57,26 @@ describe("evaluateRoutine", () => {
           createdBy: null,
         }),
       ],
+      NOW,
+    );
+
+    expect(ev.latest?.relPath).toBe("reports/standup/2026-06-23.md");
+    expect(ev.verdict).toBe("fresh");
+  });
+
+  it("uses selector fallback for cached legacy artifacts with a missing createdBy key", () => {
+    const { createdBy, ...legacyArtifact } = artifact("reports/standup/2026-06-23.md", {
+      repo: "company",
+      mtime: "2026-06-23T08:00:00.000Z",
+    });
+    expect(createdBy).toBeNull();
+
+    const ev = evaluateRoutine(
+      routine("daily-standup", "daily", "company/reports/standup/*.md", {
+        ownerAgent: "CTO",
+        freshnessKind: "artifact",
+      }),
+      [legacyArtifact as unknown as ArtifactSignal],
       NOW,
     );
 

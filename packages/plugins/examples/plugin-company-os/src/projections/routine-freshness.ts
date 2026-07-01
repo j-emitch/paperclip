@@ -113,6 +113,6 @@ function matchesRoutineSource(
   if (!matchesAnyGlob(relPath, [sourceGlob])) return false;
   if (freshnessKind === "proposal") return true;
   if (matchesAnyGlob(relPath, routine.exclude ?? [])) return false;
-  if (artifact.createdBy === null) return true;
+  if (artifact.createdBy == null) return true;
   return normalizeProvenance(artifact.createdBy) === routine.ownerAgent;
 }
