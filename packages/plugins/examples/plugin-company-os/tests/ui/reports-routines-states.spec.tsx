@@ -105,4 +105,30 @@ describe("Routines SSR", () => {
     const html = renderToStaticMarkup(<RoutinesView health={empty} now={REPORTS_NOW} />);
     expect(html).toContain("No routine contracts found yet");
   });
+
+  it("renders embedded duties as calm duties-only cards", () => {
+    const base = goldenRoutineHealth();
+    const health = {
+      ...base,
+      routines: [
+        {
+          ...base.routines[0],
+          routineKey: "wiki-maintenance",
+          displayName: "Wiki Maintenance",
+          ownerAgent: "Librarian",
+          freshnessKind: "embedded" as const,
+          expectedArtifactGlob: "",
+          verdict: null,
+          expectedArtifactPresent: false,
+          latestArtifactPath: null,
+          latestArtifactMtime: null,
+          nextExpectedAt: null,
+          detail: "embedded duty; no standalone SLO",
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(<RoutinesView health={health} now={REPORTS_NOW} />);
+    expect(html).toContain("Wiki Maintenance");
+    expect(html).toContain("Duties only");
+  });
 });

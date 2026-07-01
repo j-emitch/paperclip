@@ -38,6 +38,7 @@ describe("OrientationV1", () => {
           routineKey: "daily-standup",
           displayName: "Daily Standup",
           ownerAgent: "COO",
+          freshnessKind: "artifact",
           verdict: "fresh",
           reportDate: "2026-06-23",
           repo: "company",

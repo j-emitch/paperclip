@@ -19,6 +19,7 @@ import { projectTaxonomyV1Schema } from "./projects.js";
 import {
   ALERT_SEVERITIES,
   DEEP_LINK_TABS,
+  FRESHNESS_KINDS,
   HEALTH_SEVERITIES,
   ORIENTATION_ALERT_KINDS,
   RECENT_WORK_KINDS,
@@ -27,6 +28,7 @@ import {
   type AssertEqual,
   type DeepLinkTab,
   type Expect,
+  type FreshnessKind,
   type HealthSeverity,
   type OrientationAlertKind,
   type RecentWorkKind,
@@ -58,7 +60,8 @@ export const healthSeveritySchema = z.enum(HEALTH_SEVERITIES);
 export const alertSeveritySchema = z.enum(ALERT_SEVERITIES);
 export const orientationAlertKindSchema = z.enum(ORIENTATION_ALERT_KINDS);
 export const recentWorkKindSchema = z.enum(RECENT_WORK_KINDS);
-export const briefingVerdictSchema = z.enum(ROUTINE_VERDICTS);
+export const briefingVerdictSchema = z.union([z.enum(ROUTINE_VERDICTS), z.null()]);
+export const briefingFreshnessKindSchema = z.enum(FRESHNESS_KINDS);
 
 /** A typed deep-link target — no string-URL guessing (spec §5.3). */
 export const deepLinkSchema = z.discriminatedUnion("tab", [
@@ -76,6 +79,7 @@ export const briefingCardV1Schema = z.object({
   routineKey: z.string().min(1),
   displayName: z.string().min(1),
   ownerAgent: z.string().min(1),
+  freshnessKind: briefingFreshnessKindSchema,
   verdict: briefingVerdictSchema,
   reportDate: z.string().nullable(),
   repo: z.string().min(1),
@@ -171,5 +175,6 @@ type _SeverityMatches = Expect<AssertEqual<z.infer<typeof healthSeveritySchema>,
 type _AlertSeverityMatches = Expect<AssertEqual<z.infer<typeof alertSeveritySchema>, AlertSeverity>>;
 type _AlertKindMatches = Expect<AssertEqual<z.infer<typeof orientationAlertKindSchema>, OrientationAlertKind>>;
 type _RecentWorkMatches = Expect<AssertEqual<z.infer<typeof recentWorkKindSchema>, RecentWorkKind>>;
-type _VerdictMatches = Expect<AssertEqual<z.infer<typeof briefingVerdictSchema>, RoutineVerdict>>;
+type _VerdictMatches = Expect<AssertEqual<z.infer<typeof briefingVerdictSchema>, RoutineVerdict | null>>;
+type _FreshnessKindMatches = Expect<AssertEqual<z.infer<typeof briefingFreshnessKindSchema>, FreshnessKind>>;
 type _DeepLinkTabMatches = Expect<AssertEqual<DeepLink["tab"], DeepLinkTab>>;

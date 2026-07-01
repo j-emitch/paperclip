@@ -20,6 +20,7 @@ import {
   VERDICT_TONES,
   type AgentGroup,
 } from "./routines-view-model.js";
+import { labelForNullableVerdict, toneForNullableVerdict } from "../shared/verdict-labels.js";
 
 export interface RoutinesViewProps {
   health: RoutineHealthV1;
@@ -51,7 +52,7 @@ export function RoutinesView({ health, now, isMobile = false }: RoutinesViewProp
 
       {view.groups.length === 0 ? (
         <p style={{ margin: 0, fontSize: 13, color: tokens.muted }}>
-          No routine contracts found yet — they’re read from each agent’s <code style={{ fontFamily: tokens.mono }}>company_os</code> block.
+          No routine contracts found yet.
         </p>
       ) : (
         view.groups.map((group) => <AgentSection key={group.ownerAgent} group={group} now={now} isMobile={isMobile} />)
@@ -87,7 +88,7 @@ function AgentSection({ group, now, isMobile }: { group: AgentGroup; now: number
 }
 
 function RoutineCard({ routine, now }: { routine: RoutineHealthEntry; now: number }) {
-  const tone = VERDICT_TONES[routine.verdict];
+  const tone = toneForNullableVerdict(routine.verdict);
   const lastRun = relativeTime(routine.lastRunAt, now);
   // A past `nextExpectedAt` means the routine is overdue — label it as such rather
   // than rendering a contradictory "Next: 6d ago".
@@ -131,18 +132,22 @@ function RoutineCard({ routine, now }: { routine: RoutineHealthEntry; now: numbe
             {routine.cadence}
           </p>
         </div>
-        <Pill label={VERDICT_LABELS[routine.verdict]} tone={tone} soft withDot />
+        <Pill label={labelForNullableVerdict(routine.verdict)} tone={tone} soft withDot />
       </div>
 
       <dl style={{ margin: 0, display: "flex", flexDirection: "column", gap: 5, fontSize: 12 }}>
         <MetaRow icon={<ClockIcon size={12} />} label="Last run" value={lastRun ?? "never"} />
         {nextValue ? <MetaRow icon={<ClockIcon size={12} />} label={nextLabel} value={nextValue} iconTone={overdue ? VERDICT_TONES.missing : undefined} /> : null}
-        <MetaRow
-          icon={routine.expectedArtifactPresent ? <CheckIcon size={12} /> : <AlertIcon size={12} />}
-          iconTone={routine.expectedArtifactPresent ? VERDICT_TONES.fresh : VERDICT_TONES.missing}
-          label="Artifact"
-          value={routine.expectedArtifactPresent ? "present" : "missing"}
-        />
+        {routine.freshnessKind === "embedded" ? (
+          <MetaRow icon={<CheckIcon size={12} />} iconTone={tone} label="SLO" value="duties only" />
+        ) : (
+          <MetaRow
+            icon={routine.expectedArtifactPresent ? <CheckIcon size={12} /> : <AlertIcon size={12} />}
+            iconTone={routine.expectedArtifactPresent ? VERDICT_TONES.fresh : VERDICT_TONES.missing}
+            label={routine.freshnessKind === "proposal" ? "Proposal" : "Artifact"}
+            value={routine.expectedArtifactPresent ? "present" : "missing"}
+          />
+        )}
       </dl>
 
       {routine.latestArtifactPath ? (
@@ -159,10 +164,12 @@ function RoutineCard({ routine, now }: { routine: RoutineHealthEntry; now: numbe
         >
           {routine.latestArtifactPath}
         </code>
-      ) : (
+      ) : routine.expectedArtifactGlob ? (
         <code style={{ fontFamily: tokens.mono, fontSize: 10.5, color: tokens.muted, opacity: 0.7 }} title={routine.expectedArtifactGlob}>
           {routine.expectedArtifactGlob}
         </code>
+      ) : (
+        null
       )}
 
       {routine.detail ? <p style={{ margin: 0, fontSize: 11.5, color: tokens.muted, lineHeight: 1.4 }}>{routine.detail}</p> : null}

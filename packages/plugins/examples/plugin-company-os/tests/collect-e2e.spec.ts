@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { collect } from "../src/collect.js";
 import { allSignals } from "../src/contracts/WorkSignalSource.js";
 import {
+  isAgentSignal,
   isArtifactSignal,
   isReviewSignal,
   isRoutineSignal,
@@ -16,17 +17,43 @@ const REGISTRY: RegistryEntry[] = [
   { prefix: "OB", family: "Onboarding", l1_system: "JB", l2_subsystem: "Onboarding", description: "y", is_generic: false, created_at: null },
 ];
 
-const AGENTS = `# CTO
-\`\`\`yaml
-company_os:
-  routines:
-    - id: daily-standup
-      display_name: Daily Standup
-      cadence: daily
-      expected_artifact: company/reports/standup/*.md
-      owner_agent: CTO
-\`\`\`
+const PAPERCLIP_YAML = `schema: "paperclip/v1"
+agents:
+  cto:
+    role: "cto"
+    capabilities: "Technical analysis."
+    adapter:
+      config:
+        model: "claude-opus-4-8"
+    runtime:
+      heartbeat:
+        intervalSec: 86400
+    budgetMonthlyCents: 8000
 `;
+
+const CTO_SIDECAR = JSON.stringify({
+  agent: {
+    name: "CTO",
+    reports_to: "ceo",
+    summary: "Technical analysis.",
+    duties: [{ id: "daily-engineering-pulse", surface: "company/reports/standup" }],
+    hands_off_to: ["ceo"],
+    receives_from: ["ceo"],
+  },
+  routines: [
+    {
+      id: "daily-standup",
+      display_name: "Daily Standup",
+      cadence: "daily",
+      owner_agent: "CTO",
+      freshness: {
+        kind: "artifact",
+        expected_artifact: "company/reports/standup/*.md",
+        exclude: [],
+      },
+    },
+  ],
+});
 
 /**
  * A scenario where COS-0 deliberately surfaces from THREE sources at once:
@@ -57,7 +84,8 @@ function fullContext() {
         "reports/review-cannons/2026-05-01-OB-01.md": { content: `---\ntype: cannons-report\nrepo: juice-bar\ncommit: m1\nverdict: ship\nrun_at: 2026-05-01T00:00:00Z\n---\n` },
       },
       company: {
-        "config/paperclip/agents/cto/AGENTS.md": { content: AGENTS },
+        "config/paperclip/.paperclip.yaml": { content: PAPERCLIP_YAML },
+        "config/paperclip/agents/cto/company-os.json": { content: CTO_SIDECAR },
       },
     },
   });
@@ -68,7 +96,7 @@ describe("collect (end-to-end bundle assembly)", () => {
     const { bundle, failedSources } = await collect(fullContext());
     expect(failedSources).toEqual([]);
     expect(bundle.batches.map((b) => b.source).sort()).toEqual(
-      ["artifact", "branch", "docs", "git-work", "prefix-registry", "pull-request", "review-report", "routine-contract", "skills", "spec-backlog"].sort(),
+      ["agent", "artifact", "branch", "docs", "git-work", "prefix-registry", "pull-request", "review-report", "routine-contract", "skills", "spec-backlog"].sort(),
     );
   });
 
@@ -84,6 +112,7 @@ describe("collect (end-to-end bundle assembly)", () => {
   it("produces every signal KIND across the bundle", async () => {
     const sigs = allSignals((await collect(fullContext())).bundle);
     expect(sigs.some(isWorkSignal)).toBe(true);
+    expect(sigs.some(isAgentSignal)).toBe(true);
     expect(sigs.some(isArtifactSignal)).toBe(true);
     expect(sigs.some(isReviewSignal)).toBe(true);
     expect(sigs.some(isRoutineSignal)).toBe(true);

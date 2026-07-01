@@ -13,7 +13,7 @@ import { Pill } from "../shared/badges.js";
 import { CalmNote } from "../shared/feedback.js";
 import { ClockIcon, ExternalLinkIcon } from "../icons.js";
 import { relativeTime } from "../shared/time.js";
-import { BRIEFING_VERDICT_LABELS, BRIEFING_VERDICT_TONES } from "./home-view-model.js";
+import { labelForNullableVerdict, toneForNullableVerdict } from "../shared/verdict-labels.js";
 
 export interface PinnedBriefingProps {
   briefing: readonly BriefingCardV1[];
@@ -43,7 +43,7 @@ export function PinnedBriefing({ briefing, now, isMobile = false, onOpen }: Pinn
 }
 
 function BriefingCard({ card, now, onOpen }: { card: BriefingCardV1; now: number; onOpen?: (card: BriefingCardV1) => void }) {
-  const tone = BRIEFING_VERDICT_TONES[card.verdict];
+  const tone = toneForNullableVerdict(card.verdict);
   const reportAge = relativeTime(card.reportDate, now);
   const openable = card.relPath !== null && onOpen !== undefined;
   return (
@@ -75,7 +75,7 @@ function BriefingCard({ card, now, onOpen }: { card: BriefingCardV1; now: number
           {card.ownerAgent}
         </span>
         <span style={{ flex: 1 }} />
-        <Pill label={BRIEFING_VERDICT_LABELS[card.verdict]} tone={tone} soft withDot />
+        <Pill label={labelForNullableVerdict(card.verdict)} tone={tone} soft withDot />
       </div>
       <p
         title={card.displayName}

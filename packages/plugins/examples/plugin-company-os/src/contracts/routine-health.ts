@@ -11,11 +11,20 @@
 
 import { z } from "@paperclipai/plugin-sdk";
 import { diagnosticSchema, sourceFreshnessSchema } from "./diagnostics.js";
-import { ROUTINE_VERDICTS, type AssertEqual, type Expect, type RoutineVerdict } from "./vocab.js";
+import {
+  FRESHNESS_KINDS,
+  ROUTINE_VERDICTS,
+  type AssertEqual,
+  type Expect,
+  type FreshnessKind,
+  type RoutineVerdict,
+} from "./vocab.js";
 
 export const ROUTINE_HEALTH_SCHEMA_VERSION = 1 as const;
 
 export const routineVerdictSchema = z.enum(ROUTINE_VERDICTS);
+export const nullableRoutineVerdictSchema = z.union([routineVerdictSchema, z.null()]);
+export const routineFreshnessKindSchema = z.enum(FRESHNESS_KINDS);
 
 /** One routine's resolved health. */
 export const routineHealthEntrySchema = z.object({
@@ -26,8 +35,10 @@ export const routineHealthEntrySchema = z.object({
   ownerAgent: z.string().min(1),
   /** Cadence token: "daily" | "weekly" | "hourly" | a cron string. */
   cadence: z.string().min(1),
-  /** The workspace glob the routine should write. */
-  expectedArtifactGlob: z.string().min(1),
+  /** Freshness model for this routine-like duty. */
+  freshnessKind: routineFreshnessKindSchema,
+  /** The workspace glob/source the routine should write/read; empty for embedded duties. */
+  expectedArtifactGlob: z.string(),
   /** ISO-8601 last-run (from issues.read); null when never observed. */
   lastRunAt: z.string().nullable(),
   /** ISO-8601 next expected run computed from cadence + lastRun; null when uncomputable. */
@@ -38,7 +49,7 @@ export const routineHealthEntrySchema = z.object({
   latestArtifactPath: z.string().nullable(),
   /** Newest matching artifact mtime (ISO-8601); null when none. */
   latestArtifactMtime: z.string().nullable(),
-  verdict: routineVerdictSchema,
+  verdict: nullableRoutineVerdictSchema,
   /** Human one-liner explaining the verdict; null when self-evident. */
   detail: z.string().nullable(),
 });
@@ -66,3 +77,5 @@ export function safeParseRoutineHealthV1(
 
 // Drift guard.
 type _RoutineVerdictMatches = Expect<AssertEqual<z.infer<typeof routineVerdictSchema>, RoutineVerdict>>;
+type _NullableRoutineVerdictMatches = Expect<AssertEqual<z.infer<typeof nullableRoutineVerdictSchema>, RoutineVerdict | null>>;
+type _RoutineFreshnessKindMatches = Expect<AssertEqual<z.infer<typeof routineFreshnessKindSchema>, FreshnessKind>>;

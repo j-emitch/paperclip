@@ -62,9 +62,13 @@ function agentRank(agent: string): number {
 export function buildRoutinesView(health: RoutineHealthV1): RoutinesView {
   const counts = emptyVerdictCounts();
   const byAgent = new Map<string, RoutineHealthEntry[]>();
+  let sloTotal = 0;
 
   for (const r of health.routines) {
-    counts[r.verdict] += 1;
+    if (r.verdict !== null) {
+      counts[r.verdict] += 1;
+      sloTotal += 1;
+    }
     const list = byAgent.get(r.ownerAgent);
     if (list) list.push(r);
     else byAgent.set(r.ownerAgent, [r]);
@@ -73,9 +77,11 @@ export function buildRoutinesView(health: RoutineHealthV1): RoutinesView {
   const groups: AgentGroup[] = [...byAgent.entries()]
     .map(([ownerAgent, routines]): AgentGroup => {
       const groupCounts = emptyVerdictCounts();
-      for (const r of routines) groupCounts[r.verdict] += 1;
+      for (const r of routines) {
+        if (r.verdict !== null) groupCounts[r.verdict] += 1;
+      }
       const sorted = [...routines].sort(
-        (a, b) => VERDICT_SEVERITY[a.verdict] - VERDICT_SEVERITY[b.verdict] || a.displayName.localeCompare(b.displayName),
+        (a, b) => severityOf(a.verdict) - severityOf(b.verdict) || a.displayName.localeCompare(b.displayName),
       );
       return { ownerAgent, routines: sorted, counts: groupCounts };
     })
@@ -86,6 +92,10 @@ export function buildRoutinesView(health: RoutineHealthV1): RoutinesView {
     groups,
     total,
     counts,
-    healthyPct: total === 0 ? 0 : Math.round((counts.fresh / total) * 100),
+    healthyPct: sloTotal === 0 ? 0 : Math.round((counts.fresh / sloTotal) * 100),
   };
+}
+
+function severityOf(verdict: RoutineVerdict | null): number {
+  return verdict === null ? 4 : VERDICT_SEVERITY[verdict];
 }

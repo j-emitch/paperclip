@@ -19,7 +19,12 @@ import { statusColors, tokens } from "../tokens.js";
 // The cross-surface verdict palette lives in `shared/verdict-labels` (keyed off
 // the contract vocabulary), so briefing cards read identically to the Routines
 // tab WITHOUT a Home→Routines coupling (codex B).
-export { VERDICT_LABELS as BRIEFING_VERDICT_LABELS, VERDICT_TONES as BRIEFING_VERDICT_TONES } from "../shared/verdict-labels.js";
+export {
+  VERDICT_LABELS as BRIEFING_VERDICT_LABELS,
+  VERDICT_TONES as BRIEFING_VERDICT_TONES,
+  labelForNullableVerdict as labelForNullableBriefingVerdict,
+  toneForNullableVerdict as toneForNullableBriefingVerdict,
+} from "../shared/verdict-labels.js";
 // The branch-health flag labels are shared git vocabulary (Source + Home) — one
 // source of truth in `shared/git-labels`. Re-exported so the Home panels that
 // already import it from here keep working.

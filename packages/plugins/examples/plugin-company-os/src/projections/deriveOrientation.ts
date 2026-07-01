@@ -81,11 +81,13 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
   for (const role of DEFAULT_PINNED_ROLES) {
     const routine = routinesByKey.get(PINNED_ROLE_TO_ROUTINE[role] ?? role);
     if (!routine) continue; // skip an unresolved role
+    if ((routine.freshnessKind ?? "artifact") === "embedded") continue;
     const ev = evaluateRoutine(routine, artifacts, nowMs);
     briefing.push({
       routineKey: routine.routineKey,
       displayName: routine.displayName,
       ownerAgent: routine.ownerAgent,
+      freshnessKind: ev.freshnessKind,
       verdict: ev.verdict,
       reportDate: ev.latest?.mtime ?? null,
       repo: ev.latest?.repo ?? routine.repo,
@@ -158,6 +160,7 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
   // --- Unified alerts (routines + branches + stale work) ---
   const alerts: OrientationAlertV1[] = [];
   for (const card of briefing) {
+    if (card.verdict === null) continue;
     if (card.verdict !== "stale" && card.verdict !== "missing") continue;
     const isMissing = card.verdict === "missing";
     alerts.push({

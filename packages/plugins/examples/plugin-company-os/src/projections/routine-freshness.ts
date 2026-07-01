@@ -16,8 +16,9 @@
  */
 
 import type { ArtifactSignal, RoutineSignal } from "../contracts/signals.js";
-import type { RoutineVerdict } from "../contracts/vocab.js";
+import type { FreshnessKind, RoutineVerdict } from "../contracts/vocab.js";
 import { matchesAnyGlob } from "../sources/glob.js";
+import { normalizeProvenance } from "./provenance.js";
 
 export const MS = { hour: 3_600_000, day: 86_400_000, week: 604_800_000, month: 2_592_000_000 };
 
@@ -59,7 +60,8 @@ export function computeVerdict(
 
 /** The per-routine freshness core: latest matching artifact + activity + verdict. */
 export interface RoutineEvaluation {
-  readonly verdict: RoutineVerdict;
+  readonly verdict: RoutineVerdict | null;
+  readonly freshnessKind: FreshnessKind;
   /** The newest artifact matching the routine's expected glob (mtime-desc), if any. */
   readonly latest: ArtifactSignal | undefined;
   /** Newest activity (max of lastRunAt + latest artifact mtime), epoch ms; -Infinity = none. */
@@ -74,10 +76,15 @@ export function evaluateRoutine(
   artifacts: readonly ArtifactSignal[],
   nowMs: number,
 ): RoutineEvaluation {
+  const freshnessKind = routine.freshnessKind ?? "artifact";
+  if (freshnessKind === "embedded") {
+    return { verdict: null, freshnessKind, latest: undefined, lastActivity: -Infinity, present: false };
+  }
+  const sourceGlob = freshnessKind === "proposal" ? routine.proposalSource ?? routine.expectedArtifactGlob : routine.expectedArtifactGlob;
   // The AGENTS glob is monorepo-parent-relative (`company/reports/...`) while an
   // ArtifactSignal.relPath is repo-relative, so match against `repo/relPath`.
   const matching = artifacts
-    .filter((a) => matchesAnyGlob(`${a.repo}/${a.relPath}`, [routine.expectedArtifactGlob]))
+    .filter((a) => matchesRoutineSource(a, routine, sourceGlob, freshnessKind))
     .sort((x, y) => artifactMs(y) - artifactMs(x));
   const latest = matching[0];
 
@@ -93,5 +100,19 @@ export function evaluateRoutine(
   const verdict = computeVerdict(nowMs, latestMs, hasArtifact, hasActivity, windowMs);
   const present = hasArtifact && (windowMs === null || nowMs - latestMs <= windowMs);
 
-  return { verdict, latest, lastActivity, present };
+  return { verdict, freshnessKind, latest, lastActivity, present };
+}
+
+function matchesRoutineSource(
+  artifact: ArtifactSignal,
+  routine: RoutineSignal,
+  sourceGlob: string,
+  freshnessKind: FreshnessKind,
+): boolean {
+  const relPath = `${artifact.repo}/${artifact.relPath}`;
+  if (!matchesAnyGlob(relPath, [sourceGlob])) return false;
+  if (freshnessKind === "proposal") return true;
+  if (matchesAnyGlob(relPath, routine.exclude ?? [])) return false;
+  if (artifact.createdBy === null) return true;
+  return normalizeProvenance(artifact.createdBy) === routine.ownerAgent;
 }

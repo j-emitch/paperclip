@@ -53,6 +53,27 @@ describe("buildRoutinesView", () => {
     expect(view.groups[0].routines.map((r) => r.verdict)).toEqual(["missing", "stale", "never_ran", "fresh"]);
   });
 
+  it("keeps duties-only entries out of SLO tallies and sorts them last", () => {
+    const multi: RoutineHealthV1 = {
+      ...health,
+      routines: [
+        mk("a-fresh", "CTO", "fresh"),
+        {
+          ...mk("b-embedded", "CTO", "fresh"),
+          expectedArtifactGlob: "",
+          freshnessKind: "embedded",
+          verdict: null,
+          expectedArtifactPresent: false,
+        },
+      ],
+    };
+    const view = buildRoutinesView(multi);
+    expect(view.total).toBe(2);
+    expect(view.counts).toEqual({ fresh: 1, stale: 0, missing: 0, never_ran: 0 });
+    expect(view.healthyPct).toBe(100);
+    expect(view.groups[0].routines.map((r) => r.verdict)).toEqual(["fresh", null]);
+  });
+
   it("exposes a tone + label for every verdict, and a worst-first order", () => {
     for (const v of VERDICT_ORDER) {
       expect(VERDICT_LABELS[v]).toBeTruthy();
@@ -84,6 +105,7 @@ function mk(routineKey: string, ownerAgent: string, verdict: "fresh" | "stale" |
     displayName: routineKey,
     ownerAgent,
     cadence: "daily",
+    freshnessKind: "artifact",
     expectedArtifactGlob: "company/reports/x/**",
     lastRunAt: null,
     nextExpectedAt: null,

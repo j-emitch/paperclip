@@ -34,7 +34,7 @@ export function deriveRoutineHealth(bundle: SignalBundle, nowMs: number): Routin
 
   const entries: RoutineHealthEntry[] = routines
     .map((r) => {
-      const { verdict, latest, lastActivity, present } = evaluateRoutine(r, artifacts, nowMs);
+      const { verdict, freshnessKind, latest, lastActivity, present } = evaluateRoutine(r, artifacts, nowMs);
       const windowMs = cadenceWindowMs(r.cadence);
       const hasActivity = lastActivity > -Infinity;
 
@@ -43,6 +43,7 @@ export function deriveRoutineHealth(bundle: SignalBundle, nowMs: number): Routin
         displayName: r.displayName,
         ownerAgent: r.ownerAgent,
         cadence: r.cadence,
+        freshnessKind,
         expectedArtifactGlob: r.expectedArtifactGlob,
         lastRunAt: r.lastRunAt ?? (latest ? latest.mtime ?? null : null),
         nextExpectedAt: hasActivity && windowMs !== null ? isoFrom(lastActivity + windowMs) : null,
@@ -50,7 +51,7 @@ export function deriveRoutineHealth(bundle: SignalBundle, nowMs: number): Routin
         latestArtifactPath: latest?.relPath ?? null,
         latestArtifactMtime: latest?.mtime ?? null,
         verdict,
-        detail: detailFor(verdict, r.cadence),
+        detail: detailFor(verdict, r.cadence, freshnessKind),
       } satisfies RoutineHealthEntry;
     })
     .sort((a, b) => a.ownerAgent.localeCompare(b.ownerAgent) || a.routineKey.localeCompare(b.routineKey));
@@ -65,7 +66,9 @@ export function deriveRoutineHealth(bundle: SignalBundle, nowMs: number): Routin
   };
 }
 
-function detailFor(verdict: RoutineVerdict, cadence: string): string | null {
+function detailFor(verdict: RoutineVerdict | null, cadence: string, freshnessKind: string): string | null {
+  if (freshnessKind === "embedded") return "embedded duty; no standalone SLO";
+  if (verdict === null) return null;
   switch (verdict) {
     case "never_ran":
       return "no run or artifact observed yet";

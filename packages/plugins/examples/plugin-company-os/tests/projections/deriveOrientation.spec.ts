@@ -23,6 +23,28 @@ describe("deriveOrientation", () => {
     expect(() => parseOrientationV1(o)).not.toThrow();
   });
 
+  it("excludes embedded routines from the pinned briefing", () => {
+    const o = deriveOrientation(
+      bundleOf([
+        routine("daily-standup", "daily", "", {
+          ownerAgent: "CTO",
+          freshnessKind: "embedded",
+        }),
+        routine("weekly-report", "weekly", "company/reports/weekly/*.md", {
+          ownerAgent: "CTO",
+          freshnessKind: "artifact",
+        }),
+        artifact("reports/weekly/w26.md", { repo: "company", mtime: "2026-06-23T00:00:00.000Z" }),
+      ]),
+      NOW,
+      TAX,
+    );
+
+    expect(o.briefing.map((c) => c.routineKey)).toEqual(["weekly-report"]);
+    expect(o.briefing[0]).toMatchObject({ verdict: "fresh", freshnessKind: "artifact" });
+    expect(() => parseOrientationV1(o)).not.toThrow();
+  });
+
   it("derives metrics directly from signals (not from the board projection)", () => {
     const o = deriveOrientation(
       bundleOf([
