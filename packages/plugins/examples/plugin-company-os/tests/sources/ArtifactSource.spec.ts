@@ -5,7 +5,7 @@ import { fixtureHash, makeFixtureContext } from "../fixtures/context.js";
 
 describe("ArtifactSource", () => {
   it("indexes spec/handoff/cannons by frontmatter type, with hash + size + mtime", async () => {
-    const specBody = `---\ntype: spec\nsystem: Company\nprefix: COS\nstatus: approved\ntitle: Cockpit\n---\nbody`;
+    const specBody = `---\ntype: spec\nsystem: Company\nprefix: COS\nstatus: approved\ntitle: Cockpit\ncreated_by: "Librarian Agent (Paperclip)"\n---\nbody`;
     const ctx = makeFixtureContext({
       repos: [{ repo: "company", available: true }],
       files: {
@@ -24,6 +24,7 @@ describe("ArtifactSource", () => {
       prefix: "COS",
       status: "approved",
       title: "Cockpit",
+      createdBy: "Librarian Agent (Paperclip)",
       sizeBytes: 999,
       sha256: fixtureHash(specBody),
       mtime: "2026-06-23T00:00:00.000Z",
@@ -36,7 +37,7 @@ describe("ArtifactSource", () => {
       files: { "juice-bar": { "specs/OB-01.md": { content: `---\nstatus: done\n---\n` } } },
     });
     const arts = (await artifactSource.collect(ctx)).signals.filter(isArtifactSignal);
-    expect(arts[0]).toMatchObject({ artifactType: "spec", prefix: "OB" });
+    expect(arts[0]).toMatchObject({ artifactType: "spec", prefix: "OB", createdBy: null });
   });
 
   it("skips a doc that matches no glob/type rather than mis-indexing", async () => {

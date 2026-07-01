@@ -94,6 +94,7 @@ export function artifact(relPath: string, over: Partial<ArtifactSignal> = {}): A
     sha256: over.sha256 ?? "deadbeef",
     sizeBytes: over.sizeBytes ?? 100,
     title: over.title ?? null,
+    createdBy: over.createdBy ?? null,
     ...over,
   };
 }

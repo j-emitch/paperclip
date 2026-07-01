@@ -81,6 +81,7 @@ function artifactSignal(
     sha256: "deadbeef",
     sizeBytes: 128,
     title: null,
+    createdBy: null,
     confidence: "high",
     freshness: "live",
     errors: [],

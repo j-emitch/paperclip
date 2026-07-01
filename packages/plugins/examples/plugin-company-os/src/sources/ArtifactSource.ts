@@ -120,5 +120,6 @@ function artifactSignal(
     sha256: ctx.hash(text),
     sizeBytes,
     title: fm?.title ?? null,
+    createdBy: fm?.created_by ?? null,
   };
 }

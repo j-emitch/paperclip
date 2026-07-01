@@ -118,6 +118,8 @@ export interface ArtifactSignal extends SignalProvenance {
   readonly sizeBytes: number;
   /** Human title from frontmatter/first-heading; null when absent. */
   readonly title: string | null;
+  /** Report author/agent from frontmatter `created_by`; null when absent. */
+  readonly createdBy: string | null;
 }
 
 /** A report-routine contract (from an AGENTS.md fenced block) joined with its last-run, if known. */
