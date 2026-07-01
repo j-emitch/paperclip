@@ -325,6 +325,19 @@ export interface DocSignal extends SignalProvenance {
   readonly branch: string | null; // the checkout's branch
   readonly title: string | null; // frontmatter title, else first H1 within the scanned head, else null
   readonly status: string | null; // from frontmatter, when present
+  /**
+   * Family prefix resolved from the frontmatter `id`/`ticket` or the filename
+   * ticket (COS-5). null when no ticket id is derivable (many handoffs/backlog
+   * docs). Lets the Build Atlas lifecycle fold attribute a spec/plan to a family
+   * without re-reading — the Docs surface ignores it.
+   */
+  readonly prefix: string | null;
+  /**
+   * True when this doc's verification frontmatter is set to an approved value —
+   * `spec_verified` for a spec, `plan_verified` for a plan (COS-5). Always false
+   * for non-spec/plan docTypes. Drives the Atlas Spec/Plan gate `done` state.
+   */
+  readonly verified: boolean;
   readonly mtime: string; // ISO-8601
   readonly sizeBytes: number;
   /** hash(mtime + sizeBytes + head-bytes) — change-detection/dedup; NOT a full-body hash. */

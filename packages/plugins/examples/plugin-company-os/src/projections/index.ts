@@ -11,4 +11,7 @@ export * from "./deriveOrientation.js";
 export * from "./deriveDocIndex.js";
 // COS-1h skills catalog
 export * from "./deriveSkillsCatalog.js";
+// COS-5 build atlas (families + lifecycle stepper)
+export * from "./deriveLifecycle.js";
+export * from "./deriveBuildAtlas.js";
 export * from "./_shared.js";

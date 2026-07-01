@@ -28,7 +28,8 @@ import type { DocSignal, Signal, SignalError } from "../contracts/signals.js";
 import { DOC_FRONTMATTER_SCAN_BYTES, MAX_DOCS_PER_REPO, makeDocId } from "../contracts/doc-index.js";
 import { collectPerRepo, readError, type RepoReadResult } from "./_shared.js";
 import { parseFrontmatterHead } from "./frontmatter-head.js";
-import { classifyDocPath } from "./parse.js";
+import { classifyDocPath, prefixOf, ticketFromFilename } from "./parse.js";
+import type { DocType } from "../contracts/vocab.js";
 
 export const DOCS_SOURCE_ID = "docs";
 
@@ -107,6 +108,12 @@ async function scanCheckout(
     const fm = parseFrontmatterHead(head);
     const docId = makeDocId(repoKey, checkoutId, file.relPath);
     const indexFingerprint = ctx.hash(`${file.mtime} ${file.sizeBytes} ${head}`);
+    const docType = classifyDocPath(file.relPath);
+    // COS-5: resolve the family prefix + verification so the Build Atlas
+    // lifecycle fold can attribute this doc without re-reading. Frontmatter
+    // `id`/`ticket` wins; else the filename ticket (`…-COS-0-plan.md`).
+    const ticketId = fm.frontmatter?.id ?? fm.frontmatter?.ticket ?? ticketFromFilename(file.relPath);
+    const prefix = ticketId ? prefixOf(ticketId) : null;
     docs.push({
       kind: "doc",
       source: DOCS_SOURCE_ID,
@@ -115,7 +122,7 @@ async function scanCheckout(
       confidence: "high",
       freshness: "live",
       errors: [],
-      docType: classifyDocPath(file.relPath),
+      docType,
       docId,
       checkoutId,
       checkoutKey,
@@ -124,6 +131,8 @@ async function scanCheckout(
       branch,
       title: fm.title,
       status: fm.status,
+      prefix,
+      verified: docVerified(docType, fm.frontmatter),
       mtime: file.mtime,
       sizeBytes: file.sizeBytes,
       indexFingerprint,
@@ -138,4 +147,19 @@ async function scanCheckout(
     );
   }
   return docs;
+}
+
+/** Frontmatter values that count a spec/plan as verified for the Atlas Spec/Plan gate. */
+const VERIFIED_VALUES = new Set(["approved", "pass", "passed", "ship", "verified", "true", "yes", "done"]);
+
+/**
+ * Whether a doc's verification frontmatter is set to an approved value:
+ * `spec_verified` for a spec, `plan_verified` for a plan. Any other docType (or a
+ * missing/negative value like `pending`/`draft`) is false.
+ */
+function docVerified(docType: DocType, frontmatter: Record<string, string> | null): boolean {
+  if (!frontmatter) return false;
+  const raw = docType === "spec" ? frontmatter.spec_verified : docType === "plan" ? frontmatter.plan_verified : undefined;
+  if (raw === undefined) return false;
+  return VERIFIED_VALUES.has(raw.trim().toLowerCase());
 }

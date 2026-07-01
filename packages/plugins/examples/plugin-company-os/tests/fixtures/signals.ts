@@ -223,6 +223,8 @@ export function docSignal(relPath: string, over: Partial<DocSignal> = {}): DocSi
     branch: over.branch ?? null,
     title: over.title ?? null,
     status: over.status ?? null,
+    prefix: over.prefix ?? null,
+    verified: over.verified ?? false,
     mtime: over.mtime ?? "2026-06-23T10:00:00.000Z",
     sizeBytes: over.sizeBytes ?? 256,
     indexFingerprint: over.indexFingerprint ?? "fp:abc",
