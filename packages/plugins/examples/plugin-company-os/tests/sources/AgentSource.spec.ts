@@ -84,6 +84,16 @@ agents:
     budgetMonthlyCents: -1
 `;
 
+const BLANK_STRING_YAML = `schema: "paperclip/v1"
+agents:
+  cto:
+    role: ""
+    capabilities: "Technical analysis."
+    adapter:
+      config:
+        model: "   "
+`;
+
 const CEO_SIDECAR = JSON.stringify({
   agent: {
     name: "CEO",
@@ -301,6 +311,33 @@ describe("AgentSource", () => {
         "config/paperclip/.paperclip.yaml: agent cto adapter.config.maxTurnsPerRun must be positive",
         "config/paperclip/.paperclip.yaml: agent cto runtime.heartbeat.intervalSec must be positive",
         "config/paperclip/.paperclip.yaml: agent cto budgetMonthlyCents must be non-negative",
+      ]),
+    );
+  });
+
+  it("falls back for blank required string config and records parse diagnostics", async () => {
+    const ctx = makeFixtureContext({
+      repos: [{ repo: "company", available: true }],
+      files: {
+        company: {
+          "config/paperclip/.paperclip.yaml": { content: BLANK_STRING_YAML },
+          "config/paperclip/agents/cto/company-os.json": { content: CTO_SIDECAR },
+        },
+      },
+    });
+
+    const batch = await agentSource.collect(ctx);
+    const cto = batch.signals.filter(isAgentSignal).find((a) => a.agentKey === "cto");
+
+    expect(cto).toMatchObject({
+      role: "cto",
+      model: "unknown",
+      freshness: "stale",
+    });
+    expect(batch.repoFreshness[0]?.errors.map((e) => e.message)).toEqual(
+      expect.arrayContaining([
+        "config/paperclip/.paperclip.yaml: agent cto role must be non-empty",
+        "config/paperclip/.paperclip.yaml: agent cto adapter.config.model must be non-empty",
       ]),
     );
   });

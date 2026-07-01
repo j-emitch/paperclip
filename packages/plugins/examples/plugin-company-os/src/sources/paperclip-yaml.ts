@@ -115,11 +115,11 @@ function assignIdentityValue(
   recordAgentError: (slug: string, message: string) => void,
 ): void {
   if (path === "role" && typeof value === "string") {
-    identity.role = value;
+    identity.role = assignNonBlankString(slug, path, value, recordAgentError);
   } else if (path === "capabilities" && typeof value === "string") {
-    identity.capabilities = value;
+    identity.capabilities = value.trim() === "" ? null : value.trim();
   } else if (path === "adapter.config.model" && typeof value === "string") {
-    identity.model = value;
+    identity.model = assignNonBlankString(slug, path, value, recordAgentError);
   } else if (path === "adapter.config.maxTurnsPerRun" && typeof value === "number") {
     if (value <= 0) {
       recordAgentError(slug, "adapter.config.maxTurnsPerRun must be positive");
@@ -141,6 +141,20 @@ function assignIdentityValue(
     }
     identity.budgetMonthlyCents = value;
   }
+}
+
+function assignNonBlankString(
+  slug: string,
+  path: string,
+  value: string,
+  recordAgentError: (slug: string, message: string) => void,
+): string | null {
+  const trimmed = value.trim();
+  if (trimmed === "") {
+    recordAgentError(slug, `${path} must be non-empty`);
+    return null;
+  }
+  return trimmed;
 }
 
 function parseScalar(value: string): string | number | boolean {
