@@ -17,6 +17,7 @@ export * from "./vocab.js";
 export * from "./signals.js";
 export * from "./diagnostics.js";
 export * from "./registry.js";
+export * from "./lineage.js";
 
 // Layer 1 — the collection seam (sources collect against this) + the source interface
 export * from "./collection-context.js";

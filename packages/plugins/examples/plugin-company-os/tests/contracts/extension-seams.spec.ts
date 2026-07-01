@@ -29,7 +29,7 @@ import {
   reposResponsibleFor,
   reposReadableInScope,
 } from "../../src/contracts/index.js";
-import { agentSignal, branchSignal, docSignal, repoGitSignal, routine } from "../fixtures/signals.js";
+import { agentSignal, branchSignal, docSignal, lineageSignal, repoGitSignal, routine } from "../fixtures/signals.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures — a minimal in-memory CollectionContext (no git/gh/fs touched).
@@ -58,6 +58,7 @@ function fakeContext(overrides: Partial<CollectionContext> = {}): CollectionCont
     clock: fixedClock,
     logger: { debug() {}, info() {}, warn() {}, error() {} },
     registry: { load: async () => ({ entries: [], errors: [] }) },
+    lineage: { load: async () => ({ data: null, errors: [] }) },
     hash: (input: string) => `stub:${input.length}`,
     ...overrides,
   };
@@ -300,9 +301,9 @@ describe("projection contracts validate", () => {
 // ---------------------------------------------------------------------------
 
 /**
- * Exhaustive `switch (kind)` over ALL ten signal kinds. The `never` default is
- * the guard: add a tenth kind to the union without a case here and this file
- * stops compiling — so no projection fold can silently absorb a new kind.
+ * Exhaustive `switch (kind)` over ALL signal kinds. The `never` default is the
+ * guard: add a kind to the union without a case here and this file stops
+ * compiling — so no projection fold can silently absorb a new kind.
  */
 function kindOf(signal: Signal): Signal["kind"] {
   switch (signal.kind) {
@@ -326,6 +327,8 @@ function kindOf(signal: Signal): Signal["kind"] {
       return "skill";
     case "agent":
       return "agent";
+    case "lineage":
+      return "lineage";
     default: {
       const _exhaustive: never = signal;
       return _exhaustive;
@@ -417,12 +420,13 @@ describe("COS-1 signal kinds", () => {
     expect(proposal.exclude).toEqual(["company/reports/paperclip/tickets/archive/**"]);
   });
 
-  it("the kind switch is exhaustive over all ten kinds (compile-time never-guard)", () => {
+  it("the kind switch is exhaustive over all kinds (compile-time never-guard)", () => {
     const samples: Signal[] = [
       branchSignal("main"),
       repoGitSignal("company"),
       docSignal("specs/x.md"),
       agentSignal("cto"),
+      lineageSignal(),
     ];
     for (const s of samples) {
       expect(kindOf(s)).toBe(s.kind);

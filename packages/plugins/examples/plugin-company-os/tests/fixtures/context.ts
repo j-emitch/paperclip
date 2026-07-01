@@ -17,6 +17,7 @@ import type {
   WorktreeCheckout,
 } from "../../src/contracts/collection-context.js";
 import type { RegistryEntry, RegistryLoadResult, RegistryLoader } from "../../src/contracts/registry.js";
+import type { LineageData, LineageLoadResult, LineageLoader } from "../../src/contracts/lineage.js";
 import type { SkillRootRef } from "../../src/contracts/skills-catalog.js";
 import { matchesAnyGlob } from "../../src/sources/glob.js";
 
@@ -64,6 +65,7 @@ export interface FixtureOptions {
   gh?: ProcResponder;
   files?: FixtureFs;
   registry?: RegistryEntry[] | (() => Promise<RegistryLoadResult>);
+  lineage?: LineageData | (() => Promise<LineageLoadResult>);
 }
 
 const DEFAULT_REPOS: RepoRoot[] = [
@@ -119,6 +121,12 @@ export function makeFixtureContext(opts: FixtureOptions = {}): CollectionContext
       return { entries: opts.registry ?? [], errors: [] };
     },
   };
+  const lineage: LineageLoader = {
+    load: async () => {
+      if (typeof opts.lineage === "function") return opts.lineage();
+      return { data: opts.lineage ?? null, errors: [] };
+    },
+  };
   return {
     repos: opts.repos ?? DEFAULT_REPOS,
     worktrees: opts.worktrees ?? [],
@@ -130,6 +138,7 @@ export function makeFixtureContext(opts: FixtureOptions = {}): CollectionContext
     clock: fixedClock,
     logger: silentLogger,
     registry,
+    lineage,
     hash: fixtureHash,
   };
 }

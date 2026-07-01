@@ -17,6 +17,7 @@ import { prefixRegistrySource } from "./PrefixRegistrySource.js";
 import { branchSource } from "./BranchSource.js";
 import { docsSource } from "./DocsSource.js";
 import { skillsSource } from "./SkillsSource.js";
+import { lineageSource } from "./LineageSource.js";
 
 export const DEFAULT_SOURCES: readonly WorkSignalSource[] = [
   gitWorkSource,
@@ -32,6 +33,8 @@ export const DEFAULT_SOURCES: readonly WorkSignalSource[] = [
   docsSource,
   // COS-1h skills catalog (additive — appended last).
   skillsSource,
+  // COS-5 build-atlas lineage graph (additive — appended last).
+  lineageSource,
 ];
 
 export * from "./GitWorkSource.js";
@@ -45,4 +48,5 @@ export * from "./PrefixRegistrySource.js";
 export * from "./BranchSource.js";
 export * from "./DocsSource.js";
 export * from "./SkillsSource.js";
+export * from "./LineageSource.js";
 export * from "./parse.js";

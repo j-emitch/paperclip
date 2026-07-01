@@ -18,6 +18,8 @@ import type {
   BranchStatus,
   DocType,
   FreshnessKind,
+  LaneGroupKind,
+  LineageEdgeKind,
   OwnerAgent,
   RepoAvailability,
   ReviewReportKind,
@@ -378,6 +380,46 @@ export interface SkillSignal extends SignalProvenance {
   readonly indexFingerprint: string;
 }
 
+// ---------------------------------------------------------------------------
+// COS-5 — Build Atlas lineage signal
+//
+// The lineage graph is a single declarative company-repo file (like the prefix
+// registry), but unlike per-row taxonomy it is inherently WHOLE — lanes span the
+// family set and edges are cross-family — so it is carried as ONE `LineageSignal`
+// (the loaded graph), not one-signal-per-edge. `deriveBuildAtlas` folds the
+// freshest lineage signal into lane-groups + per-family lineage tags. A distinct
+// kind so it is inert to every existing fold (PF-2 filter-in).
+// ---------------------------------------------------------------------------
+
+/** A directed lineage relationship between two families. */
+export interface LineageEdge {
+  readonly from: string;
+  readonly to: string;
+  readonly kind: LineageEdgeKind;
+}
+
+/** A lane within a lineage lane-group — the families assigned to it. */
+export interface LineageLane {
+  readonly id: string;
+  readonly title: string;
+  readonly families: readonly string[];
+}
+
+/** A lineage lane-group (flow / overlay / second-brain). */
+export interface LineageLaneGroup {
+  readonly id: string;
+  readonly title: string;
+  readonly kind: LaneGroupKind;
+  readonly lanes: readonly LineageLane[];
+}
+
+/** The whole declarative lineage graph, emitted as one signal. */
+export interface LineageSignal extends SignalProvenance {
+  readonly kind: "lineage";
+  readonly laneGroups: readonly LineageLaneGroup[];
+  readonly edges: readonly LineageEdge[];
+}
+
 /** The discriminated union of everything a source can emit. */
 export type Signal =
   | WorkSignal
@@ -389,7 +431,8 @@ export type Signal =
   | BranchSignal
   | RepoGitSignal
   | DocSignal
-  | SkillSignal;
+  | SkillSignal
+  | LineageSignal;
 
 /** Narrowing helpers — keep the `kind` discriminant the single branch point. */
 export const isWorkSignal = (s: Signal): s is WorkSignal => s.kind === "work";
@@ -402,3 +445,4 @@ export const isBranchSignal = (s: Signal): s is BranchSignal => s.kind === "bran
 export const isRepoGitSignal = (s: Signal): s is RepoGitSignal => s.kind === "repo_git";
 export const isDocSignal = (s: Signal): s is DocSignal => s.kind === "doc";
 export const isSkillSignal = (s: Signal): s is SkillSignal => s.kind === "skill";
+export const isLineageSignal = (s: Signal): s is LineageSignal => s.kind === "lineage";

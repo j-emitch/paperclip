@@ -82,6 +82,7 @@ export function gitFixtureContext(opts: GitFixtureOpts): CollectionContext {
     clock,
     logger: { debug() {}, info() {}, warn() {}, error() {} },
     registry: { load: async () => ({ entries: [], errors: [] }) },
+    lineage: { load: async () => ({ data: null, errors: [] }) },
     hash: (input: string) => `stub:${input.length}`,
   };
 }

@@ -16,6 +16,7 @@
  */
 
 import type { RegistryLoader } from "./registry.js";
+import type { LineageLoader } from "./lineage.js";
 import type { SignalError } from "./signals.js";
 import type { SignalFreshness } from "./vocab.js";
 import type { SkillRootRef } from "./skills-catalog.js";
@@ -179,6 +180,8 @@ export interface CollectionContext {
   readonly logger: SignalLogger;
   /** The canonical prefix-registry loader (single source of truth — see registry.ts). */
   readonly registry: RegistryLoader;
+  /** The canonical build-atlas lineage-graph loader (COS-5, single source — see lineage.ts). */
+  readonly lineage: LineageLoader;
   /** SHA-256 hex of artifact content (keeps sources free of `node:crypto`). */
   readonly hash: ContentHasher;
   /** Hard-timeout cancellation (spec §6: 60s hard timeout on the full derive). */

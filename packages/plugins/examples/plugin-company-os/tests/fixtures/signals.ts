@@ -10,6 +10,7 @@ import type {
   AgentSignal,
   BranchSignal,
   DocSignal,
+  LineageSignal,
   RepoGitSignal,
   ReviewSignal,
   RoutineSignal,
@@ -142,6 +143,21 @@ export function agentSignal(agentKey: string, over: Partial<AgentSignal> = {}): 
     duties: over.duties ?? [{ id: "technical-analysis", surface: "company/reports/analysis" }],
     handsOffTo: over.handsOffTo ?? [],
     receivesFrom: over.receivesFrom ?? ["CEO"],
+    ...over,
+  };
+}
+
+/** A `LineageSignal` (the whole declarative lineage graph, one signal). */
+export function lineageSignal(over: Partial<LineageSignal> = {}): LineageSignal {
+  return {
+    kind: "lineage",
+    source: over.source ?? "lineage",
+    repo: over.repo ?? "company",
+    confidence: over.confidence ?? "high",
+    freshness: over.freshness ?? "live",
+    errors: over.errors ?? [],
+    laneGroups: over.laneGroups ?? [],
+    edges: over.edges ?? [],
     ...over,
   };
 }

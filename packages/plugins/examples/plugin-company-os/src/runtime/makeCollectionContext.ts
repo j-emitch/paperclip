@@ -34,6 +34,7 @@ import type {
   WorkspaceReader,
 } from "../contracts/collection-context.js";
 import type { RegistryEntry, RegistryLoadResult, RegistryLoader } from "../contracts/registry.js";
+import type { LineageData, LineageLoadResult, LineageLoader } from "../contracts/lineage.js";
 import type { SignalError } from "../contracts/signals.js";
 import type { SkillOrigin, SkillRootRef } from "../contracts/skills-catalog.js";
 import { globRootDirs, matchesAnyGlob } from "../sources/glob.js";
@@ -188,6 +189,7 @@ export async function makeCollectionContext(deps: AdapterDeps): Promise<Collecti
   const fs: WorkspaceReader = makeWorkspaceReader(absByKey, opts, logger);
   const hash: ContentHasher = (input) => createHash("sha256").update(input).digest("hex");
   const registry: RegistryLoader = makeRegistryLoader(absByKey, logger);
+  const lineage: LineageLoader = makeLineageLoader(absByKey, logger);
 
   return {
     repos,
@@ -200,6 +202,7 @@ export async function makeCollectionContext(deps: AdapterDeps): Promise<Collecti
     clock,
     logger,
     registry,
+    lineage,
     hash,
     signal: deps.signal,
   };
@@ -346,6 +349,43 @@ function makeRegistryLoader(absByKey: Map<string, string>, logger: SignalLogger)
         // UI-facing signal stays host-path-free.
         logger.warn("registry load failed", { parserPath, error: String(e) });
         return { entries: [], errors: [err("parse_error", "registry load failed (see logs)")] };
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Lineage loader — the SINGLE canonical parser (company/config/lib/build-atlas-lineage.mjs)
+// ---------------------------------------------------------------------------
+
+/** Shape of the canonical lineage parser module we dynamic-import (subset we rely on). */
+interface BuildAtlasLineageModule {
+  loadLineage?: (jsonPath?: string) => LineageData | Promise<LineageData>;
+}
+
+function makeLineageLoader(absByKey: Map<string, string>, logger: SignalLogger): LineageLoader {
+  return {
+    async load(): Promise<LineageLoadResult> {
+      const companyRoot = absByKey.get("company");
+      if (!companyRoot) {
+        return { data: null, errors: [err("not_found", "company repo root not configured")] };
+      }
+      const parserPath = path.join(companyRoot, "config", "lib", "build-atlas-lineage.mjs");
+      try {
+        const mod: BuildAtlasLineageModule = await import(pathToFileURL(parserPath).href);
+        if (typeof mod.loadLineage !== "function") {
+          return { data: null, errors: [err("parse_error", "build-atlas-lineage.mjs has no loadLineage export")] };
+        }
+        const jsonPath = path.join(companyRoot, "config", "build-atlas-lineage.json");
+        const data = await mod.loadLineage(jsonPath);
+        if (!data || !Array.isArray(data.laneGroups) || !Array.isArray(data.edges)) {
+          return { data: null, errors: [err("parse_error", "loadLineage did not return { laneGroups[], edges[] }")] };
+        }
+        return { data, errors: [] };
+      } catch (e) {
+        // Keep the absolute parserPath + raw error in the logs only.
+        logger.warn("lineage load failed", { parserPath, error: String(e) });
+        return { data: null, errors: [err("parse_error", "lineage load failed (see logs)")] };
       }
     },
   };
