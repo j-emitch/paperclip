@@ -91,6 +91,19 @@ const manifest: PaperclipPluginManifestV1 = {
           required: ["key", "displayName", "kind", "repos", "order"],
         },
       },
+      // COS-1h: OPTIONAL extra roots for installed-PLUGIN skills (the Skills tab's
+      // secondary sub-section). Absolute dirs scanned recursively for SKILL.md.
+      // OMIT the key to default to the Claude + Codex plugin caches
+      // (`~/.claude/plugins/cache`, `~/.codex/plugins/cache`) when present; set an
+      // explicit `[]` to disable the plugins sub-section. The company design skills
+      // (`~/.agents/skills`) are always indexed and are NOT configured here.
+      skillRoots: {
+        type: "array",
+        title: "Installed-plugin skill roots (optional)",
+        description:
+          "Absolute dirs of installed-plugin skills to index (e.g. /Users/you/.claude/plugins/cache, /Users/you/.codex/plugins/cache). Omit to auto-detect both caches; set [] to disable.",
+        items: { type: "string" },
+      },
     },
   },
   database: {

@@ -1,6 +1,6 @@
 import { definePlugin, runWorker, type PluginContext } from "@paperclipai/plugin-sdk";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { lstatSync } from "node:fs";
 import { homedir } from "node:os";
 import * as path from "node:path";
 import { DERIVE_BOARD_JOB_KEY, PLUGIN_ID } from "./manifest.js";
@@ -64,28 +64,54 @@ const plugin = definePlugin({
       return groups.length > 0 ? groups : undefined;
     };
 
-    // The optional `skillRoots` config → contained plugin-skill read-roots (COS-1h).
-    // Absolute dirs scanned for installed-plugin SKILL.md files. When unset, default
-    // to `~/.claude/plugins/cache` IF it exists — so the plugins sub-section appears
-    // out of the box on a dev machine, and degrades to empty everywhere else. Keys
-    // are namespaced (`skillroot:<basename>`) so they can never shadow a repo key.
+    // The COS-1h skill read-roots: contained dirs OUTSIDE the workspace that
+    // `SkillsSource` scans. Two kinds:
+    //   • DESIGN (origin company): `~/.agents/skills` — the company design skills'
+    //     REAL location (their `config/skills/*` entries are symlinks up to $HOME the
+    //     walk skips), collection fixed to "design".
+    //   • PLUGINS (origin plugins): from `config.skillRoots` when set, else the
+    //     Claude + Codex plugin caches when present. An EXPLICIT `skillRoots: []`
+    //     DISABLES the plugin fallback (only an ABSENT key defaults). Collection derived.
+    // Every root is required to be a REAL directory (a symlinked root is rejected —
+    // its target could escape the intended tree). Keys are namespaced
+    // (`skillroot:<basename>`) so they can never shadow a repo/worktree key.
+    const isRealDir = (abs: string): boolean => {
+      try {
+        const st = lstatSync(abs); // lstat: a symlinked root is NOT a real dir → rejected
+        return st.isDirectory();
+      } catch {
+        return false;
+      }
+    };
     const readSkillRoots = async (): Promise<SkillRootInput[]> => {
       const config = await ctx.config.get();
       const raw = (config as Record<string, unknown> | undefined)?.skillRoots;
-      const paths: string[] = Array.isArray(raw) ? raw.filter((r): r is string => typeof r === "string" && r !== "") : [];
-      if (paths.length === 0) {
-        const fallback = path.join(homedir(), ".claude", "plugins", "cache");
-        if (existsSync(fallback)) paths.push(fallback);
+      const configured = Array.isArray(raw);
+      const pluginPaths: string[] = configured
+        ? raw.filter((r): r is string => typeof r === "string" && r !== "")
+        : [];
+      // Default the plugin caches ONLY when the config key is entirely ABSENT
+      // (an explicit `[]` is a deliberate "no plugins", honored).
+      if (!configured) {
+        for (const p of [path.join(homedir(), ".claude", "plugins", "cache"), path.join(homedir(), ".codex", "plugins", "cache")]) {
+          pluginPaths.push(p);
+        }
       }
+
+      const specs: Array<{ absPath: string; origin: "company" | "plugins"; collection: string | null }> = [
+        { absPath: path.join(homedir(), ".agents", "skills"), origin: "company", collection: "design" },
+        ...pluginPaths.map((absPath) => ({ absPath, origin: "plugins" as const, collection: null })),
+      ];
+
       const seen = new Set<string>();
       const out: SkillRootInput[] = [];
-      for (const abs of paths) {
-        if (!existsSync(abs)) continue; // a configured-but-absent root degrades to nothing
-        const base = path.basename(abs.replace(/\/+$/, "")) || "plugins";
-        let key = `skillroot:${base}`;
-        for (let n = 2; seen.has(key); n++) key = `skillroot:${base}-${n}`;
+      for (const spec of specs) {
+        if (!isRealDir(spec.absPath)) continue; // absent or symlinked → degrade to nothing
+        const base = path.basename(spec.absPath.replace(/\/+$/, "")) || spec.origin;
+        let key = `skillroot:${spec.origin}:${base}`;
+        for (let n = 2; seen.has(key); n++) key = `skillroot:${spec.origin}:${base}-${n}`;
         seen.add(key);
-        out.push({ key, absPath: abs });
+        out.push({ key, absPath: spec.absPath, origin: spec.origin, collection: spec.collection });
       }
       return out;
     };

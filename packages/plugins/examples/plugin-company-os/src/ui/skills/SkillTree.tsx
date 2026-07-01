@@ -5,7 +5,7 @@
  * the reader can render the full SKILL.md. Pure + SSR-faithful, mirroring `DocTree`.
  */
 
-import type { SkillsCatalogV1, SkillEntryV1, SkillOriginSectionV1 } from "../../contracts/skills-catalog.js";
+import type { SkillsCatalogV1, SkillEntryV1, SkillOriginSectionV1 } from "../../contracts/index.js";
 import { tokens } from "../tokens.js";
 import { Dot } from "../shared/badges.js";
 import { CalmNote } from "../shared/feedback.js";
@@ -19,22 +19,24 @@ export interface SkillTreeProps {
   catalog: SkillsCatalogV1;
   selectedSkillId: string | null;
   onSelect: (selection: SkillSelection) => void;
+  /** True while a search is active — an empty result then shows "no match" instead of the show-0 shells. */
+  searching?: boolean;
 }
 
-export function SkillTree({ catalog, selectedSkillId, onSelect }: SkillTreeProps) {
-  const populated = catalog.origins.filter((o) => o.count > 0);
-  if (populated.length === 0) {
+export function SkillTree({ catalog, selectedSkillId, onSelect, searching = false }: SkillTreeProps) {
+  // A search that matches nothing prunes every origin → a single calm note.
+  if (searching && catalog.origins.length === 0) {
     return <CalmNote>No skills match — clear the search to see the full catalog.</CalmNote>;
   }
+  // Otherwise render EVERY origin section (company first, plugins second) even at
+  // 0 — the projection deliberately emits both for a stable show-0 topology.
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22, minWidth: 0 }}>
-      {catalog.origins.map((origin, i) =>
-        origin.count > 0 ? (
-          <div key={origin.origin} className="cos-fx-enter" style={{ animationDelay: `${i * 70}ms` }}>
-            <OriginSection origin={origin} selectedSkillId={selectedSkillId} onSelect={onSelect} />
-          </div>
-        ) : null,
-      )}
+      {catalog.origins.map((origin, i) => (
+        <div key={origin.origin} className="cos-fx-enter" style={{ animationDelay: `${i * 70}ms` }}>
+          <OriginSection origin={origin} selectedSkillId={selectedSkillId} onSelect={onSelect} />
+        </div>
+      ))}
     </div>
   );
 }
@@ -90,6 +92,13 @@ function OriginSection({
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14, marginLeft: 12 }}>
+        {origin.collections.length === 0 ? (
+          <CalmNote>
+            {isStar
+              ? "No company skills indexed yet — they appear on the next derive."
+              : "No installed-plugin skills found. Point the plugin at a skills cache to populate this."}
+          </CalmNote>
+        ) : null}
         {origin.collections.map((collection) => (
           <section key={collection.collection} style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

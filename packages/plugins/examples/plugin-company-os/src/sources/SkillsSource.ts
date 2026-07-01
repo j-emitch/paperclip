@@ -3,16 +3,17 @@
  * DISTINCT kind — never an `ArtifactSignal`/`DocSignal`, so skills can't leak into
  * the Board/Docs folds) for every SKILL.md across two origins:
  *
- *   - `company` — the curated "ours" skills inside the `company` repo. Scanned
- *     from BOTH `config/skills/**` (the real skill dirs) AND `.agents/skills/**`
- *     (the design skills' real location — the `config/skills/*` design entries are
- *     symlinks, and the workspace walk never follows symlinks, so the design set
- *     must be read at its real path). Collection = "core" (config) | "design" (.agents).
+ *   - `company` — the curated "ours" skills. The `config/skills/**` real skill
+ *     dirs are read from the `company` repo; the DESIGN skills are read from an
+ *     extra `origin:"company", collection:"design"` root (`~/.agents/skills`) —
+ *     their `config/skills/*` entries are symlinks up to `$HOME` and the workspace
+ *     walk never follows symlinks, so they MUST be read at their real out-of-repo
+ *     path via a contained read-key (`ctx.skillRoots`). Collection = "core" | "design".
  *
  *   - `plugins` — installed marketplace/plugin skills read from optional, contained
- *     `ctx.skillRoots` read-keys (e.g. `~/.claude/plugins/cache`). Only scanned on a
- *     FULL sweep (`scopeRepo === null`); a scoped refresh preserves their last-good
- *     via the scoped merge. Collection = the plugin slug derived from the path.
+ *     `ctx.skillRoots` read-keys (e.g. `~/.claude/plugins/cache`, `~/.codex/plugins/cache`).
+ *     Only scanned on a FULL sweep (`scopeRepo === null`); a scoped refresh preserves
+ *     their last-good via the scoped merge. Collection = the plugin slug from the path.
  *
  * Metadata-only at index time: only the frontmatter HEAD (`readTextHead`) is read,
  * never the body (fetched on demand by `skill-content`). Capped at
@@ -24,28 +25,21 @@
 import { signalError, type CollectionContext } from "../contracts/collection-context.js";
 import type { RepoFreshness, SignalBatch, WorkSignalSource } from "../contracts/WorkSignalSource.js";
 import type { Signal, SignalError, SkillSignal } from "../contracts/signals.js";
-import type { SkillOrigin } from "../contracts/skills-catalog.js";
+import type { SkillOrigin, SkillRootRef } from "../contracts/skills-catalog.js";
 import { MAX_SKILLS_PER_ROOT, SKILL_FRONTMATTER_SCAN_BYTES, makeSkillId } from "../contracts/skills-catalog.js";
 import { nowIso, readError } from "./_shared.js";
 import { parseFrontmatterHead } from "./frontmatter-head.js";
 
 export const SKILLS_SOURCE_ID = "skills";
 
-/** The repo key the "ours" skills live in. */
+/** The repo key the "ours" core skills live in (`config/skills/**`). */
 export const COMPANY_REPO_KEY = "company";
 
-/**
- * Company skill globs. `config/skills/**` catches the real skill dirs; the
- * `.agents/skills/**` glob catches the design skills at their real location
- * (their `config/skills/*` entries are symlinks the walk skips). A skill's
- * collection is derived from which subtree matched.
- */
-const CONFIG_SKILLS_PREFIX = "config/skills/";
-const AGENTS_SKILLS_PREFIX = ".agents/skills/";
-const COMPANY_SKILL_GLOBS = [`${CONFIG_SKILLS_PREFIX}**/SKILL.md`, `${AGENTS_SKILLS_PREFIX}**/SKILL.md`] as const;
+/** The in-repo core skills glob (design skills come from an out-of-repo `skillRoots` entry). */
+const COMPANY_CORE_GLOBS = ["config/skills/**/SKILL.md"] as const;
 
-/** Plugin roots are scanned recursively for any nested SKILL.md. */
-const PLUGIN_SKILL_GLOBS = ["**/SKILL.md"] as const;
+/** Extra roots (design + plugin caches) are scanned recursively for any nested SKILL.md. */
+const ROOT_SKILL_GLOBS = ["**/SKILL.md"] as const;
 
 export const skillsSource: WorkSignalSource = {
   id: SKILLS_SOURCE_ID,
@@ -53,45 +47,47 @@ export const skillsSource: WorkSignalSource = {
     const collectedAt = ctx.clock.now();
     const signals: Signal[] = [];
     const repoFreshness: RepoFreshness[] = [];
+    const fullSweep = ctx.scopeRepo === null;
+    const companyScope = fullSweep || ctx.scopeRepo === COMPANY_REPO_KEY;
 
-    // --- company origin (the star) — scanned when the sweep covers `company`. ---
-    if (ctx.scopeRepo === null || ctx.scopeRepo === COMPANY_REPO_KEY) {
+    // --- company CORE skills, from the company repo (config/skills/**). ---
+    if (companyScope) {
       const companyRepo = ctx.repos.find((r) => r.repo === COMPANY_REPO_KEY);
-      if (!companyRepo) {
+      if (!companyRepo || !companyRepo.available) {
         // Not a hard error — a workspace without the company repo simply has no
-        // "ours" skills; record a calm stale marker so the freshness line is honest.
+        // core skills; record a calm stale marker so the freshness line is honest.
         repoFreshness.push({
           repo: COMPANY_REPO_KEY,
           freshness: "stale",
           lastOkAt: null,
-          errors: [signalError("repo_unavailable", `repo ${COMPANY_REPO_KEY} is not configured`)],
-        });
-      } else if (!companyRepo.available) {
-        repoFreshness.push({
-          repo: COMPANY_REPO_KEY,
-          freshness: "stale",
-          lastOkAt: null,
-          errors: [signalError("repo_unavailable", `repo ${COMPANY_REPO_KEY} is not available this run`)],
+          errors: [signalError("repo_unavailable", `repo ${COMPANY_REPO_KEY} is ${companyRepo ? "not available this run" : "not configured"}`)],
         });
       } else {
-        const { produced, errors } = await scanKey(ctx, COMPANY_REPO_KEY, COMPANY_SKILL_GLOBS, "company", companyCollection);
+        const { produced, errors } = await scanKey(ctx, COMPANY_REPO_KEY, COMPANY_CORE_GLOBS, "company", () => "core");
         signals.push(...produced);
         repoFreshness.push(freshnessFor(COMPANY_REPO_KEY, errors, ctx));
       }
     }
 
-    // --- plugins origin (secondary) — full sweeps only; scoped refresh keeps last-good. ---
-    if (ctx.scopeRepo === null) {
-      for (const key of ctx.skillRoots ?? []) {
-        const { produced, errors } = await scanKey(ctx, key, PLUGIN_SKILL_GLOBS, "plugins", pluginCollection);
-        signals.push(...produced);
-        repoFreshness.push(freshnessFor(key, errors, ctx));
-      }
+    // --- extra roots: design skills (origin company) + plugin caches (origin plugins). ---
+    // Company-origin roots follow the company scope; plugin roots are full-sweep only
+    // (a scoped refresh preserves their last-good via the scoped merge, keyed by repo).
+    for (const ref of ctx.skillRoots ?? []) {
+      const inScope = ref.origin === "company" ? companyScope : fullSweep;
+      if (!inScope) continue;
+      const { produced, errors } = await scanKey(ctx, ref.key, ROOT_SKILL_GLOBS, ref.origin, collectionResolver(ref));
+      signals.push(...produced);
+      repoFreshness.push(freshnessFor(ref.key, errors, ctx));
     }
 
     return { source: SKILLS_SOURCE_ID, collectedAt, signals, repoFreshness };
   },
 };
+
+/** A ref with a fixed collection uses it verbatim; otherwise derive the plugin slug per-skill. */
+function collectionResolver(ref: SkillRootRef): (relPath: string) => string {
+  return ref.collection !== null ? () => ref.collection as string : pluginCollection;
+}
 
 /** Build a `RepoFreshness` row for a scanned read-key (live unless a read degraded it). */
 function freshnessFor(repo: string, errors: readonly SignalError[], ctx: CollectionContext): RepoFreshness {
@@ -173,22 +169,24 @@ function skillSlug(relPath: string): string {
   return parts.length >= 2 ? parts[parts.length - 2]! : (parts[0] ?? relPath);
 }
 
-/** Company collection: "design" for the `.agents/skills` set, else "core". */
-function companyCollection(relPath: string): string {
-  return relPath.startsWith(AGENTS_SKILLS_PREFIX) ? "design" : "core";
+/** A version-like (`5.0.7`, `v2`) OR revision-like (`3fdeeb49` hex, `abc123…`) path segment. */
+function isVersionOrRevision(seg: string): boolean {
+  return /^v?\d+(\.\d+)*$/.test(seg) || /^[0-9a-f]{7,40}$/i.test(seg);
 }
 
 /**
  * Plugin collection = the plugin slug: the path segment just above `skills/`,
- * skipping a version-like segment (e.g. `superpowers/5.0.7/skills/x` → "superpowers").
- * Falls back to the top-level segment when the path has no `skills/` marker.
+ * walking BACK past version- or revision-like segments so
+ * `openai-curated/codex-security/3fdeeb49/skills/x` → "codex-security" and
+ * `superpowers/5.0.7/skills/x` → "superpowers". Falls back to the top-level
+ * segment when the path has no `skills/` marker.
  */
 function pluginCollection(relPath: string): string {
   const parts = relPath.split("/");
   const si = parts.lastIndexOf("skills");
   if (si > 0) {
     let i = si - 1;
-    if (i > 0 && /^v?\d+(\.\d+)*$/.test(parts[i]!)) i--;
+    while (i > 0 && isVersionOrRevision(parts[i]!)) i--;
     return parts[i] || parts[0] || "plugins";
   }
   return parts[0] || "plugins";

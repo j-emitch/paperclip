@@ -32,6 +32,8 @@ export * from "./projects.js";
 export * from "./git-state.js";
 export * from "./orientation.js";
 export * from "./doc-index.js";
+// Layer 2 — COS-1h skills catalog projection contract
+export * from "./skills-catalog.js";
 
 // Layer 2 — the live docs-viewer payload contract (read per-request, not cached)
 export * from "./report-content.js";

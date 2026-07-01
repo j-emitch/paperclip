@@ -39,6 +39,16 @@ export interface ReportViewerPanelProps {
    * plan/backlog; Reports omits it and falls back to the artifact-type label.
    */
   typeLabel?: string;
+  /**
+   * Copy overrides so a non-Reports consumer (e.g. the Skills tab) doesn't leak
+   * "report"/"document" wording. Each defaults to the Reports copy, so Reports +
+   * Docs are byte-unchanged.
+   */
+  loadingLabel?: string;
+  errorTitle?: string;
+  emptyTitle?: string;
+  emptyBody?: string;
+  backLabel?: string;
 }
 
 export function ReportViewerPanel({
@@ -51,13 +61,18 @@ export function ReportViewerPanel({
   onRetry,
   onClose,
   typeLabel,
+  loadingLabel = "Opening the document…",
+  errorTitle = "Couldn’t load the document",
+  emptyTitle = "Pick a report to read",
+  emptyBody = "Specs, handoffs, and review reports render here in place — filter the list and choose one.",
+  backLabel = "Back to the report list",
 }: ReportViewerPanelProps) {
   if (!content && loading) {
     return (
       <Frame minHeight={isMobile ? 200 : 320}>
         <LocalSpinner />
         <p style={{ margin: 0, fontSize: 13, color: tokens.muted }} aria-live="polite">
-          Opening the document…
+          {loadingLabel}
         </p>
       </Frame>
     );
@@ -70,7 +85,7 @@ export function ReportViewerPanel({
           <AlertIcon size={24} />
         </Glyph>
         <div>
-          <p style={{ margin: 0, fontSize: 15, fontWeight: 650, color: tokens.fg }}>Couldn’t load the document</p>
+          <p style={{ margin: 0, fontSize: 15, fontWeight: 650, color: tokens.fg }}>{errorTitle}</p>
           <p style={{ margin: "4px 0 0", fontSize: 13, color: tokens.muted, maxWidth: 380 }}>{error}</p>
         </div>
         {onRetry ? <RetryButton onClick={onRetry} /> : null}
@@ -85,9 +100,9 @@ export function ReportViewerPanel({
           <DocIcon size={24} />
         </Glyph>
         <div>
-          <p style={{ margin: 0, fontSize: 15, fontWeight: 650, color: tokens.fg }}>Pick a report to read</p>
+          <p style={{ margin: 0, fontSize: 15, fontWeight: 650, color: tokens.fg }}>{emptyTitle}</p>
           <p style={{ margin: "4px 0 0", fontSize: 13, color: tokens.muted, maxWidth: 360, lineHeight: 1.5 }}>
-            Specs, handoffs, and review reports render here in place — filter the list and choose one.
+            {emptyBody}
           </p>
         </div>
       </Frame>
@@ -117,7 +132,7 @@ export function ReportViewerPanel({
             {title}
           </h2>
           {onClose ? (
-            <button type="button" onClick={onClose} aria-label="Back to the report list" style={iconButtonStyle}>
+            <button type="button" onClick={onClose} aria-label={backLabel} style={iconButtonStyle}>
               <CloseIcon size={14} />
             </button>
           ) : null}

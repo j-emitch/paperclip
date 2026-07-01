@@ -5,8 +5,14 @@
  * cockpit's color language + the fold from a query string to a pruned catalog.
  */
 
-import type { SkillEntryV1, SkillOrigin, SkillsCatalogV1 } from "../../contracts/skills-catalog.js";
+import type { SkillEntryV1, SkillOrigin, SkillsCatalogV1 } from "../../contracts/index.js";
 import { statusColors, tokens } from "../tokens.js";
+
+/** Origin display labels — matched by search so "company"/"installed"/"plugins" find their sections. */
+const ORIGIN_MATCH_LABEL: Record<SkillOrigin, string> = {
+  company: "company",
+  plugins: "installed plugins",
+};
 
 /** The origin accent — Company takes the cockpit's signature orange (the star). */
 export const ORIGIN_TONE: Record<SkillOrigin, string> = {
@@ -38,12 +44,13 @@ export function collectionTone(origin: SkillOrigin, collection: string): string 
   return COLLECTION_TONES[h % COLLECTION_TONES.length]!;
 }
 
-/** True when a skill matches a lowercased query across name/summary/slug/collection. */
+/** True when a skill matches a lowercased query across name/summary/slug/collection/origin. */
 function skillMatches(skill: SkillEntryV1, q: string): boolean {
   return (
     skill.name.toLowerCase().includes(q) ||
     skill.slug.toLowerCase().includes(q) ||
     skill.collection.toLowerCase().includes(q) ||
+    ORIGIN_MATCH_LABEL[skill.origin].includes(q) ||
     (skill.summary?.toLowerCase().includes(q) ?? false)
   );
 }

@@ -17,6 +17,7 @@ import type {
   WorktreeCheckout,
 } from "../../src/contracts/collection-context.js";
 import type { RegistryEntry, RegistryLoadResult, RegistryLoader } from "../../src/contracts/registry.js";
+import type { SkillRootRef } from "../../src/contracts/skills-catalog.js";
 import { matchesAnyGlob } from "../../src/sources/glob.js";
 
 export const FIXED_NOW = 1_700_000_000_000; // 2023-11-14T22:13:20.000Z
@@ -56,8 +57,8 @@ export type ProcResponder = (repo: string, args: readonly string[]) => Subproces
 export interface FixtureOptions {
   repos?: RepoRoot[];
   worktrees?: WorktreeCheckout[];
-  /** Extra plugin skill read-keys (COS-1h) — their files live in `files` under the same key. */
-  skillRoots?: string[];
+  /** Extra skill read-roots (COS-1h) — their files live in `files` under each ref's key. */
+  skillRoots?: SkillRootRef[];
   scopeRepo?: string | null;
   git?: ProcResponder;
   gh?: ProcResponder;

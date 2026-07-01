@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MarkdownBlock } from "@paperclipai/plugin-sdk/ui";
+import type { SkillsCatalogV1 } from "../../contracts/index.js";
 import { SkillsIcon } from "../icons.js";
 import { SurfaceEmpty, SurfaceError, SurfaceLoading } from "../shared/surface-state.js";
 import { useSkillsCatalog } from "../hooks/useSkillsCatalog.js";
@@ -45,6 +46,14 @@ export function Skills({ companyId }: { companyId: string | null }) {
 
   const filtered = useMemo(() => (catalog ? filterCatalog(catalog, query) : null), [catalog, query]);
 
+  // If a search filters the selected skill out of the visible tree, drop the
+  // selection so the reader can't show a skill that isn't in the list (codex UI P1).
+  useEffect(() => {
+    if (selected && filtered && !catalogHasSkill(filtered, selected.entry.skillId)) {
+      setSelected(null);
+    }
+  }, [filtered, selected]);
+
   if (loading && !catalog) return <SurfaceLoading label="Loading the skills catalog…" />;
   if (error && !catalog) return <SurfaceError message={error.message} onRetry={refresh} />;
   if (!catalog || !filtered) {
@@ -68,12 +77,22 @@ export function Skills({ companyId }: { companyId: string | null }) {
       onClose={isMobile ? onClose : undefined}
     />
   ) : (
-    <ReportViewerPanel content={null} loading={false} error={null} now={now} isMobile={isMobile} renderMarkdown={renderHostMarkdown} />
+    <ReportViewerPanel
+      content={null}
+      loading={false}
+      error={null}
+      now={now}
+      isMobile={isMobile}
+      renderMarkdown={renderHostMarkdown}
+      emptyTitle="Pick a skill to read"
+      emptyBody="Your company skills and installed plugins render here in full — search the list and choose one."
+    />
   );
 
   return (
     <SkillsView
       catalog={filtered}
+      totalUnfiltered={catalog.total}
       selectedSkillId={selected ? selected.entry.skillId : null}
       onSelect={onSelect}
       query={query}
@@ -83,6 +102,11 @@ export function Skills({ companyId }: { companyId: string | null }) {
       viewer={viewer}
     />
   );
+}
+
+/** True when any origin/collection in the catalog holds a skill with this id. */
+function catalogHasSkill(catalog: SkillsCatalogV1, skillId: string): boolean {
+  return catalog.origins.some((o) => o.collections.some((c) => c.skills.some((s) => s.skillId === skillId)));
 }
 
 function ConnectedSkillViewer({
@@ -110,6 +134,9 @@ function ConnectedSkillViewer({
       onRetry={refresh}
       onClose={onClose}
       typeLabel="Skill"
+      loadingLabel="Opening the skill…"
+      errorTitle="Couldn’t load the skill"
+      backLabel="Back to the skills list"
     />
   );
 }

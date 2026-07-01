@@ -18,6 +18,7 @@
 import type { RegistryLoader } from "./registry.js";
 import type { SignalError } from "./signals.js";
 import type { SignalFreshness } from "./vocab.js";
+import type { SkillRootRef } from "./skills-catalog.js";
 
 /**
  * A resolved product-repo root, as the SOURCES see it. Deliberately path-free:
@@ -160,14 +161,15 @@ export interface CollectionContext {
    */
   readonly worktrees: readonly WorktreeCheckout[];
   /**
-   * Optional extra READ-KEYS (already resolvable in `fs`) pointing at installed-
-   * plugin skill roots OUTSIDE the workspace (e.g. `~/.claude/plugins/cache`).
-   * `SkillsSource` scans each for `**​/SKILL.md` as `origin: "plugins"`; every other
-   * source ignores them. Empty/undefined = no plugin skills (calm 0-state).
+   * Optional extra contained READ-ROOTS (each `key` is already resolvable in `fs`)
+   * OUTSIDE the workspace that `SkillsSource` scans for SKILL.md files: the
+   * company design skills at `~/.agents/skills` (origin "company") and installed-
+   * plugin caches like `~/.claude/plugins/cache` (origin "plugins"). Every OTHER
+   * source ignores them. Empty/undefined = workspace `config/skills` only.
    * PF-8-style contained keys — the abs path never leaks; reads stay containment-
    * checked exactly like worktrees.
    */
-  readonly skillRoots?: readonly string[];
+  readonly skillRoots?: readonly SkillRootRef[];
   /** Scoped collect: null = full sweep; else only this repo key (the hook fast-path). */
   readonly scopeRepo: string | null;
   readonly git: GitRunner;

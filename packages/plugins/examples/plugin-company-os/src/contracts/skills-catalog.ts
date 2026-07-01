@@ -36,6 +36,25 @@ export type SkillOrigin = (typeof SKILL_ORIGINS)[number];
 export const skillOriginSchema = z.enum(SKILL_ORIGINS);
 
 /**
+ * An extra contained read-root the `SkillsSource` scans, beyond the `company`
+ * repo's own `config/skills`. Two shapes:
+ *   - company/design: the design skills live OUTSIDE the workspace at
+ *     `~/.agents/skills` (the `config/skills/*` design entries are symlinks up to
+ *     `$HOME`, and the walk never follows symlinks) — indexed as origin "company",
+ *     `collection: "design"` (a FIXED collection).
+ *   - plugins: an installed-plugin cache (`~/.claude/plugins/cache`,
+ *     `~/.codex/plugins/cache`) — origin "plugins", `collection: null` (derived
+ *     per-skill from the path).
+ * `key` is the read-KEY (namespaced so it can't collide with a repo key).
+ */
+export interface SkillRootRef {
+  readonly key: string;
+  readonly origin: SkillOrigin;
+  /** Fixed collection for every skill under this root; null = derive per-skill. */
+  readonly collection: string | null;
+}
+
+/**
  * One indexed skill. Every `SkillSignal` normalizes to this single shape,
  * deduped by `skillId`. `checkoutKey` + `relPath` are the contained read key the
  * `skill-content` handler resolves the full SKILL.md body against (never an

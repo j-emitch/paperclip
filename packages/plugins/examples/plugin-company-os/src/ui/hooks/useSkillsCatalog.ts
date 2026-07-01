@@ -7,7 +7,7 @@
 
 import { usePluginData } from "@paperclipai/plugin-sdk/ui";
 import type { PluginBridgeError } from "@paperclipai/plugin-sdk/ui";
-import type { SkillsCatalogV1 } from "../../contracts/skills-catalog.js";
+import type { SkillsCatalogV1 } from "../../contracts/index.js";
 
 export interface UseSkillsCatalogResult {
   catalog: SkillsCatalogV1 | null;

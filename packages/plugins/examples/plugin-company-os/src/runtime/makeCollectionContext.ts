@@ -35,6 +35,7 @@ import type {
 } from "../contracts/collection-context.js";
 import type { RegistryEntry, RegistryLoadResult, RegistryLoader } from "../contracts/registry.js";
 import type { SignalError } from "../contracts/signals.js";
+import type { SkillOrigin, SkillRootRef } from "../contracts/skills-catalog.js";
 import { globRootDirs, matchesAnyGlob } from "../sources/glob.js";
 
 /** Tuning knobs (all overridable for tests / perf). */
@@ -59,12 +60,16 @@ const DEFAULTS = {
   ignoreDirs: [".git", "node_modules", "dist", ".next", "coverage", ".turbo", "vendor"],
 } satisfies Required<AdapterOptions>;
 
-/** An extra, out-of-workspace read-root scanned for skills (e.g. `~/.claude/plugins/cache`). */
+/** An extra, out-of-workspace read-root scanned for skills (design skills or a plugin cache). */
 export interface SkillRootInput {
   /** Stable read-KEY (namespaced to avoid colliding with a repo key). */
   readonly key: string;
   /** Absolute directory the key resolves to (containment-checked on read). */
   readonly absPath: string;
+  /** "company" (e.g. `~/.agents/skills` design) or "plugins" (a plugin cache). */
+  readonly origin: SkillOrigin;
+  /** Fixed collection for every skill under this root; null = derive per-skill. */
+  readonly collection: string | null;
 }
 
 /** Inputs the worker resolves before constructing the context. */
@@ -142,14 +147,14 @@ export async function makeCollectionContext(deps: AdapterDeps): Promise<Collecti
   // `SkillsSource` consumes `ctx.skillRoots`; every other source stays unaffected.
   // A skill-root key that collides with an existing repo/worktree key is skipped
   // (the workspace always wins) and logged, so a stray config can't shadow a repo.
-  const skillRootKeys: string[] = [];
+  const skillRootRefs: SkillRootRef[] = [];
   for (const root of deps.skillRoots ?? []) {
     if (absByKey.has(root.key)) {
       logger.warn("skill root key collides with an existing read key — skipped", { key: root.key });
       continue;
     }
     absByKey.set(root.key, root.absPath);
-    skillRootKeys.push(root.key);
+    skillRootRefs.push({ key: root.key, origin: root.origin, collection: root.collection });
   }
   const repos: RepoRoot[] = await Promise.all(
     checkoutKeys.mainRoots.map(async ({ repoKey: key, absPath }) => ({
@@ -187,7 +192,7 @@ export async function makeCollectionContext(deps: AdapterDeps): Promise<Collecti
   return {
     repos,
     worktrees: checkoutKeys.worktrees,
-    skillRoots: skillRootKeys,
+    skillRoots: skillRootRefs,
     scopeRepo: deps.scopeRepo,
     git,
     gh,
