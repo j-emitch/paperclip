@@ -1,5 +1,5 @@
 import { definePlugin, runWorker, type PluginContext } from "@paperclipai/plugin-sdk";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { lstatSync } from "node:fs";
 import { homedir } from "node:os";
 import * as path from "node:path";
@@ -106,10 +106,21 @@ const plugin = definePlugin({
       const seen = new Set<string>();
       const out: SkillRootInput[] = [];
       for (const spec of specs) {
+        // Configured plugin paths are documented as ABSOLUTE dirs; a relative entry
+        // would resolve against the worker cwd and silently read the wrong tree, so
+        // ignore it rather than guess (codex A P2).
+        if (!path.isAbsolute(spec.absPath)) continue;
         if (!isRealDir(spec.absPath)) continue; // absent or symlinked → degrade to nothing
-        const base = path.basename(spec.absPath.replace(/\/+$/, "")) || spec.origin;
-        let key = `skillroot:${spec.origin}:${base}`;
-        for (let n = 2; seen.has(key); n++) key = `skillroot:${spec.origin}:${base}-${n}`;
+        // Key by STABLE absolute-path identity, never discovery order. A basename-only
+        // key made `.claude/plugins/cache` and `.codex/plugins/cache` both `cache`,
+        // suffixed by presence order (`cache`, `cache-2`); if one root vanished between
+        // derives the survivor could inherit the other's key and orphan its skillIds
+        // (codex B P1). A path-hash suffix is presence-independent + collision-free.
+        const resolved = path.resolve(spec.absPath);
+        const base = path.basename(resolved) || spec.origin;
+        const digest = createHash("sha256").update(resolved).digest("hex").slice(0, 8);
+        const key = `skillroot:${spec.origin}:${base}-${digest}`;
+        if (seen.has(key)) continue; // same absolute path listed twice → one root
         seen.add(key);
         out.push({ key, absPath: spec.absPath, origin: spec.origin, collection: spec.collection });
       }

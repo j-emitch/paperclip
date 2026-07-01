@@ -46,39 +46,55 @@ export const skillsSource: WorkSignalSource = {
   async collect(ctx: CollectionContext): Promise<SignalBatch> {
     const collectedAt = ctx.clock.now();
     const signals: Signal[] = [];
-    const repoFreshness: RepoFreshness[] = [];
     const fullSweep = ctx.scopeRepo === null;
     const companyScope = fullSweep || ctx.scopeRepo === COMPANY_REPO_KEY;
 
-    // --- company CORE skills, from the company repo (config/skills/**). ---
+    // Read errors accumulate per LOGICAL slice repo. Company CORE (`config/skills/**`)
+    // and the company DESIGN root (`~/.agents/skills`) are read from DIFFERENT keys but
+    // belong to the SAME `company` slice, so a scoped `company` refresh collects, merges,
+    // and persists them together. The scoped merge + `replaceSourceVersions` key by
+    // `repo`; a design skill tagged with its read-key (`skillroot:company:*`) instead of
+    // the `company` slice is silently dropped on a scoped refresh, leaving stale last-good
+    // (codex A/B P1). Plugin roots are their own slice and full-sweep only.
+    const errorsByRepo = new Map<string, SignalError[]>();
+    const addErrors = (repo: string, errs: readonly SignalError[]): void => {
+      const acc = errorsByRepo.get(repo) ?? [];
+      acc.push(...errs);
+      errorsByRepo.set(repo, acc);
+    };
+
+    // --- company CORE skills, read from + sliced to `company` (config/skills/**). ---
     if (companyScope) {
       const companyRepo = ctx.repos.find((r) => r.repo === COMPANY_REPO_KEY);
       if (!companyRepo || !companyRepo.available) {
-        // Not a hard error — a workspace without the company repo simply has no
-        // core skills; record a calm stale marker so the freshness line is honest.
-        repoFreshness.push({
-          repo: COMPANY_REPO_KEY,
-          freshness: "stale",
-          lastOkAt: null,
-          errors: [signalError("repo_unavailable", `repo ${COMPANY_REPO_KEY} is ${companyRepo ? "not available this run" : "not configured"}`)],
-        });
+        // Not a hard error — a workspace without the company repo simply has no core
+        // skills; record a calm degraded marker so the freshness line is honest.
+        addErrors(COMPANY_REPO_KEY, [
+          signalError("repo_unavailable", `repo ${COMPANY_REPO_KEY} is ${companyRepo ? "not available this run" : "not configured"}`),
+        ]);
       } else {
-        const { produced, errors } = await scanKey(ctx, COMPANY_REPO_KEY, COMPANY_CORE_GLOBS, "company", () => "core");
+        const { produced, errors } = await scanKey(ctx, COMPANY_REPO_KEY, COMPANY_CORE_GLOBS, "company", () => "core", COMPANY_REPO_KEY);
         signals.push(...produced);
-        repoFreshness.push(freshnessFor(COMPANY_REPO_KEY, errors, ctx));
+        addErrors(COMPANY_REPO_KEY, errors);
       }
     }
 
-    // --- extra roots: design skills (origin company) + plugin caches (origin plugins). ---
-    // Company-origin roots follow the company scope; plugin roots are full-sweep only
-    // (a scoped refresh preserves their last-good via the scoped merge, keyed by repo).
+    // --- extra roots: design skills (origin company -> `company` slice) + plugin caches
+    //     (origin plugins -> own slice). Company-origin roots follow the company scope;
+    //     plugin roots are full-sweep only (a scoped refresh preserves their last-good via
+    //     the scoped merge). The signal `repo` is the SLICE; `checkoutKey` stays the READ
+    //     key, so `skill-content` still reads each file at its real out-of-repo path. ---
     for (const ref of ctx.skillRoots ?? []) {
       const inScope = ref.origin === "company" ? companyScope : fullSweep;
       if (!inScope) continue;
-      const { produced, errors } = await scanKey(ctx, ref.key, ROOT_SKILL_GLOBS, ref.origin, collectionResolver(ref));
+      const sliceRepo = ref.origin === "company" ? COMPANY_REPO_KEY : ref.key;
+      const { produced, errors } = await scanKey(ctx, ref.key, ROOT_SKILL_GLOBS, ref.origin, collectionResolver(ref), sliceRepo);
       signals.push(...produced);
-      repoFreshness.push(freshnessFor(ref.key, errors, ctx));
+      addErrors(sliceRepo, errors);
     }
+
+    // One freshness row per logical slice (company core + design merged into `company`).
+    const repoFreshness: RepoFreshness[] = [...errorsByRepo.entries()].map(([repo, errs]) => freshnessFor(repo, errs, ctx));
 
     return { source: SKILLS_SOURCE_ID, collectedAt, signals, repoFreshness };
   },
@@ -95,13 +111,20 @@ function freshnessFor(repo: string, errors: readonly SignalError[], ctx: Collect
   return { repo, freshness: degraded ? "stale" : "live", lastOkAt: degraded ? null : nowIso(ctx), errors };
 }
 
-/** Scan one read-key for SKILL.md files, head-only, capped, deriving each skill's collection. */
+/**
+ * Scan one read-key for SKILL.md files, head-only, capped, deriving each skill's
+ * collection. `key` is the READ key (where the files live + the `checkoutKey`
+ * `skill-content` reads from); `sliceRepo` is the LOGICAL repo the signals belong
+ * to (the scoped-refresh + persistence unit) — the two diverge for the company
+ * design root, which is read from `skillroot:company:design` but sliced to `company`.
+ */
 async function scanKey(
   ctx: CollectionContext,
   key: string,
   globs: readonly string[],
   origin: SkillOrigin,
   collectionOf: (relPath: string) => string,
+  sliceRepo: string,
 ): Promise<{ produced: SkillSignal[]; errors: SignalError[] }> {
   const produced: SkillSignal[] = [];
   const errors: SignalError[] = [];
@@ -137,7 +160,7 @@ async function scanKey(
     produced.push({
       kind: "skill",
       source: SKILLS_SOURCE_ID,
-      repo: key,
+      repo: sliceRepo,
       path: file.relPath,
       confidence: "high",
       freshness: "live",

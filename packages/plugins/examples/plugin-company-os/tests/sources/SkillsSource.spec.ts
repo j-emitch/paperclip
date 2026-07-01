@@ -3,6 +3,8 @@ import { skillsSource } from "../../src/sources/SkillsSource.js";
 import { isSkillSignal, type SkillSignal } from "../../src/contracts/signals.js";
 import { MAX_SKILLS_PER_ROOT, type SkillRootRef } from "../../src/contracts/skills-catalog.js";
 import { makeFixtureContext, type FixtureFs } from "../fixtures/context.js";
+import { mergeScopedBundle, type SourceVersion } from "../../src/db/scoped-merge.js";
+import type { SignalBundle } from "../../src/contracts/WorkSignalSource.js";
 
 const SKILL_MD = (name: string, desc: string) => `---\nname: ${name}\ndescription: ${desc}\n---\n# ${name}\n\nbody…`;
 
@@ -38,9 +40,12 @@ describe("SkillsSource — company origin", () => {
     const byName = new Map(found.map((s) => [s.name, s]));
     expect(byName.get("review-cannons")).toMatchObject({ origin: "company", collection: "core", checkoutKey: "company" });
     expect(byName.get("spec-author")).toMatchObject({ origin: "company", collection: "core" });
-    // design skills come from the out-of-repo root but are still origin=company
-    expect(byName.get("animate")).toMatchObject({ origin: "company", collection: "design", checkoutKey: "skillroot:company:skills" });
-    expect(byName.get("adapt")).toMatchObject({ origin: "company", collection: "design" });
+    // design skills come from the out-of-repo root but are still origin=company AND
+    // carry repo="company" (the SLICE, not the read-key) so a scoped company refresh
+    // keeps them (codex A/B P1); checkoutKey stays the read-key so skill-content reads
+    // the file at its real out-of-repo path.
+    expect(byName.get("animate")).toMatchObject({ origin: "company", collection: "design", repo: "company", checkoutKey: "skillroot:company:skills" });
+    expect(byName.get("adapt")).toMatchObject({ origin: "company", collection: "design", repo: "company" });
     expect(byName.get("review-cannons")?.summary).toBe("14-pass pre-push review");
     expect(byName.get("animate")?.slug).toBe("animate");
     expect(found.some((s) => s.relPath.endsWith("README.md"))).toBe(false);
@@ -91,6 +96,12 @@ describe("SkillsSource — plugins origin", () => {
     const found = skills((await skillsSource.collect(ctx)).signals);
     expect(found.every((s) => s.origin === "company")).toBe(true);
     expect(found.some((s) => s.collection === "design")).toBe(true);
+    // Every company-scope signal (core AND out-of-repo design) carries repo="company"
+    // === scopeRepo, so the scoped merge + persistence keep the fresh scan instead of
+    // dropping it as an off-scope slice and leaving stale last-good (codex A/B P1).
+    expect(found.every((s) => s.repo === "company")).toBe(true);
+    // ...and the design read-key survives on checkoutKey for skill-content reads.
+    expect(found.find((s) => s.collection === "design")?.checkoutKey).toBe("skillroot:company:skills");
   });
 });
 
@@ -108,5 +119,26 @@ describe("SkillsSource — safety", () => {
     expect(trunc).toBeDefined();
     expect(trunc?.degraded).toBe(false); // a cap, not a failed read → stays LIVE
     expect(company?.freshness).toBe("live");
+  });
+});
+
+describe("SkillsSource — scoped refresh survives the merge (derive-level, codex A/B P1)", () => {
+  it("keeps freshly-scanned company DESIGN skills through a scoped company merge", async () => {
+    const ctx = makeFixtureContext({ files: COMPANY_FILES, skillRoots: [DESIGN_ROOT], scopeRepo: "company" });
+    const fresh = await skillsSource.collect(ctx);
+    const freshBundle: SignalBundle = { collectedAt: fresh.collectedAt, batches: [fresh] };
+    // A prior last-good where the company skills slice is STALE + empty — the pre-fix
+    // symptom (fresh design skills dropped by the scope filter, stale last-good kept).
+    const lastGood: SourceVersion[] = [{ source: "skills", repo: "company", signals: [], freshness: "stale", lastOkAt: null }];
+
+    const merged = mergeScopedBundle(freshBundle, lastGood, "company");
+    const mergedSkills = skills(merged.batches.flatMap((b) => b.signals));
+
+    // The fresh design skills survive (repo="company" === scopeRepo) rather than being
+    // filtered out as an off-scope slice — before the slice fix they carried the read-key
+    // `skillroot:company:skills`, failed the `s.repo === scopeRepo` filter, and vanished.
+    expect(mergedSkills.some((s) => s.name === "animate" && s.collection === "design")).toBe(true);
+    expect(mergedSkills.some((s) => s.name === "adapt")).toBe(true);
+    expect(mergedSkills.some((s) => s.collection === "core")).toBe(true); // core kept too
   });
 });

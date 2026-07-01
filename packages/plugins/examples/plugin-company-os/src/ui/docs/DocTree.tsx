@@ -35,28 +35,41 @@ function sectionDocCount(section: DocProjectSectionV1): number {
 }
 
 export function DocTree({ docIndex, selectedDocId, onSelect, now }: DocTreeProps) {
-  const sections = docIndex.groups.filter((s) => sectionDocCount(s) > 0);
-  if (sections.length === 0) {
+  const groups = docIndex.groups;
+  const totalDocs = groups.reduce((sum, s) => sum + sectionDocCount(s), 0);
+  // `deriveDocIndex` deliberately emits EVERY taxonomy group (show-0-counts), so
+  // don't filter empties out here. When the whole workspace is empty, one calm
+  // message reads better than a column of empty headers; once ANY project has
+  // docs, show EVERY project so an empty family reads as "0 docs" beside its
+  // populated siblings (mirrors SkillTree's empty-origin note).
+  if (totalDocs === 0) {
     return <CalmNote>No documents indexed yet — specs, plans, handoffs, and reviews appear here on the next derive.</CalmNote>;
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
-      {sections.map((section, i) => (
-        <div key={section.group.key} className="cos-fx-enter" style={{ animationDelay: `${i * 60}ms` }}>
-          <ProjectSection group={section.group} count={sectionDocCount(section)} compact>
-            {orderedBuckets(section).map(({ type, docs }) => (
-              <DocTypeGroup
-                key={type}
-                type={type}
-                docs={docs}
-                selectedDocId={selectedDocId}
-                onSelect={onSelect}
-                now={now}
-              />
-            ))}
-          </ProjectSection>
-        </div>
-      ))}
+      {groups.map((section, i) => {
+        const count = sectionDocCount(section);
+        return (
+          <div key={section.group.key} className="cos-fx-enter" style={{ animationDelay: `${i * 60}ms` }}>
+            <ProjectSection group={section.group} count={count} compact>
+              {count === 0 ? (
+                <CalmNote>No documents in this project yet.</CalmNote>
+              ) : (
+                orderedBuckets(section).map(({ type, docs }) => (
+                  <DocTypeGroup
+                    key={type}
+                    type={type}
+                    docs={docs}
+                    selectedDocId={selectedDocId}
+                    onSelect={onSelect}
+                    now={now}
+                  />
+                ))
+              )}
+            </ProjectSection>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -9,7 +9,7 @@ import { COMPANY_OS_ROUTE } from "../manifest.js";
 import { tokens, springTransition } from "./tokens.js";
 import { COMPANY_OS_TABS, type CompanyOsTab } from "./tabs.js";
 import { TAB_ICONS, CompanyOsGlyph } from "./icons.js";
-import { useActiveTab } from "./active-tab-store.js";
+import { useActiveTab, usePersistedTabHydration } from "./active-tab-store.js";
 import { useIsMobile } from "./hooks/useMediaQuery.js";
 import { CompanyOsBoard } from "./board/CompanyOsBoard.js";
 import { Home } from "./home/Home.js";
@@ -57,6 +57,7 @@ export function SidebarLink(_props: PluginSidebarProps) {
 
 export function CompanyOsRouteSidebar(_props: PluginRouteSidebarProps) {
   const [activeTab, setTab] = useActiveTab();
+  usePersistedTabHydration();
   return (
     <nav
       aria-label="Company OS sections"
@@ -121,6 +122,7 @@ export function CompanyOsRouteSidebar(_props: PluginRouteSidebarProps) {
 export function CompanyOsPage({ context }: PluginPageProps) {
   const isMobile = useIsMobile();
   const [activeTab, setTab] = useActiveTab();
+  usePersistedTabHydration();
   const current = COMPANY_OS_TABS.find((tab) => tab.key === activeTab) ?? COMPANY_OS_TABS[0];
   // The live surfaces own their own panel chrome; placeholders sit inside a card.
   const isLive =
