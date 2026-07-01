@@ -14,7 +14,6 @@ import {
   isTaxonomySignal,
   isWorkSignal,
   type ReviewSignal,
-  type TaxonomySignal,
   type WorkSignal,
 } from "../contracts/signals.js";
 import {
@@ -32,6 +31,7 @@ import type {
   WorkSignalPrecedence,
   WorkState,
 } from "../contracts/vocab.js";
+import { buildPrefixGrouping, type GroupingEntry } from "../contracts/grouping.js";
 import { aggregateSourceFreshness, diagnosticsFromFreshness, isoFrom } from "./_shared.js";
 
 /** Stage order — the furthest-right present stage wins the column. */
@@ -49,26 +49,18 @@ const PRECEDENCE_RANK: Record<WorkSignalPrecedence, number> = {
 
 const OPS_LANE_ID = "Ops";
 
-interface Taxon {
-  readonly prefix: string;
-  readonly family: string;
-  readonly l1System: string;
-  readonly l2Subsystem: string;
-  readonly isGeneric: boolean;
-  readonly laneId: string;
-}
-
 export function deriveBoardState(bundle: SignalBundle, nowMs: number): BoardStateV1 {
   const signals = bundle.batches.flatMap((b) => b.signals);
   const work = signals.filter(isWorkSignal);
   const reviews = signals.filter(isReviewSignal);
-  const taxonomy = buildTaxonomy(signals.filter(isTaxonomySignal));
+  // The shared prefix lens (COS-5g) — one resolver for Board + Atlas.
+  const taxonomy = buildPrefixGrouping(signals.filter(isTaxonomySignal));
 
   const lanes = new Map<string, Lane>();
   const rows = new Map<string, PrefixRow>();
   // Seed every registered prefix as a row (show 0-count rows) + its lane.
   for (const t of taxonomy.values()) {
-    ensureLane(lanes, t.laneId, t.l1System, t.l2Subsystem);
+    ensureLane(lanes, t.laneId, t.l1, t.l2);
     if (!rows.has(t.prefix)) {
       rows.set(t.prefix, { prefix: t.prefix, family: t.family, laneId: t.laneId, isGeneric: t.isGeneric, repos: [] });
     }
@@ -109,7 +101,7 @@ export function deriveBoardState(bundle: SignalBundle, nowMs: number): BoardStat
     if (column === null) continue; // e.g. only a reverted ship → no live placement
 
     const chosen = strongestForColumn(group, column);
-    ensureLane(lanes, taxon.laneId, taxon.l1System, taxon.l2Subsystem);
+    ensureLane(lanes, taxon.laneId, taxon.l1, taxon.l2);
     addRepoToRow(rows, taxon, chosen.repo);
 
     chips.push({
@@ -145,24 +137,8 @@ export function deriveBoardState(bundle: SignalBundle, nowMs: number): BoardStat
 }
 
 // ---------------------------------------------------------------------------
-// Taxonomy + lanes
+// Lanes (grouping resolved via the shared prefix lens — contracts/grouping.ts)
 // ---------------------------------------------------------------------------
-
-function buildTaxonomy(taxa: readonly TaxonomySignal[]): Map<string, Taxon> {
-  const map = new Map<string, Taxon>();
-  for (const t of taxa) {
-    const l2 = t.l2Subsystem ?? "General";
-    map.set(t.prefix, {
-      prefix: t.prefix,
-      family: t.family,
-      l1System: t.l1System,
-      l2Subsystem: l2,
-      isGeneric: t.isGeneric,
-      laneId: `${t.l1System}:${l2}`,
-    });
-  }
-  return map;
-}
 
 function ensureLane(lanes: Map<string, Lane>, laneId: string, l1: string, l2: string): void {
   if (lanes.has(laneId)) return;
@@ -194,7 +170,7 @@ function laneSort(a: Lane, b: Lane): number {
   return a.id.localeCompare(b.id);
 }
 
-function addRepoToRow(rows: Map<string, PrefixRow>, taxon: Taxon, repo: string): void {
+function addRepoToRow(rows: Map<string, PrefixRow>, taxon: GroupingEntry, repo: string): void {
   const row = rows.get(taxon.prefix);
   if (!row) {
     rows.set(taxon.prefix, { prefix: taxon.prefix, family: taxon.family, laneId: taxon.laneId, isGeneric: taxon.isGeneric, repos: [repo] });

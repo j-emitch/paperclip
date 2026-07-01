@@ -182,6 +182,12 @@ export interface TaxonomySignal extends SignalProvenance {
   readonly l1System: string;
   readonly l2Subsystem: string | null;
   readonly isGeneric: boolean;
+  /**
+   * Continuously-shipping program → its Atlas built bar reads "· live" rather
+   * than a fixed % (COS-5g). Sourced from the registry (`is_rolling`) — the
+   * durable home for the flag hardcoded in `deriveBuildAtlas` through 5a/5b/5c.
+   */
+  readonly isRolling: boolean;
 }
 
 /**

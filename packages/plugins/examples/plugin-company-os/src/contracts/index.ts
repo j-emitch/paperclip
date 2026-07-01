@@ -33,6 +33,8 @@ export * from "./build-atlas.js";
 
 // Layer 2 — COS-1 project taxonomy + daily-driver projection contracts
 export * from "./projects.js";
+// COS-5g — the unified grouping resolver (prefix lens + repo-badge facade)
+export * from "./grouping.js";
 export * from "./git-state.js";
 export * from "./orientation.js";
 export * from "./doc-index.js";

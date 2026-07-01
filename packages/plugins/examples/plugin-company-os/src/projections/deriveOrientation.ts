@@ -19,7 +19,8 @@ import {
   type WorkSignal,
 } from "../contracts/signals.js";
 import type { Diagnostic } from "../contracts/diagnostics.js";
-import { projectKeyForRepo, type ProjectTaxonomyV1 } from "../contracts/projects.js";
+import type { ProjectTaxonomyV1 } from "../contracts/projects.js";
+import { repoBadge } from "../contracts/grouping.js";
 import { makeDocId } from "../contracts/doc-index.js";
 import { STALE_WARN } from "../contracts/git-state.js";
 import {
@@ -75,7 +76,8 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
   const branches = signals.filter(isBranchSignal);
   const repoGits = signals.filter(isRepoGitSignal);
   const work = signals.filter(isWorkSignal);
-  const proj = (repo: string): string => projectKeyForRepo(taxonomy, repo);
+  // Repo→project badge via the unified grouping facade (COS-5g).
+  const proj = (repo: string): string => repoBadge(taxonomy, repo);
   const companyKey = taxonomy.groups.find((g) => g.kind === "company")?.key ?? taxonomy.groups[0]?.key ?? "company";
 
   // --- Pinned briefing (company-global) ---

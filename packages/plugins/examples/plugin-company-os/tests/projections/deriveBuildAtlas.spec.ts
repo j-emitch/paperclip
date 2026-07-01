@@ -47,7 +47,9 @@ describe("deriveBuildAtlas (5a — families + lifecycle)", () => {
   it("marks rolling families '· live' rather than a fixed %", () => {
     const atlas = deriveBuildAtlas(
       bundleOf([
-        taxon("INFRA", "Infrastructure", "Company", "Platform"),
+        // isRolling now rides on the registry-sourced signal (COS-5g), not a
+        // hardcoded set — the 6th arg mirrors `is_rolling: true` in the registry.
+        taxon("INFRA", "Infrastructure", "Company", "Platform", false, true),
         work("INFRA-1", "shipped", "commit_scope", { prefix: "INFRA" }),
       ]),
       NOW,
@@ -55,6 +57,19 @@ describe("deriveBuildAtlas (5a — families + lifecycle)", () => {
     const infra = atlas.families.find((f) => f.prefix === "INFRA");
     expect(infra?.isRolling).toBe(true);
     expect(infra?.builtSummary).toBe("1 shipped · live");
+  });
+
+  it("a non-rolling family (registry is_rolling unset) shows a fixed built ratio", () => {
+    const atlas = deriveBuildAtlas(
+      bundleOf([
+        taxon("OB", "Onboarding", "JB", "Onboarding"), // isRolling defaults false
+        work("OB-1", "shipped", "commit_scope", { prefix: "OB" }),
+      ]),
+      NOW,
+    );
+    const ob = atlas.families.find((f) => f.prefix === "OB");
+    expect(ob?.isRolling).toBe(false);
+    expect(ob?.builtSummary).toBe("1/1 shipped");
   });
 
   it("does not count a reverted-only ship as a build", () => {

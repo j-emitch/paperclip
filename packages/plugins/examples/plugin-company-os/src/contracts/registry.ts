@@ -30,6 +30,13 @@ export interface RegistryEntry {
   readonly l2_subsystem: string | null;
   readonly description: string;
   readonly is_generic: boolean;
+  /**
+   * Continuously-shipping program (COS-5g). The registry is the durable home for
+   * this flag (was hardcoded in `deriveBuildAtlas`). OPTIONAL in the JSON — only
+   * rolling rows set it; `PrefixRegistrySource` defaults a missing value to
+   * `false` when mapping onto the (required) `TaxonomySignal.isRolling`.
+   */
+  readonly is_rolling?: boolean;
   /** ISO calendar date the prefix was registered, or null for grandfathered rows. */
   readonly created_at: string | null;
 }

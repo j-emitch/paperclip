@@ -46,7 +46,14 @@ export function work(
   };
 }
 
-export function taxon(prefix: string, family: string, l1: string, l2: string, isGeneric = false): TaxonomySignal {
+export function taxon(
+  prefix: string,
+  family: string,
+  l1: string,
+  l2: string,
+  isGeneric = false,
+  isRolling = false,
+): TaxonomySignal {
   return {
     kind: "taxonomy",
     source: "prefix-registry",
@@ -59,6 +66,7 @@ export function taxon(prefix: string, family: string, l1: string, l2: string, is
     l1System: l1,
     l2Subsystem: l2,
     isGeneric,
+    isRolling,
   };
 }
 

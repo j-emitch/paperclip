@@ -7,10 +7,10 @@
  * system).
  *
  * 5a populates families + domains + lifecycle + builds; the lineage lane-groups
- * (5b) and routed LYC tickets (5c) fold in later — their arrays are empty here.
- * Grouping is the Board's `l1:l2` taxonomy from `TaxonomySignal`s today; 5g
- * migrates both this and `deriveBoardState` onto the shared `resolveGrouping`
- * resolver. No I/O — the UI renders this verbatim.
+ * (5b) and routed LYC tickets (5c) fold in later. Grouping (5g) runs through the
+ * shared `buildPrefixGrouping` resolver (`contracts/grouping.ts`) — the same
+ * prefix lens `deriveBoardState` uses — with `isRolling` sourced from the
+ * registry. No I/O — the UI renders this verbatim.
  */
 
 import type { SignalBundle } from "../contracts/WorkSignalSource.js";
@@ -22,7 +22,6 @@ import {
   isWorkSignal,
   type DocSignal,
   type LineageSignal,
-  type TaxonomySignal,
   type TicketSignal,
   type WorkSignal,
 } from "../contracts/signals.js";
@@ -38,6 +37,7 @@ import {
   type TicketRefV1,
 } from "../contracts/build-atlas.js";
 import { prefixOf } from "../contracts/ticket-id.js";
+import { buildPrefixGrouping, type GroupingEntry } from "../contracts/grouping.js";
 import type { WorkState } from "../contracts/vocab.js";
 import { deriveLifecycle } from "./deriveLifecycle.js";
 import { aggregateSourceFreshness, diagnosticsFromFreshness, isoFrom } from "./_shared.js";
@@ -45,27 +45,13 @@ import { aggregateSourceFreshness, diagnosticsFromFreshness, isoFrom } from "./_
 /** Furthest-right stage wins the build's column (mirrors the Board's STAGE_RANK). */
 const STAGE_RANK: Record<WorkState, number> = { next_up: 0, in_progress: 1, in_review: 2, shipped: 3 };
 
-/**
- * Rolling programs — continuously-shipping families whose built bar reads
- * "· live" rather than a fixed %. Curated for 5a; 5g's registry reconciliation
- * becomes the durable home for this flag.
- */
-const ROLLING_PREFIXES = new Set(["INFRA", "PULSE", "RE", "IMPRV", "GAP", "LYC", "STAGING", "PERF"]);
-
-interface Taxon {
-  readonly prefix: string;
-  readonly family: string;
-  readonly l1: string;
-  readonly l2: string;
-  readonly isGeneric: boolean;
-  readonly laneId: string;
-}
-
 export function deriveBuildAtlas(bundle: SignalBundle, nowMs: number): BuildAtlasV1 {
   const signals = bundle.batches.flatMap((b) => b.signals);
   const work = signals.filter(isWorkSignal);
   const docs = signals.filter(isDocSignal);
-  const taxonomy = buildTaxonomy(signals.filter(isTaxonomySignal));
+  // The shared prefix lens (COS-5g) — one resolver for Board + Atlas; the rolling
+  // flag now rides on each entry, sourced from the registry.
+  const taxonomy = buildPrefixGrouping(signals.filter(isTaxonomySignal));
 
   const workByPrefix = groupBy(work, (w) => w.prefix);
   const docsByPrefix = groupBy(docs, (d) => d.prefix);
@@ -167,14 +153,14 @@ export function deriveBuildAtlas(bundle: SignalBundle, nowMs: number): BuildAtla
 // ---------------------------------------------------------------------------
 
 function buildFamily(
-  taxon: Taxon,
+  taxon: GroupingEntry,
   work: readonly WorkSignal[],
   docs: readonly DocSignal[],
   lineageTags: readonly string[],
   tickets: readonly TicketRefV1[],
 ): FamilyV1 {
   const builds = resolveBuilds(work);
-  const isRolling = ROLLING_PREFIXES.has(taxon.prefix);
+  const isRolling = taxon.isRolling;
   const shipped = builds.filter((b) => b.state === "shipped").length;
   const total = builds.length;
   const repos = distinctRepos(work);
@@ -560,26 +546,6 @@ function buildDomains(families: readonly FamilyV1[]): DomainV1[] {
   return [...byL1.entries()]
     .map(([id, prefixes]): DomainV1 => ({ id, title: id, families: prefixes.sort() }))
     .sort((a, b) => a.id.localeCompare(b.id));
-}
-
-// ---------------------------------------------------------------------------
-// Taxonomy (local to 5a; 5g migrates this + deriveBoardState to resolveGrouping)
-// ---------------------------------------------------------------------------
-
-function buildTaxonomy(taxa: readonly TaxonomySignal[]): Map<string, Taxon> {
-  const map = new Map<string, Taxon>();
-  for (const t of taxa) {
-    const l2 = t.l2Subsystem ?? "General";
-    map.set(t.prefix, {
-      prefix: t.prefix,
-      family: t.family,
-      l1: t.l1System,
-      l2,
-      isGeneric: t.isGeneric,
-      laneId: `${t.l1System}:${l2}`,
-    });
-  }
-  return map;
 }
 
 // ---------------------------------------------------------------------------

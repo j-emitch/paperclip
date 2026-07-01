@@ -83,5 +83,8 @@ function taxonomySignal(e: RegistryEntry): TaxonomySignal {
     l1System: e.l1_system,
     l2Subsystem: e.l2_subsystem,
     isGeneric: e.is_generic,
+    // Registry-sourced rolling flag (COS-5g). Defensive `?? false` covers fixture
+    // registry stand-ins that predate the field; the real `.mjs` loader normalizes.
+    isRolling: e.is_rolling ?? false,
   };
 }
