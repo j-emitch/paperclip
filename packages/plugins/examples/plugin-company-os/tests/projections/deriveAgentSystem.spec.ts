@@ -121,8 +121,8 @@ describe("deriveAgentSystem", () => {
     expect(system.overlaps).toContainEqual({
       surface: "company/docs",
       agents: ["COO", "CTO"],
-      proposedOwner: null,
-      recommendation: null,
+      proposedOwner: "Librarian",
+      recommendation: "Librarian owns content freshness and wiki updates; COO owns process trend reporting when freshness slips repeatedly.",
     });
     expect(system.handoffs).toContainEqual({ from: "COO", to: "CTO", consistent: false });
     expect(system.diagnostics).toContainEqual({

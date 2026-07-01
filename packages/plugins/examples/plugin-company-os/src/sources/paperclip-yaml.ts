@@ -12,6 +12,12 @@ export interface PaperclipAgentIdentity {
 export interface PaperclipAgentsParseResult {
   readonly agents: readonly PaperclipAgentIdentity[];
   readonly errors: readonly string[];
+  readonly agentErrors: readonly PaperclipAgentParseError[];
+}
+
+export interface PaperclipAgentParseError {
+  readonly slug: string;
+  readonly message: string;
 }
 
 interface MutableIdentity {
@@ -28,8 +34,15 @@ export function parsePaperclipAgentsYaml(text: string): PaperclipAgentsParseResu
   const identities = new Map<string, MutableIdentity>();
   const pathByIndent = new Map<number, string>();
   const errors: string[] = [];
+  const agentErrors: PaperclipAgentParseError[] = [];
   let inAgents = false;
   let currentSlug: string | null = null;
+
+  const recordAgentError = (slug: string, message: string): void => {
+    const full = `agent ${slug} ${message}`;
+    errors.push(full);
+    agentErrors.push({ slug, message: full });
+  };
 
   for (const rawLine of text.split(/\r?\n/)) {
     if (rawLine.trim() === "" || rawLine.trimStart().startsWith("#")) continue;
@@ -84,16 +97,23 @@ export function parsePaperclipAgentsYaml(text: string): PaperclipAgentsParseResu
       .filter(([level]) => level > 2 && level < indent)
       .sort(([a], [b]) => a - b)
       .map(([, part]) => part);
-    assignIdentityValue(identity, [...parentPath, key].join("."), parseScalar(rawValue));
+    assignIdentityValue(identity, currentSlug, [...parentPath, key].join("."), parseScalar(rawValue), recordAgentError);
   }
 
   return {
     agents: [...identities.entries()].map(([slug, identity]) => ({ slug, ...identity })),
     errors,
+    agentErrors,
   };
 }
 
-function assignIdentityValue(identity: MutableIdentity, path: string, value: string | number | boolean): void {
+function assignIdentityValue(
+  identity: MutableIdentity,
+  slug: string,
+  path: string,
+  value: string | number | boolean,
+  recordAgentError: (slug: string, message: string) => void,
+): void {
   if (path === "role" && typeof value === "string") {
     identity.role = value;
   } else if (path === "capabilities" && typeof value === "string") {
@@ -101,12 +121,24 @@ function assignIdentityValue(identity: MutableIdentity, path: string, value: str
   } else if (path === "adapter.config.model" && typeof value === "string") {
     identity.model = value;
   } else if (path === "adapter.config.maxTurnsPerRun" && typeof value === "number") {
+    if (value <= 0) {
+      recordAgentError(slug, "adapter.config.maxTurnsPerRun must be positive");
+      return;
+    }
     identity.maxTurnsPerRun = value;
   } else if (path === "runtime.heartbeat.intervalSec" && typeof value === "number") {
+    if (value <= 0) {
+      recordAgentError(slug, "runtime.heartbeat.intervalSec must be positive");
+      return;
+    }
     identity.heartbeatIntervalSec = value;
   } else if (path === "permissions.canCreateAgents" && typeof value === "boolean") {
     identity.canCreateAgents = value;
   } else if (path === "budgetMonthlyCents" && typeof value === "number") {
+    if (value < 0) {
+      recordAgentError(slug, "budgetMonthlyCents must be non-negative");
+      return;
+    }
     identity.budgetMonthlyCents = value;
   }
 }

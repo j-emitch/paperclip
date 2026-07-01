@@ -29,6 +29,43 @@ const VERDICT_SEVERITY: Record<RoutineVerdict, number> = {
   fresh: 3,
 };
 
+interface OverlapResolution {
+  readonly surfaces: readonly string[];
+  readonly proposedOwner: OwnerAgent;
+  readonly recommendation: string;
+}
+
+const OVERLAP_RESOLUTIONS: readonly OverlapResolution[] = [
+  {
+    surfaces: ["company/CONTEXT.md", "company/decisions", "company/archive/context-decisions"],
+    proposedOwner: "Librarian",
+    recommendation:
+      "Librarian owns detection/proposal mechanics; CEO consumes decision quality at strategy level; COO audits process compliance only.",
+  },
+  {
+    surfaces: ["company/docs", "company/library/topics", "company/docs/reference"],
+    proposedOwner: "Librarian",
+    recommendation:
+      "Librarian owns content freshness and wiki updates; COO owns process trend reporting when freshness slips repeatedly.",
+  },
+  {
+    surfaces: [
+      "company/config/paperclip/agents",
+      "company/docs/company-os/06-agents-paperclip.md",
+      "company/docs/company-os/17-agent-duties-matrix.md",
+    ],
+    proposedOwner: "CEO",
+    recommendation:
+      "CEO owns whether the four-agent structure is producing value; COO reports health, CTO reports technical feasibility, Librarian maintains the durable matrix after ratification.",
+  },
+  {
+    surfaces: ["company/reports/analysis", "company/reports/process", "company/reports/health"],
+    proposedOwner: "COO",
+    recommendation:
+      "COO owns recurring process-health trend detection; CTO owns root-cause technical analysis and ticket design.",
+  },
+];
+
 export function deriveAgentSystem(bundle: SignalBundle, nowMs: number): AgentSystemV1 {
   const signals = bundle.batches.flatMap((b) => b.signals);
   const agentSignals = signals.filter(isAgentSignal).sort(agentOrder);
@@ -238,14 +275,24 @@ function deriveOverlaps(agentSignals: readonly AgentSignal[]): OverlapEdgeV1[] {
   }
 
   return [...bySurface.entries()]
-    .map(([surface, agents]): OverlapEdgeV1 => ({
-      surface,
-      agents: [...agents].sort(ownerRank),
-      proposedOwner: null,
-      recommendation: null,
-    }))
+    .map(([surface, agents]): OverlapEdgeV1 => {
+      const resolution = resolutionForSurface(surface);
+      return {
+        surface,
+        agents: [...agents].sort(ownerRank),
+        proposedOwner: resolution?.proposedOwner ?? null,
+        recommendation: resolution?.recommendation ?? null,
+      };
+    })
     .filter((edge) => edge.agents.length >= 2)
     .sort((a, b) => a.surface.localeCompare(b.surface));
+}
+
+function resolutionForSurface(surface: string): OverlapResolution | null {
+  const normalized = normalizeSurface(surface);
+  return OVERLAP_RESOLUTIONS.find((resolution) =>
+    resolution.surfaces.some((candidate) => overlappingSurface(normalized, normalizeSurface(candidate)) !== null),
+  ) ?? null;
 }
 
 function normalizeSurface(surface: string): string {

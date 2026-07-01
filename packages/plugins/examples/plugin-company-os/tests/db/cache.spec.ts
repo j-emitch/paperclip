@@ -66,6 +66,17 @@ describe("cache — projection write/read round-trip + version gate", () => {
     taxonomyFixture(),
   );
 
+  class LeaseStolenAfterBoardWriteDb extends FakeDb {
+    async execute(sql: string, params: unknown[] = []): Promise<{ rowCount: number }> {
+      const result = await super.execute(sql, params);
+      const compactSql = sql.replace(/\s+/g, " ");
+      if (result.rowCount === 1 && compactSql.includes("cos_board_state") && compactSql.includes("SET snapshot = $2::jsonb")) {
+        this.board.get(String(params[0]))!.lockOwner = "B";
+      }
+      return result;
+    }
+  }
+
   async function acquired(db: FakeDb, owner: string): Promise<void> {
     await ensureBoardRow(db, CO);
     await acquireDeriveLock(db, CO, owner, 120_000, NOW);
@@ -88,6 +99,12 @@ describe("cache — projection write/read round-trip + version gate", () => {
     expect(await acquireDeriveLock(db, CO, "B", 120_000, NOW + 200_000)).toBe(true);
     // A resumes and tries to write — its fence (lock_owner = A) no longer matches.
     await expect(writeProjections(db, CO, projections, "A")).rejects.toThrow(/lease lost/);
+  });
+
+  it("throws if a secondary snapshot is fenced out after the board write", async () => {
+    const db = new LeaseStolenAfterBoardWriteDb();
+    await acquired(db, "A");
+    await expect(writeProjections(db, CO, projections, "A")).rejects.toThrow(/secondary projection.*cos_artifact_index/);
   });
 
   it("rejects an invalid projection on write (validate-before-write)", async () => {

@@ -184,7 +184,7 @@ async function upsertSnapshot(
   derivedAt: string,
   owner: string,
 ): Promise<void> {
-  await db.execute(
+  const { rowCount } = await db.execute(
     `INSERT INTO ${NS}.${table} (company_id, snapshot, schema_version, derived_at, updated_at)
        SELECT $1, $2::jsonb, $3, $4, now()
        WHERE EXISTS (SELECT 1 FROM ${NS}.cos_board_state WHERE company_id = $1 AND lock_owner = $5)
@@ -193,6 +193,9 @@ async function upsertSnapshot(
            derived_at = EXCLUDED.derived_at, updated_at = now()`,
     [companyId, JSON.stringify(snapshot), version, derivedAt, owner],
   );
+  if (rowCount !== 1) {
+    throw new Error(`secondary projection ${table} fenced out for ${companyId} — derive lease lost (owner=${owner})`);
+  }
 }
 
 // ---------------------------------------------------------------------------

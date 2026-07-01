@@ -40,6 +40,12 @@ export const agentSource: WorkSignalSource = {
       const errors: SignalError[] = parsedConfig.errors.map((e) =>
         signalError("parse_error", `${PAPERCLIP_CONFIG_PATH}: ${e}`),
       );
+      const identityErrors = new Map<string, SignalError[]>();
+      for (const error of parsedConfig.agentErrors) {
+        const bucket = identityErrors.get(error.slug) ?? [];
+        bucket.push(signalError("parse_error", `${PAPERCLIP_CONFIG_PATH}: ${error.message}`));
+        identityErrors.set(error.slug, bucket);
+      }
       const identities = new Map(parsedConfig.agents.map((identity) => [identity.slug, identity]));
       const sidecars = await readSidecars(repo, c, errors);
       const signals: Signal[] = [];
@@ -49,16 +55,19 @@ export const agentSource: WorkSignalSource = {
         if (!identity) continue;
         const sidecarPath = sidecarPathFor(slug);
         const sidecarResult = sidecars.get(sidecarPath);
-        const signalErrors: SignalError[] = [];
+        const signalErrors: SignalError[] = [...(identityErrors.get(identity.slug) ?? [])];
         let sidecar: AgentSidecar | null = null;
 
         if (!sidecarResult) {
           signalErrors.push(signalError("not_found", `missing sidecar: ${sidecarPath}`));
-        } else if (sidecarResult.errors.length > 0 || !sidecarResult.sidecar) {
+        } else if (!sidecarResult.sidecar) {
           for (const error of sidecarResult.errors) {
             signalErrors.push(signalError("parse_error", `${sidecarPath}: ${error}`));
           }
         } else {
+          for (const error of sidecarResult.errors) {
+            signalErrors.push(signalError("parse_error", `${sidecarPath}: ${error}`));
+          }
           sidecar = sidecarResult.sidecar;
         }
 

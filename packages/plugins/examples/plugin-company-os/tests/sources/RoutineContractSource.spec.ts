@@ -106,6 +106,9 @@ describe("RoutineContractSource", () => {
   it("normalizes a single-segment expected_artifact glob to a recursive match (P1-2)", () => {
     expect(normalizeArtifactGlob("company/reports/strategy/*.md")).toBe("company/reports/strategy/**/*.md");
     expect(normalizeArtifactGlob("company/reports/health/*")).toBe("company/reports/health/**/*");
+    expect(normalizeArtifactGlob("company/reports/journal/*-knowledge-audit*.md")).toBe(
+      "company/reports/journal/**/*-knowledge-audit*.md",
+    );
     // Already-recursive globs are left untouched (no double **).
     expect(normalizeArtifactGlob("company/reports/x/**/*.md")).toBe("company/reports/x/**/*.md");
     // The normalized glob matches BOTH a flat file and a date-bucketed one.
@@ -132,10 +135,10 @@ describe("RoutineContractSource", () => {
 
     expect(daily).toMatchObject({
       freshnessKind: "artifact",
-      expectedArtifactGlob: "company/reports/journal/*-codebase-awareness*.md",
+      expectedArtifactGlob: "company/reports/journal/**/*-codebase-awareness*.md",
       exclude: [
-        "company/reports/journal/*-knowledge-audit*.md",
-        "company/reports/journal/*-session-summary*.md",
+        "company/reports/journal/**/*-knowledge-audit*.md",
+        "company/reports/journal/**/*-session-summary*.md",
       ],
     });
     expect(proposal).toMatchObject({
@@ -157,5 +160,40 @@ describe("RoutineContractSource", () => {
     const batch = await routineContractSource.collect(ctx);
     expect(batch.signals).toEqual([]);
     expect(batch.repoFreshness[0].errors).toEqual([]);
+  });
+
+  it("falls back to legacy AGENTS company_os blocks when sidecars are not installed yet", async () => {
+    const ctx = makeFixtureContext({
+      repos: [{ repo: "company", available: true }],
+      files: {
+        company: {
+          "config/paperclip/agents/cto/AGENTS.md": {
+            content: [
+              "# CTO",
+              "",
+              "```yaml",
+              "company_os:",
+              "  routines:",
+              "    - id: daily-standup",
+              "      display_name: Daily Standup",
+              "      cadence: daily",
+              "      expected_artifact: company/reports/standup/*.md",
+              "      owner_agent: CTO",
+              "```",
+            ].join("\n"),
+          },
+        },
+      },
+    });
+
+    const routines = (await routineContractSource.collect(ctx)).signals.filter(isRoutineSignal);
+
+    expect(routines).toHaveLength(1);
+    expect(routines[0]).toMatchObject({
+      routineKey: "daily-standup",
+      path: "config/paperclip/agents/cto/AGENTS.md",
+      expectedArtifactGlob: "company/reports/standup/**/*.md",
+      freshnessKind: "artifact",
+    });
   });
 });

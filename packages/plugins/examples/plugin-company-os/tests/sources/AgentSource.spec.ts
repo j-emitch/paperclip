@@ -69,6 +69,21 @@ projects:
     status: "in_progress"
 `;
 
+const INVALID_NUMERIC_YAML = `schema: "paperclip/v1"
+agents:
+  cto:
+    role: "cto"
+    capabilities: "Technical analysis."
+    adapter:
+      config:
+        model: "claude-opus-4-8"
+        maxTurnsPerRun: 0
+    runtime:
+      heartbeat:
+        intervalSec: -5
+    budgetMonthlyCents: -1
+`;
+
 const CEO_SIDECAR = JSON.stringify({
   agent: {
     name: "CEO",
@@ -222,5 +237,71 @@ describe("AgentSource", () => {
     ]);
     expect(batch.repoFreshness[0]?.freshness).toBe("stale");
     expect(batch.repoFreshness[0]?.errors.map((e) => e.code)).toContain("not_found");
+  });
+
+  it("keeps valid agent metadata when routine-only sidecar fields are malformed", async () => {
+    const malformedRoutineSidecar = JSON.stringify({
+      agent: {
+        name: "CTO",
+        reports_to: "ceo",
+        summary: "Technical analysis.",
+        duties: [{ id: "technical-analysis", surface: "company/reports/analysis" }],
+        hands_off_to: ["ceo"],
+        receives_from: ["ceo"],
+      },
+      routines: [
+        {
+          id: "bad-routine",
+          display_name: "Bad Routine",
+          cadence: "daily",
+          owner_agent: "CTO",
+          freshness: { kind: "artifact" },
+        },
+      ],
+    });
+    const ctx = ctxWithSidecars({ cto: malformedRoutineSidecar });
+
+    const batch = await agentSource.collect(ctx);
+    const cto = batch.signals.filter(isAgentSignal).find((a) => a.agentKey === "cto");
+
+    expect(cto).toMatchObject({
+      reportsTo: "CEO",
+      summary: "Technical analysis.",
+      duties: [{ id: "technical-analysis", surface: "company/reports/analysis" }],
+      handsOffTo: ["CEO"],
+      receivesFrom: ["CEO"],
+      freshness: "stale",
+    });
+    expect(cto?.errors.map((e) => e.code)).toContain("parse_error");
+    expect(batch.repoFreshness[0]?.freshness).toBe("stale");
+  });
+
+  it("nulls invalid numeric agent config and records parse diagnostics", async () => {
+    const ctx = makeFixtureContext({
+      repos: [{ repo: "company", available: true }],
+      files: {
+        company: {
+          "config/paperclip/.paperclip.yaml": { content: INVALID_NUMERIC_YAML },
+          "config/paperclip/agents/cto/company-os.json": { content: CTO_SIDECAR },
+        },
+      },
+    });
+
+    const batch = await agentSource.collect(ctx);
+    const cto = batch.signals.filter(isAgentSignal).find((a) => a.agentKey === "cto");
+
+    expect(cto).toMatchObject({
+      budgetMonthlyCents: null,
+      maxTurnsPerRun: null,
+      heartbeatIntervalSec: null,
+      freshness: "stale",
+    });
+    expect(batch.repoFreshness[0]?.errors.map((e) => e.message)).toEqual(
+      expect.arrayContaining([
+        "config/paperclip/.paperclip.yaml: agent cto adapter.config.maxTurnsPerRun must be positive",
+        "config/paperclip/.paperclip.yaml: agent cto runtime.heartbeat.intervalSec must be positive",
+        "config/paperclip/.paperclip.yaml: agent cto budgetMonthlyCents must be non-negative",
+      ]),
+    );
   });
 });
