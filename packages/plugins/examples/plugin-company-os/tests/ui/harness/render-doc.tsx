@@ -142,6 +142,9 @@ function agents(isMobile: boolean, opts?: { empty?: boolean; selected?: string }
       now={AGENTS_NOW}
       isMobile={isMobile}
       selectedAgentKey={opts?.selected ?? null}
+      // The live app always wires selection, so the harness renders the interactive
+      // form (real button roles) — the SSR harness has no hydration, so onSelect is a noop.
+      onSelectAgent={noop}
     />
   );
 }

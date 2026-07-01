@@ -9,15 +9,7 @@
 
 import type { RoutineHealthEntry, RoutineHealthV1, RoutineVerdict } from "../../contracts/index.js";
 import { statusColors } from "../tokens.js";
-
-/**
- * Canonical agent display order (CEO → COO → CTO → Librarian). The UI keeps its
- * own ordering constant rather than value-importing the worker-side
- * `OWNER_AGENTS` tuple — the contract surface must be imported type-only from the
- * browser bundle (the import-boundary), and routine `ownerAgent` is a free string
- * in the contract anyway, so ordering is a pure display concern.
- */
-const OWNER_AGENT_ORDER = ["CEO", "COO", "CTO", "Librarian"] as const;
+import { agentRank } from "../shared/agent-order.js";
 
 // The verdict label + tone maps are shared cockpit vocabulary (Routines + Home),
 // so they live in `shared/verdict-labels`; re-exported here so this view-model's
@@ -51,12 +43,6 @@ export interface RoutinesView {
   counts: Record<RoutineVerdict, number>;
   /** Share of routines that are `fresh` (0–100, rounded); 0 when none. */
   healthyPct: number;
-}
-
-/** Index of an agent in the canonical CEO→COO→CTO→Librarian order (unknown agents sort last, alpha). */
-function agentRank(agent: string): number {
-  const i = OWNER_AGENT_ORDER.indexOf(agent as (typeof OWNER_AGENT_ORDER)[number]);
-  return i === -1 ? OWNER_AGENT_ORDER.length : i;
 }
 
 export function buildRoutinesView(health: RoutineHealthV1): RoutinesView {

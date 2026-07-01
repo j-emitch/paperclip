@@ -152,22 +152,24 @@ function agentCard(agent: AgentSignal, ownedRoutines: readonly RoutineSloEntryV1
 }
 
 function dutiesFor(agent: AgentSignal, ownedRoutines: readonly RoutineSloEntryV1[]): AgentDutyV1[] {
-  const duties: AgentDutyV1[] = agent.duties.map((d) => ({
-    id: d.id,
-    label: humanize(d.id),
-    surface: d.surface,
-    kind: "duty",
-  }));
+  // Key by id so a declared duty and an embedded-routine of the SAME id collapse
+  // to one entry — the embedded-routine form wins (it carries the routine's SLO
+  // semantics). De-duping at the SOURCE keeps the persisted `AgentCardV1.duties`
+  // contract array duplicate-free for every consumer, not just one view.
+  const byId = new Map<string, AgentDutyV1>();
+  for (const d of agent.duties) {
+    byId.set(d.id, { id: d.id, label: humanize(d.id), surface: d.surface, kind: "duty" });
+  }
   for (const routine of ownedRoutines) {
     if (routine.freshnessKind !== "embedded") continue;
-    duties.push({
+    byId.set(routine.routineKey, {
       id: routine.routineKey,
       label: routine.displayName,
       surface: routine.expectedArtifactGlob === "" ? null : routine.expectedArtifactGlob,
       kind: "embedded-routine",
     });
   }
-  return duties.sort((a, b) => a.label.localeCompare(b.label));
+  return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label));
 }
 
 function toRoutineSloEntry(entry: ReturnType<typeof deriveRoutineHealth>["routines"][number]): RoutineSloEntryV1 | null {

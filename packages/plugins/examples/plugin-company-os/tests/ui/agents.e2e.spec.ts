@@ -61,6 +61,8 @@ test.describe("Company OS agents cockpit", () => {
         await expect(p.getByText("creates agents", { exact: false }).first()).toBeVisible();
         await expect(p.getByText("company/docs", { exact: false }).first()).toBeVisible();
         await expect(p.getByText("Diagnostics", { exact: true }).first()).toBeVisible();
+        // The constellation nodes are keyboard-focusable buttons (interactive form).
+        expect(await p.locator('svg [role="button"]').count()).toBeGreaterThan(0);
       },
       page,
       testInfo.project.name,

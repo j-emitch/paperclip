@@ -13,13 +13,7 @@
 import type { AgentCardV1, HandoffEdgeV1, RoutineVerdict } from "../../contracts/index.js";
 import { VERDICT_TONES } from "../shared/verdict-labels.js";
 import { statusColors } from "../tokens.js";
-
-const OWNER_AGENT_ORDER = ["CEO", "COO", "CTO", "Librarian"] as const;
-
-function rank(name: string): number {
-  const i = OWNER_AGENT_ORDER.indexOf(name as (typeof OWNER_AGENT_ORDER)[number]);
-  return i === -1 ? OWNER_AGENT_ORDER.length : i;
-}
+import { agentRank } from "../shared/agent-order.js";
 
 export interface ConstellationNode {
   agentKey: string;
@@ -87,7 +81,7 @@ export function buildConstellationLayout(
   opts: { mobile?: boolean } = {},
 ): ConstellationLayout {
   const mobile = opts.mobile === true;
-  const ordered = [...agents].sort((a, b) => rank(a.displayName) - rank(b.displayName) || a.agentKey.localeCompare(b.agentKey));
+  const ordered = [...agents].sort((a, b) => agentRank(a.displayName) - agentRank(b.displayName) || a.agentKey.localeCompare(b.agentKey));
   const resolve = makeResolver(ordered);
   const depths = new Map<string, number>();
   for (const agent of ordered) depths.set(agent.agentKey, depthOf(agent, resolve, ordered.length));
@@ -117,21 +111,24 @@ export function buildConstellationLayout(
       path: lineagePath(parent, child),
     });
   }
-  // Hand-offs — desktop only; mobile renders them as a legend beside the stack.
+  // Hand-offs — desktop only; on mobile they surface in the Coordination hand-off
+  // ledger below the constellation (HandoffLedger), not as crossing curves.
   if (!mobile) {
-    for (const handoff of handoffs) {
+    handoffs.forEach((handoff, i) => {
       const from = nodeByName.get(handoff.from);
       const to = nodeByName.get(handoff.to);
-      if (!from || !to) continue;
+      if (!from || !to) return;
       edges.push({
-        id: "handoff:" + handoff.from + ">" + handoff.to,
+        // Index-suffixed so two edges with the same from/to can never collide on a
+        // React key — the derive path dedupes, but the contract carries no guarantee.
+        id: "handoff:" + handoff.from + ">" + handoff.to + "#" + i,
         kind: "handoff",
         from: handoff.from,
         to: handoff.to,
         consistent: handoff.consistent,
         path: handoffPath(from, to),
       });
-    }
+    });
   }
 
   const maxDepth = Math.max(0, ...ordered.map((a) => depths.get(a.agentKey) ?? 0));
@@ -194,7 +191,7 @@ function lineagePath(parent: ConstellationNode, child: ConstellationNode): strin
 }
 
 function handoffPath(from: ConstellationNode, to: ConstellationNode): string {
-  const bow = rank(from.displayName) <= rank(to.displayName) ? 46 : -46;
+  const bow = agentRank(from.displayName) <= agentRank(to.displayName) ? 46 : -46;
   const mx = Math.round((from.x + to.x) / 2 + bow);
   const my = Math.round((from.y + to.y) / 2);
   return ["M", from.x, from.y, "Q", mx, my, to.x, to.y].join(" ");

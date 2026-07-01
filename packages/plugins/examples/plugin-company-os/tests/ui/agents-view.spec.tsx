@@ -60,6 +60,19 @@ describe("AgentsView — populated", () => {
     const html = render(goldenAgentSystem(), { selectedAgentKey: "cto" });
     expect(html).toContain('data-selected-agent="cto"');
   });
+
+  it("exposes interactive button affordances on the constellation when onSelectAgent is provided", () => {
+    const html = render(goldenAgentSystem(), { onSelectAgent: () => {} });
+    expect(html).toContain('role="button"');
+    expect(html).toContain("aria-pressed");
+    expect(html).toContain('tabindex="0"');
+  });
+
+  it("stays a static, non-interactive tree when onSelectAgent is omitted", () => {
+    const html = render();
+    expect(html).not.toContain('role="button"');
+    expect(html).not.toContain("aria-pressed");
+  });
 });
 
 describe("AgentsView — zero-state", () => {

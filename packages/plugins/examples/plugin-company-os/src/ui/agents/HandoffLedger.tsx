@@ -19,7 +19,7 @@ export function HandoffLedger({ handoffs }: { handoffs: readonly HandoffEdgeV1[]
     <div style={{ display: "flex", flexDirection: "column" }}>
       {handoffs.map((handoff, i) => (
         <div
-          key={handoff.from + ">" + handoff.to}
+          key={handoff.from + ">" + handoff.to + "#" + i}
           style={{
             display: "flex",
             alignItems: "center",

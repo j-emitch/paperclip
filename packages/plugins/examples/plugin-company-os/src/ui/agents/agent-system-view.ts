@@ -15,14 +15,11 @@ import type {
   HandoffEdgeV1,
   OverlapEdgeV1,
 } from "../../contracts/index.js";
+import { agentRank } from "../shared/agent-order.js";
 
-const OWNER_AGENT_ORDER = ["CEO", "COO", "CTO", "Librarian"] as const;
-
-/** Index in the canonical CEO→COO→CTO→Librarian order; unknowns sort last (alpha). */
-export function agentRank(name: string): number {
-  const i = OWNER_AGENT_ORDER.indexOf(name as (typeof OWNER_AGENT_ORDER)[number]);
-  return i === -1 ? OWNER_AGENT_ORDER.length : i;
-}
+// Canonical agent order lives in one shared UI-side module; re-export it so
+// existing consumers of `agentRank` via this view-model keep working.
+export { agentRank };
 
 const SEVERITY_ORDER: Record<AgentDiagnosticV1["severity"], number> = { warn: 0, info: 1 };
 
@@ -74,10 +71,12 @@ export function buildAgentSystemVm(system: AgentSystemV1): AgentSystemVm {
 }
 
 /**
- * De-duplicate an agent's duties by id. A declared duty and an embedded-routine
- * of the same id collapse to a single entry (the embedded-routine form wins — it
- * carries the routine's SLO semantics), so the roster never double-lists a duty.
- * Sorted by label, matching the projection's own duty ordering.
+ * Sort + defensively de-duplicate an agent's duties by id. The projection
+ * (`deriveAgentSystem.dutiesFor`) already collapses a declared duty and an
+ * embedded-routine of the same id at the SOURCE (embedded-routine wins), so the
+ * persisted contract is duplicate-free; this view pass is idempotent
+ * belt-and-suspenders against a future producer regression, and applies the
+ * label sort the roster renders.
  */
 export function dutiesForDisplay(agent: AgentCardV1): AgentDutyV1[] {
   const byId = new Map<string, AgentDutyV1>();
