@@ -16,9 +16,11 @@
 import type { SignalBundle } from "../contracts/WorkSignalSource.js";
 import {
   isDocSignal,
+  isLineageSignal,
   isTaxonomySignal,
   isWorkSignal,
   type DocSignal,
+  type LineageSignal,
   type TaxonomySignal,
   type WorkSignal,
 } from "../contracts/signals.js";
@@ -29,6 +31,8 @@ import {
   type BuildV1,
   type DomainV1,
   type FamilyV1,
+  type LaneGroupV1,
+  type LineageEdgeV1,
 } from "../contracts/build-atlas.js";
 import type { WorkState } from "../contracts/vocab.js";
 import { deriveLifecycle } from "./deriveLifecycle.js";
@@ -63,17 +67,37 @@ export function deriveBuildAtlas(bundle: SignalBundle, nowMs: number): BuildAtla
   const docsByPrefix = groupBy(docs, (d) => d.prefix);
   const diagnostics: AtlasDiagnosticV1[] = [];
 
+  // Lineage fold — the freshest lineage signal (appended last in DEFAULT_SOURCES).
+  const registered = new Set(taxonomy.keys());
+  const lineageSig = signals.filter(isLineageSignal).at(-1) ?? null;
+  const { laneGroups, edges, tagsByPrefix } = foldLineage(lineageSig, registered, diagnostics);
+
   // A family per registered prefix (show 0-count families, like the Board's rows).
   const families: FamilyV1[] = [];
   for (const taxon of [...taxonomy.values()].sort((a, b) => a.prefix.localeCompare(b.prefix))) {
     const famWork = workByPrefix.get(taxon.prefix) ?? [];
     const famDocs = docsByPrefix.get(taxon.prefix) ?? [];
-    families.push(buildFamily(taxon, famWork, famDocs));
+    families.push(buildFamily(taxon, famWork, famDocs, tagsByPrefix.get(taxon.prefix) ?? []));
+  }
+
+  // Orphan-family completeness: a registered family in NO lane (only when a
+  // lineage graph is present — no graph means "lineage not configured", not orphans).
+  if (laneGroups.length > 0) {
+    const laned = new Set(laneGroups.flatMap((g) => g.lanes.flatMap((l) => l.families)));
+    for (const fam of families) {
+      if (!laned.has(fam.prefix)) {
+        diagnostics.push({
+          code: "orphan_family",
+          severity: "info",
+          message: `family "${fam.prefix}" is in no lineage lane — assign it in build-atlas-lineage.json`,
+          prefix: fam.prefix,
+        });
+      }
+    }
   }
 
   // Work whose prefix parsed but isn't registered → an unknown-prefix diagnostic
   // (the Board routes these to its Ops lane; the Atlas surfaces them on the rail).
-  const registered = new Set(taxonomy.keys());
   const unknownPrefixes = new Set<string>();
   for (const w of work) {
     if (w.prefix && !registered.has(w.prefix)) unknownPrefixes.add(w.prefix);
@@ -94,8 +118,8 @@ export function deriveBuildAtlas(bundle: SignalBundle, nowMs: number): BuildAtla
     sources,
     domains: buildDomains(families),
     families,
-    laneGroups: [], // 5b — lineage layer
-    edges: [], // 5b — lineage edges
+    laneGroups,
+    edges,
     diagnostics,
     sourceDiagnostics: diagnosticsFromFreshness(sources),
   };
@@ -105,7 +129,12 @@ export function deriveBuildAtlas(bundle: SignalBundle, nowMs: number): BuildAtla
 // Family assembly
 // ---------------------------------------------------------------------------
 
-function buildFamily(taxon: Taxon, work: readonly WorkSignal[], docs: readonly DocSignal[]): FamilyV1 {
+function buildFamily(
+  taxon: Taxon,
+  work: readonly WorkSignal[],
+  docs: readonly DocSignal[],
+  lineageTags: readonly string[],
+): FamilyV1 {
   const builds = resolveBuilds(work);
   const isRolling = ROLLING_PREFIXES.has(taxon.prefix);
   const shipped = builds.filter((b) => b.state === "shipped").length;
@@ -128,8 +157,67 @@ function buildFamily(taxon: Taxon, work: readonly WorkSignal[], docs: readonly D
     builtSummary: builtSummary(isRolling, builds),
     builds,
     tickets: [], // 5c — LYC routing
-    lineageTags: [], // 5b — lineage edges
+    lineageTags: [...lineageTags],
   };
+}
+
+// ---------------------------------------------------------------------------
+// Lineage fold (5b) — the declarative graph → lane-groups + edges + tags
+// ---------------------------------------------------------------------------
+
+interface LineageFold {
+  readonly laneGroups: LaneGroupV1[];
+  readonly edges: LineageEdgeV1[];
+  /** prefix → the OTHER family prefixes it shares a lineage edge with. */
+  readonly tagsByPrefix: Map<string, string[]>;
+}
+
+/**
+ * Fold the lineage signal into persisted lane-groups + validated edges +
+ * per-family lineage tags. Edges referencing an unregistered family are dropped
+ * with a `broken_edge` diagnostic (completeness — the 5b AC). No signal → an
+ * empty fold (lineage simply not configured; NOT an error).
+ */
+function foldLineage(
+  sig: LineageSignal | null,
+  registered: ReadonlySet<string>,
+  diagnostics: AtlasDiagnosticV1[],
+): LineageFold {
+  if (!sig) return { laneGroups: [], edges: [], tagsByPrefix: new Map() };
+
+  const laneGroups: LaneGroupV1[] = sig.laneGroups.map((g) => ({
+    id: g.id,
+    title: g.title,
+    kind: g.kind,
+    lanes: g.lanes.map((l) => ({ id: l.id, title: l.title, families: [...l.families] })),
+  }));
+
+  const edges: LineageEdgeV1[] = [];
+  const tagsByPrefix = new Map<string, string[]>();
+  const addTag = (from: string, to: string) => {
+    const list = tagsByPrefix.get(from) ?? [];
+    if (!list.includes(to)) list.push(to);
+    tagsByPrefix.set(from, list);
+  };
+
+  for (const e of sig.edges) {
+    if (!registered.has(e.from) || !registered.has(e.to)) {
+      const bad = !registered.has(e.from) ? e.from : e.to;
+      diagnostics.push({
+        code: "broken_edge",
+        severity: "warn",
+        message: `lineage edge ${e.from}→${e.to} references unregistered family "${bad}"`,
+        prefix: bad,
+      });
+      continue; // drop the broken edge; do not tag with a phantom family
+    }
+    edges.push({ from: e.from, to: e.to, kind: e.kind });
+    addTag(e.from, e.to);
+    addTag(e.to, e.from);
+  }
+
+  for (const [prefix, list] of tagsByPrefix) tagsByPrefix.set(prefix, list.sort());
+  return { laneGroups, edges, tagsByPrefix };
 }
 
 /** Group a family's work signals into one build per ticket, furthest-right state wins. */

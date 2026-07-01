@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { deriveBuildAtlas } from "../../src/projections/deriveBuildAtlas.js";
-import { bundleOf, docSignal, taxon, work, NOW } from "../fixtures/signals.js";
+import { bundleOf, docSignal, lineageSignal, taxon, work, NOW } from "../fixtures/signals.js";
 import { parseBuildAtlasV1 } from "../../src/contracts/build-atlas.js";
 
 describe("deriveBuildAtlas (5a — families + lifecycle)", () => {
@@ -151,11 +151,82 @@ describe("deriveBuildAtlas (5a — families + lifecycle)", () => {
     expect(atlas.families.map((f) => f.prefix)).toEqual(["COS"]);
   });
 
-  it("leaves lineage + tickets empty in 5a (populated by 5b/5c)", () => {
+  it("leaves lineage empty (and no orphan diagnostics) when no lineage signal is present", () => {
     const atlas = deriveBuildAtlas(bundleOf([taxon("COS", "Company OS", "JB", "Company-OS")]), NOW);
     expect(atlas.laneGroups).toEqual([]);
     expect(atlas.edges).toEqual([]);
-    expect(atlas.families[0]?.tickets).toEqual([]);
     expect(atlas.families[0]?.lineageTags).toEqual([]);
+    expect(atlas.diagnostics.some((d) => d.code === "orphan_family")).toBe(false);
+  });
+});
+
+describe("deriveBuildAtlas (5b — lineage fold)", () => {
+  const graph = () =>
+    lineageSignal({
+      laneGroups: [
+        { id: "vc", title: "Value Chain", kind: "flow", lanes: [{ id: "coach", title: "Coaching", families: ["MTP", "TAP"] }] },
+        { id: "sb", title: "Second Brain", kind: "second-brain", lanes: [{ id: "os", title: "OS", families: ["COS"] }] },
+      ],
+      edges: [
+        { from: "TAP", to: "MTP", kind: "consumes" },
+        { from: "COS", to: "MTP", kind: "observes" },
+      ],
+    });
+
+  const families = () => [
+    taxon("MTP", "Coaching", "JB", "Coaching"),
+    taxon("TAP", "Tap", "JB", "Coaching"),
+    taxon("COS", "Company OS", "JB", "Company-OS"),
+  ];
+
+  it("folds lane-groups + validated edges + per-family lineage tags", () => {
+    const atlas = deriveBuildAtlas(bundleOf([...families(), graph()]), NOW);
+    expect(atlas.laneGroups.map((g) => g.id)).toEqual(["vc", "sb"]);
+    expect(atlas.edges).toHaveLength(2);
+    const mtp = atlas.families.find((f) => f.prefix === "MTP");
+    // MTP is the 'to' of TAP→MTP and COS→MTP → tagged with both counterparts.
+    expect(mtp?.lineageTags).toEqual(["COS", "TAP"]);
+    const tap = atlas.families.find((f) => f.prefix === "TAP");
+    expect(tap?.lineageTags).toEqual(["MTP"]);
+  });
+
+  it("drops a broken edge (unregistered family) with a broken_edge diagnostic", () => {
+    const atlas = deriveBuildAtlas(
+      bundleOf([
+        ...families(),
+        lineageSignal({
+          laneGroups: [{ id: "vc", title: "VC", kind: "flow", lanes: [{ id: "l", title: "L", families: ["MTP", "TAP", "COS"] }] }],
+          edges: [{ from: "MTP", to: "ZZZ", kind: "dep" }],
+        }),
+      ]),
+      NOW,
+    );
+    expect(atlas.edges).toEqual([]); // the broken edge is dropped
+    const diag = atlas.diagnostics.find((d) => d.code === "broken_edge");
+    expect(diag?.prefix).toBe("ZZZ");
+    // No phantom tag from the dropped edge.
+    expect(atlas.families.find((f) => f.prefix === "MTP")?.lineageTags).toEqual([]);
+  });
+
+  it("raises orphan_family for a registered family in no lane", () => {
+    const atlas = deriveBuildAtlas(
+      bundleOf([
+        ...families(),
+        lineageSignal({
+          // COS is deliberately left out of every lane.
+          laneGroups: [{ id: "vc", title: "VC", kind: "flow", lanes: [{ id: "l", title: "L", families: ["MTP", "TAP"] }] }],
+          edges: [],
+        }),
+      ]),
+      NOW,
+    );
+    const orphan = atlas.diagnostics.find((d) => d.code === "orphan_family");
+    expect(orphan?.prefix).toBe("COS");
+  });
+
+  it("has zero orphans + zero broken edges when the graph covers the family set", () => {
+    const atlas = deriveBuildAtlas(bundleOf([...families(), graph()]), NOW);
+    expect(atlas.diagnostics.some((d) => d.code === "orphan_family")).toBe(false);
+    expect(atlas.diagnostics.some((d) => d.code === "broken_edge")).toBe(false);
   });
 });
