@@ -11,6 +11,7 @@ import { deriveForCompany, type DeriveDeps } from "./derive.js";
 import { runDeriveBoardJob } from "./derive-job.js";
 import {
   readArtifactIndex,
+  readAgentSystem,
   readBoardState,
   readDocIndex,
   readGitState,
@@ -164,6 +165,8 @@ const plugin = definePlugin({
     ctx.data.register("doc-index", async (params) => readDocIndex(ctx.db, str(params.companyId)));
     // COS-1h skills catalog read handler (the Skills tab's tree).
     ctx.data.register("skills-catalog", async (params) => readSkillsCatalog(ctx.db, str(params.companyId)));
+    // COS-1R agent-system read handler (the Agents cockpit).
+    ctx.data.register("agent-system", async (params) => readAgentSystem(ctx.db, str(params.companyId)));
 
     // --- docs viewer: a LIVE, index-gated, containment-checked single-file read ---
     ctx.data.register("report-content", async (params) => {

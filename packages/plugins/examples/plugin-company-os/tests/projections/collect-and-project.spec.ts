@@ -3,7 +3,8 @@ import { collectAndProject } from "../../src/collect-and-project.js";
 import { parseArtifactIndexV1 } from "../../src/contracts/artifact-index.js";
 import { parseBoardStateV1 } from "../../src/contracts/board-state.js";
 import { parseRoutineHealthV1 } from "../../src/contracts/routine-health.js";
-import { NOW, artifact, bundleOf, routine, taxon, work } from "../fixtures/signals.js";
+import { parseAgentSystemV1 } from "../../src/contracts/agent-system.js";
+import { NOW, agentSignal, artifact, bundleOf, routine, taxon, work } from "../fixtures/signals.js";
 import { taxonomyFixture } from "../fixtures/taxonomy.js";
 
 describe("collectAndProject (pure)", () => {
@@ -12,17 +13,20 @@ describe("collectAndProject (pure)", () => {
       taxon("COS", "Company OS", "Company", "Company-OS"),
       work("COS-0", "in_progress", "branch_path", { repo: "company" }),
       artifact("docs/superpowers/specs/COS-0.md", { repo: "company", artifactType: "spec", prefix: "COS" }),
+      agentSignal("cto", { displayName: "CTO" }),
       routine("daily-standup", "daily", "company/reports/standup/*.md"),
     ]);
-    const { board, artifactIndex, routineHealth } = collectAndProject(bundle, NOW, taxonomyFixture());
+    const { board, artifactIndex, routineHealth, agentSystem } = collectAndProject(bundle, NOW, taxonomyFixture());
 
     expect(() => parseBoardStateV1(board)).not.toThrow();
     expect(() => parseArtifactIndexV1(artifactIndex)).not.toThrow();
     expect(() => parseRoutineHealthV1(routineHealth)).not.toThrow();
+    expect(() => parseAgentSystemV1(agentSystem)).not.toThrow();
 
     expect(board.chips.find((c) => c.id === "COS-0")?.column).toBe("in_progress");
     expect(artifactIndex.countsByType.spec).toBe(1);
     expect(routineHealth.routines[0].routineKey).toBe("daily-standup");
+    expect(agentSystem.agents[0]?.displayName).toBe("CTO");
     // derivedAt is the injected now, identical across projections (deterministic).
     expect(board.derivedAt).toBe(artifactIndex.derivedAt);
     expect(board.derivedAt).toBe(routineHealth.derivedAt);

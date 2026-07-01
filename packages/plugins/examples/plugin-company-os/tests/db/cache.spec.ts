@@ -4,6 +4,7 @@ import {
   assertNamespace,
   ensureBoardRow,
   loadSourceVersions,
+  readAgentSystem,
   readBoardState,
   releaseDeriveLock,
   replaceSourceVersions,
@@ -76,6 +77,8 @@ describe("cache — projection write/read round-trip + version gate", () => {
     await writeProjections(db, CO, projections, "A");
     const board = await readBoardState(db, CO);
     expect(board?.chips.find((c) => c.id === "COS-0")?.column).toBe("in_progress");
+    const agentSystem = await readAgentSystem(db, CO);
+    expect(agentSystem?.agents).toEqual([]);
   });
 
   it("a stale derive cannot overwrite after losing the lease (fenced write throws)", async () => {

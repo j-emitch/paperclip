@@ -1,5 +1,5 @@
 /**
- * The plugin-owned cache layer (COS-0d). All persistence of the three
+ * The plugin-owned cache layer (COS-0d). All persistence of the projection
  * projections + the per-source last-good slices + the atomic derive lock lives
  * here, behind a narrow `DbClient` (the SDK `PluginDatabaseClient` satisfies it),
  * so the worker stays thin and the SQL is in one auditable place.
@@ -53,6 +53,12 @@ import {
   parseSkillsCatalogV1,
   type SkillsCatalogV1,
 } from "../contracts/skills-catalog.js";
+import {
+  AGENT_SYSTEM_SCHEMA_VERSION,
+  safeParseAgentSystemV1,
+  parseAgentSystemV1,
+  type AgentSystemV1,
+} from "../contracts/agent-system.js";
 import type { Diagnostic } from "../contracts/diagnostics.js";
 import { COS_DB_NAMESPACE } from "./namespace.js";
 import type { SourceVersion } from "./scoped-merge.js";
@@ -116,7 +122,7 @@ export async function releaseDeriveLock(db: DbClient, companyId: string, owner: 
 }
 
 /**
- * Validate + persist all three projections for a company, FENCED by lock
+ * Validate + persist all projections for a company, FENCED by lock
  * ownership. The board write carries `AND lock_owner = $owner`: if a slow derive
  * lost its lease and another derive took over (changing lock_owner), this write
  * affects 0 rows and throws — so a stale derive can never overwrite a newer one
@@ -137,6 +143,7 @@ export async function writeProjections(
   parseGitStateV1(set.gitState);
   parseDocIndexV1(set.docIndex);
   parseSkillsCatalogV1(set.skillsCatalog);
+  parseAgentSystemV1(set.agentSystem);
 
   const { rowCount } = await db.execute(
     `UPDATE ${NS}.cos_board_state
@@ -147,7 +154,7 @@ export async function writeProjections(
   if (rowCount !== 1) {
     throw new Error(`derive lease lost for ${companyId} — aborting write (owner=${owner})`);
   }
-  // The five lockless secondaries upsert only AFTER the board fence passes (same
+  // The seven lockless secondaries upsert only AFTER the board fence passes (same
   // after-fence pattern COS-0 already uses for artifact-index + routine-health).
   await upsertSnapshot(db, "cos_artifact_index", companyId, set.artifactIndex, ARTIFACT_INDEX_SCHEMA_VERSION, set.artifactIndex.derivedAt, owner);
   await upsertSnapshot(db, "cos_routine_health", companyId, set.routineHealth, ROUTINE_HEALTH_SCHEMA_VERSION, set.routineHealth.derivedAt, owner);
@@ -155,6 +162,7 @@ export async function writeProjections(
   await upsertSnapshot(db, "cos_git_state", companyId, set.gitState, GIT_STATE_SCHEMA_VERSION, set.gitState.derivedAt, owner);
   await upsertSnapshot(db, "cos_doc_index", companyId, set.docIndex, DOC_INDEX_SCHEMA_VERSION, set.docIndex.derivedAt, owner);
   await upsertSnapshot(db, "cos_skills_catalog", companyId, set.skillsCatalog, SKILLS_CATALOG_SCHEMA_VERSION, set.skillsCatalog.derivedAt, owner);
+  await upsertSnapshot(db, "cos_agent_system", companyId, set.agentSystem, AGENT_SYSTEM_SCHEMA_VERSION, set.agentSystem.derivedAt, owner);
 }
 
 /**
@@ -250,6 +258,14 @@ export async function readSkillsCatalog(db: DbClient, companyId: string): Promis
     [companyId],
   );
   return readSnapshot(rows, SKILLS_CATALOG_SCHEMA_VERSION, (s) => safeParseSkillsCatalogV1(s));
+}
+
+export async function readAgentSystem(db: DbClient, companyId: string): Promise<AgentSystemV1 | null> {
+  const rows = await db.query<SnapshotRow>(
+    `SELECT snapshot, schema_version FROM ${NS}.cos_agent_system WHERE company_id = $1`,
+    [companyId],
+  );
+  return readSnapshot(rows, AGENT_SYSTEM_SCHEMA_VERSION, (s) => safeParseAgentSystemV1(s));
 }
 
 function readSnapshot<T>(
