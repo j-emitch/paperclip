@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { deriveBuildAtlas } from "../../src/projections/deriveBuildAtlas.js";
-import { bundleOf, docSignal, lineageSignal, taxon, work, NOW } from "../fixtures/signals.js";
+import { bundleOf, docSignal, lineageSignal, taxon, ticketSignal, work, NOW } from "../fixtures/signals.js";
+import { corpusSignals, EXPECTED } from "../fixtures/tickets.js";
 import { parseBuildAtlasV1 } from "../../src/contracts/build-atlas.js";
 
 describe("deriveBuildAtlas (5a — families + lifecycle)", () => {
@@ -267,5 +268,99 @@ describe("deriveBuildAtlas (5b — lineage fold)", () => {
       NOW,
     );
     expect(atlas.laneGroups.map((g) => g.id)).toEqual(["new"]);
+  });
+});
+
+describe("deriveBuildAtlas (5c — LYC three-tier routing)", () => {
+  const corpusTaxa = () => [
+    taxon("MTP", "Movement", "JB", "Coaching"),
+    taxon("SSF", "Self-reported", "JB", "Sales"),
+    taxon("COS", "Company OS", "Company", "Company-OS"),
+    taxon("LYC", "Lycaon", "Company", "Meta"),
+  ];
+  const atlasOf = () => deriveBuildAtlas(bundleOf([...corpusTaxa(), ...corpusSignals()]), NOW);
+  const fam = (atlas: ReturnType<typeof atlasOf>, prefix: string) =>
+    atlas.families.find((f) => f.prefix === prefix);
+
+  it("routes the full corpus with the expected counts (manual → family, routine/ops → Meta)", () => {
+    const atlas = atlasOf();
+    expect(fam(atlas, "MTP")?.tickets).toHaveLength(EXPECTED.mtpTickets);
+    expect(fam(atlas, "SSF")?.tickets).toHaveLength(EXPECTED.ssfTickets);
+    expect(fam(atlas, "MTP")?.tickets.every((t) => t.route === "family")).toBe(true);
+
+    const meta = fam(atlas, "META");
+    expect(meta).toBeDefined();
+    expect(meta?.tickets).toHaveLength(EXPECTED.metaTickets);
+    expect(meta?.tickets.filter((t) => t.route === "routine")).toHaveLength(EXPECTED.routineChips);
+    expect(meta?.tickets.filter((t) => t.route === "ops")).toHaveLength(EXPECTED.opsUnrouted);
+  });
+
+  it("collapses routine_execution firings to one chip per routine definition", () => {
+    const routineChips = fam(atlasOf(), "META")?.tickets.filter((t) => t.route === "routine") ?? [];
+    expect(routineChips).toHaveLength(EXPECTED.routineChips);
+    // Each chip is a definition, not a firing — its title carries the run count.
+    expect(routineChips.every((c) => /·\s+\d+\s+runs?\b/.test(c.title ?? ""))).toBe(true);
+    expect(routineChips.every((c) => c.originKind === "routine_execution")).toBe(true);
+  });
+
+  it("drops issue_productivity_review entirely (never in any family or Meta)", () => {
+    const atlas = atlasOf();
+    const allTickets = atlas.families.flatMap((f) => f.tickets);
+    expect(allTickets.some((t) => t.originKind === "issue_productivity_review")).toBe(false);
+  });
+
+  it("excludes done/cancelled manual tickets from the active Atlas", () => {
+    // 31 done/cancelled manual tickets reference MTP but must NOT appear as MTP builds/tickets.
+    expect(fam(atlasOf(), "MTP")?.tickets).toHaveLength(EXPECTED.mtpTickets); // 140, not 140+31
+  });
+
+  it("routes a multi-family manual ticket to the first family and keeps extras as lineage tags", () => {
+    const atlas = deriveBuildAtlas(
+      bundleOf([
+        taxon("MTP", "Movement", "JB", "Coaching"),
+        taxon("COS", "Company OS", "Company", "Company-OS"),
+        ticketSignal("LYC-9", { originKind: "manual", status: "in_progress", referencedFamilies: ["MTP", "COS"] }),
+      ]),
+      NOW,
+    );
+    const mtp = atlas.families.find((f) => f.prefix === "MTP");
+    expect(mtp?.tickets.map((t) => t.identifier)).toEqual(["LYC-9"]);
+    expect(mtp?.lineageTags).toContain("COS"); // the extra family surfaces as a lineage tag
+    expect(atlas.families.find((f) => f.prefix === "COS")?.tickets).toEqual([]);
+  });
+
+  it("parks a manual ticket with no registered family in Meta·Ops with an unrouted diagnostic", () => {
+    const atlas = deriveBuildAtlas(
+      bundleOf([
+        taxon("MTP", "Movement", "JB", "Coaching"),
+        ticketSignal("LYC-42", { originKind: "manual", status: "todo", referencedFamilies: ["ZZZ"] }),
+      ]),
+      NOW,
+    );
+    const meta = atlas.families.find((f) => f.prefix === "META");
+    expect(meta?.tickets.map((t) => [t.identifier, t.route])).toEqual([["LYC-42", "ops"]]);
+    expect(atlas.diagnostics.filter((d) => d.code === "unrouted_ticket")).toHaveLength(1);
+  });
+
+  it("emits no Meta family and no ticket routing when there are no ticket signals (backward-compat)", () => {
+    const atlas = deriveBuildAtlas(bundleOf([taxon("COS", "Company OS", "Company", "Company-OS")]), NOW);
+    expect(atlas.families.map((f) => f.prefix)).toEqual(["COS"]);
+    expect(atlas.diagnostics.filter((d) => d.code === "unrouted_ticket")).toEqual([]);
+  });
+
+  it("excludes the self-prefix from routing (an LYC ticket referencing only LYC parks in Ops)", () => {
+    const atlas = deriveBuildAtlas(
+      bundleOf([
+        taxon("LYC", "Lycaon", "Company", "Meta"),
+        ticketSignal("LYC-5", { originKind: "manual", status: "todo", referencedFamilies: ["LYC"] }),
+      ]),
+      NOW,
+    );
+    expect(atlas.families.find((f) => f.prefix === "LYC")?.tickets).toEqual([]);
+    expect(atlas.families.find((f) => f.prefix === "META")?.tickets.map((t) => t.route)).toEqual(["ops"]);
+  });
+
+  it("the routed Atlas still validates against the persisted contract", () => {
+    expect(() => parseBuildAtlasV1(atlasOf())).not.toThrow();
   });
 });

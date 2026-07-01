@@ -70,4 +70,20 @@ describe("ArtifactSource", () => {
     ]);
     expect(arts.every((a) => a.artifactType === "routine_output")).toBe(true);
   });
+
+  it("does NOT index exported Paperclip tickets (5c dedup — PaperclipTicketSource owns them)", async () => {
+    const ctx = makeFixtureContext({
+      repos: [{ repo: "company", available: true }],
+      files: {
+        company: {
+          "reports/strategy/2026-06-23.md": { content: "# Weekly strategy" }, // a real routine output — still indexed
+          "reports/paperclip/tickets/LYC-1.md": { content: `---\nidentifier: LYC-1\ntitle: "T"\n---\nbody` },
+          "reports/paperclip/tickets/archive/LYC-OLD.md": { content: `---\nidentifier: LYC-OLD\ntitle: "Old"\n---\nbody` },
+        },
+      },
+    });
+    const arts = (await artifactSource.collect(ctx)).signals.filter(isArtifactSignal);
+    expect(arts.map((a) => a.relPath)).toEqual(["reports/strategy/2026-06-23.md"]);
+    expect(arts.some((a) => a.relPath.includes("paperclip/tickets"))).toBe(false);
+  });
 });

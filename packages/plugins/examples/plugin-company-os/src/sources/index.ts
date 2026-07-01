@@ -18,6 +18,7 @@ import { branchSource } from "./BranchSource.js";
 import { docsSource } from "./DocsSource.js";
 import { skillsSource } from "./SkillsSource.js";
 import { lineageSource } from "./LineageSource.js";
+import { paperclipTicketSource } from "./PaperclipTicketSource.js";
 
 export const DEFAULT_SOURCES: readonly WorkSignalSource[] = [
   gitWorkSource,
@@ -35,6 +36,8 @@ export const DEFAULT_SOURCES: readonly WorkSignalSource[] = [
   skillsSource,
   // COS-5 build-atlas lineage graph (additive — appended last).
   lineageSource,
+  // COS-5c Paperclip LYC ticket bridge (additive — appended last).
+  paperclipTicketSource,
 ];
 
 export * from "./GitWorkSource.js";
@@ -49,4 +52,5 @@ export * from "./BranchSource.js";
 export * from "./DocsSource.js";
 export * from "./SkillsSource.js";
 export * from "./LineageSource.js";
+export * from "./PaperclipTicketSource.js";
 export * from "./parse.js";

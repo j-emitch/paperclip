@@ -29,7 +29,7 @@ import {
   reposResponsibleFor,
   reposReadableInScope,
 } from "../../src/contracts/index.js";
-import { agentSignal, branchSignal, docSignal, lineageSignal, repoGitSignal, routine } from "../fixtures/signals.js";
+import { agentSignal, branchSignal, docSignal, lineageSignal, repoGitSignal, routine, ticketSignal } from "../fixtures/signals.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures — a minimal in-memory CollectionContext (no git/gh/fs touched).
@@ -329,6 +329,8 @@ function kindOf(signal: Signal): Signal["kind"] {
       return "agent";
     case "lineage":
       return "lineage";
+    case "ticket":
+      return "ticket";
     default: {
       const _exhaustive: never = signal;
       return _exhaustive;
@@ -427,6 +429,7 @@ describe("COS-1 signal kinds", () => {
       docSignal("specs/x.md"),
       agentSignal("cto"),
       lineageSignal(),
+      ticketSignal("LYC-1"),
     ];
     for (const s of samples) {
       expect(kindOf(s)).toBe(s.kind);

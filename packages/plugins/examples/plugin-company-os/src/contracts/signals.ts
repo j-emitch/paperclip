@@ -420,6 +420,42 @@ export interface LineageSignal extends SignalProvenance {
   readonly edges: readonly LineageEdge[];
 }
 
+// ---------------------------------------------------------------------------
+// COS-5 — Paperclip ticket signal (the LYC tracker bridge)
+//
+// One per exported Paperclip issue (`company/reports/paperclip/tickets/*.md`).
+// The worker has no network, so `PaperclipTicketSource` fs-reads the git-tracked
+// export and emits these; `deriveBuildAtlas` three-tier-routes them (§5.5):
+// `routine_execution` collapses to one Meta·Routines chip per routine key,
+// `issue_productivity_review` is dropped, `manual` routes to the family it
+// references. A distinct kind so it is inert to every existing fold (PF-2).
+// ---------------------------------------------------------------------------
+
+/** A single Paperclip issue (the LYC tracker), read from its exported markdown. */
+export interface TicketSignal extends SignalProvenance {
+  readonly kind: "ticket";
+  /** Ticket identifier, e.g. "LYC-217". */
+  readonly identifier: string;
+  readonly title: string;
+  /** Body text (used for family-reference extraction); "" when absent. */
+  readonly description: string;
+  readonly status: string | null;
+  readonly priority: string | null;
+  /** Raw origin: "manual" | "routine_execution" | "issue_productivity_review" | … (never null; source default "manual"). */
+  readonly originKind: string;
+  /** Parent issue id (a UUID) — the primary routine-collapse key; null when top-level. */
+  readonly parentId: string | null;
+  /** Assignee agent id (a UUID) — the routine-collapse fallback key half; null when unassigned. */
+  readonly assigneeAgentId: string | null;
+  /**
+   * Family prefixes referenced in `title`+`description` (`extractTicketIds` →
+   * `prefixOf`, deduped, order-preserving). The SOURCE derives these mechanically
+   * (self-prefix included); the projection applies routing policy (self-exclusion,
+   * registry-filter, precedence).
+   */
+  readonly referencedFamilies: readonly string[];
+}
+
 /** The discriminated union of everything a source can emit. */
 export type Signal =
   | WorkSignal
@@ -432,7 +468,8 @@ export type Signal =
   | RepoGitSignal
   | DocSignal
   | SkillSignal
-  | LineageSignal;
+  | LineageSignal
+  | TicketSignal;
 
 /** Narrowing helpers — keep the `kind` discriminant the single branch point. */
 export const isWorkSignal = (s: Signal): s is WorkSignal => s.kind === "work";
@@ -446,3 +483,4 @@ export const isRepoGitSignal = (s: Signal): s is RepoGitSignal => s.kind === "re
 export const isDocSignal = (s: Signal): s is DocSignal => s.kind === "doc";
 export const isSkillSignal = (s: Signal): s is SkillSignal => s.kind === "skill";
 export const isLineageSignal = (s: Signal): s is LineageSignal => s.kind === "lineage";
+export const isTicketSignal = (s: Signal): s is TicketSignal => s.kind === "ticket";

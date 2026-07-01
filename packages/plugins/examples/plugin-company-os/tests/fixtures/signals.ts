@@ -16,6 +16,7 @@ import type {
   RoutineSignal,
   Signal,
   TaxonomySignal,
+  TicketSignal,
   WorkSignal,
 } from "../../src/contracts/signals.js";
 import type { WorkSignalPrecedence, WorkState } from "../../src/contracts/vocab.js";
@@ -158,6 +159,30 @@ export function lineageSignal(over: Partial<LineageSignal> = {}): LineageSignal 
     errors: over.errors ?? [],
     laneGroups: over.laneGroups ?? [],
     edges: over.edges ?? [],
+    ...over,
+  };
+}
+
+/** A `TicketSignal` (one exported Paperclip issue). Defaults to an active manual ticket. */
+export function ticketSignal(identifier: string, over: Partial<TicketSignal> = {}): TicketSignal {
+  return {
+    kind: "ticket",
+    source: over.source ?? "ticket",
+    repo: over.repo ?? "company",
+    path: over.path ?? `reports/paperclip/tickets/${identifier}.md`,
+    mtime: over.mtime ?? "2026-06-23T10:00:00.000Z",
+    confidence: over.confidence ?? "high",
+    freshness: over.freshness ?? "live",
+    errors: over.errors ?? [],
+    identifier,
+    title: over.title ?? `${identifier} title`,
+    description: over.description ?? "",
+    status: over.status ?? "in_progress",
+    priority: over.priority ?? "medium",
+    originKind: over.originKind ?? "manual",
+    parentId: over.parentId ?? null,
+    assigneeAgentId: over.assigneeAgentId ?? null,
+    referencedFamilies: over.referencedFamilies ?? [],
     ...over,
   };
 }

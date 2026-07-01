@@ -18,10 +18,12 @@ import {
   isDocSignal,
   isLineageSignal,
   isTaxonomySignal,
+  isTicketSignal,
   isWorkSignal,
   type DocSignal,
   type LineageSignal,
   type TaxonomySignal,
+  type TicketSignal,
   type WorkSignal,
 } from "../contracts/signals.js";
 import {
@@ -33,7 +35,9 @@ import {
   type FamilyV1,
   type LaneGroupV1,
   type LineageEdgeV1,
+  type TicketRefV1,
 } from "../contracts/build-atlas.js";
+import { prefixOf } from "../sources/parse.js";
 import type { WorkState } from "../contracts/vocab.js";
 import { deriveLifecycle } from "./deriveLifecycle.js";
 import { aggregateSourceFreshness, diagnosticsFromFreshness, isoFrom } from "./_shared.js";
@@ -74,12 +78,25 @@ export function deriveBuildAtlas(bundle: SignalBundle, nowMs: number): BuildAtla
   const lineageSig = signals.filter(isLineageSignal).at(-1) ?? null;
   const { laneGroups, edges, tagsByPrefix } = foldLineage(lineageSig, registered, diagnostics);
 
+  // LYC three-tier routing (spec §5.5): routine_execution collapses to one
+  // Meta·Routines chip per routine key, issue_productivity_review is dropped,
+  // manual routes to the family it references (extras → lineage tags) or to the
+  // Meta·Ops bucket when it names none. done/cancelled are excluded from active.
+  const routing = routeTickets(signals.filter(isTicketSignal), registered, diagnostics);
+
   // A family per registered prefix (show 0-count families, like the Board's rows).
   const families: FamilyV1[] = [];
   for (const taxon of [...taxonomy.values()].sort((a, b) => a.prefix.localeCompare(b.prefix))) {
     const famWork = workByPrefix.get(taxon.prefix) ?? [];
     const famDocs = docsByPrefix.get(taxon.prefix) ?? [];
-    families.push(buildFamily(taxon, famWork, famDocs, tagsByPrefix.get(taxon.prefix) ?? []));
+    const mergedTags = mergeTags(
+      tagsByPrefix.get(taxon.prefix) ?? [],
+      routing.extraTagsByPrefix.get(taxon.prefix) ?? [],
+    );
+    const famTickets = (routing.ticketsByPrefix.get(taxon.prefix) ?? []).sort((a, b) =>
+      a.identifier.localeCompare(b.identifier),
+    );
+    families.push(buildFamily(taxon, famWork, famDocs, mergedTags, famTickets));
   }
 
   // Orphan-family completeness: a registered family in NO lane. Gated on the
@@ -115,6 +132,15 @@ export function deriveBuildAtlas(bundle: SignalBundle, nowMs: number): BuildAtla
     });
   }
 
+  // The synthetic Meta family holds the collapsed routine chips + unrouted (ops)
+  // tickets — the "one new Meta·Routines lane" (spec §6.3), a single clearly-
+  // labeled bucket rather than a dumping-ground on a real family. Appended AFTER
+  // the orphan/unknown checks so it is never itself flagged as orphaned (it is not
+  // a registered family), and picked up by buildDomains under the Company domain.
+  if (routing.metaTickets.length > 0) {
+    families.push(buildMetaFamily(routing.metaTickets));
+  }
+
   const sources = aggregateSourceFreshness(bundle);
   return {
     schemaVersion: BUILD_ATLAS_SCHEMA_VERSION,
@@ -138,6 +164,7 @@ function buildFamily(
   work: readonly WorkSignal[],
   docs: readonly DocSignal[],
   lineageTags: readonly string[],
+  tickets: readonly TicketRefV1[],
 ): FamilyV1 {
   const builds = resolveBuilds(work);
   const isRolling = ROLLING_PREFIXES.has(taxon.prefix);
@@ -160,7 +187,7 @@ function buildFamily(
     builtPct: total === 0 ? 0 : Math.round((shipped / total) * 100),
     builtSummary: builtSummary(isRolling, builds),
     builds,
-    tickets: [], // 5c — LYC routing
+    tickets: [...tickets], // 5c — routed LYC tickets (route: "family")
     lineageTags: [...lineageTags],
   };
 }
@@ -239,6 +266,173 @@ function foldLineage(
 
   for (const [prefix, list] of tagsByPrefix) tagsByPrefix.set(prefix, list.sort());
   return { laneGroups, edges, tagsByPrefix };
+}
+
+// ---------------------------------------------------------------------------
+// LYC three-tier routing (5c) — TicketSignals → routed TicketRefV1s (spec §5.5)
+// ---------------------------------------------------------------------------
+
+/** The synthetic Meta family's prefix — holds routine + ops chips. */
+const META_PREFIX = "META";
+
+/** Statuses excluded from the active Atlas (kept only for a future shipped rollup). */
+const DONE_STATUSES = new Set(["done", "cancelled"]);
+
+interface TicketRouting {
+  /** prefix → tickets routed to that registered family (route: "family"). */
+  readonly ticketsByPrefix: Map<string, TicketRefV1[]>;
+  /** prefix → extra referenced families a multi-family ticket contributes as lineage tags. */
+  readonly extraTagsByPrefix: Map<string, string[]>;
+  /** Collapsed routine chips (route: "routine") + unrouted manual (route: "ops"). */
+  readonly metaTickets: TicketRefV1[];
+}
+
+/**
+ * The three-tier fold. Tier 1 (routine_execution) collapses to one Meta·Routines
+ * chip per routine key; tier 2 (issue_productivity_review) is dropped; tier 3
+ * (manual + any other origin) routes to the first registered family it references
+ * — extras become that family's lineage tags — or to the Meta·Ops bucket (with an
+ * `unrouted_ticket` diagnostic) when it references none. done/cancelled excluded.
+ */
+function routeTickets(
+  tickets: readonly TicketSignal[],
+  registered: ReadonlySet<string>,
+  diagnostics: AtlasDiagnosticV1[],
+): TicketRouting {
+  const ticketsByPrefix = new Map<string, TicketRefV1[]>();
+  const extraTagsByPrefix = new Map<string, string[]>();
+  const metaTickets: TicketRefV1[] = [];
+
+  const routineFirings: TicketSignal[] = [];
+  for (const t of tickets) {
+    if (t.originKind === "issue_productivity_review") continue; // tier 2 — scan noise, dropped
+    if (t.originKind === "routine_execution") {
+      routineFirings.push(t); // tier 1 — collapsed below; every firing counts as a run
+      continue;
+    }
+    // tier 3 — manual (or any other origin): route by referenced family. The
+    // done/cancelled exclusion is a WORK-backlog filter, so it applies here only —
+    // a completed routine firing is a normal run and must still be counted above.
+    if (DONE_STATUSES.has((t.status ?? "").trim().toLowerCase())) continue;
+    const ownPrefix = prefixOf(t.identifier);
+    const candidates = t.referencedFamilies.filter((p) => p !== ownPrefix && registered.has(p));
+    if (candidates.length === 0) {
+      metaTickets.push(ticketRefFrom(t, "ops"));
+      diagnostics.push({
+        code: "unrouted_ticket",
+        severity: "warn",
+        message: `manual ticket ${t.identifier} references no registered family — parked in Meta·Ops`,
+        prefix: null,
+      });
+      continue;
+    }
+    const target = candidates[0];
+    const list = ticketsByPrefix.get(target) ?? [];
+    list.push(ticketRefFrom(t, "family"));
+    ticketsByPrefix.set(target, list);
+    for (const extra of candidates.slice(1)) addExtraTag(extraTagsByPrefix, target, extra);
+  }
+
+  metaTickets.push(...collapseRoutines(routineFirings));
+  metaTickets.sort((a, b) => a.identifier.localeCompare(b.identifier));
+  return { ticketsByPrefix, extraTagsByPrefix, metaTickets };
+}
+
+function addExtraTag(map: Map<string, string[]>, prefix: string, tag: string): void {
+  const list = map.get(prefix) ?? [];
+  if (!list.includes(tag)) list.push(tag);
+  map.set(prefix, list);
+}
+
+/** Union two tag lists (lineage-derived + ticket-derived), deduped + sorted. */
+function mergeTags(a: readonly string[], b: readonly string[]): string[] {
+  return [...new Set([...a, ...b])].sort();
+}
+
+/** One persisted TicketRefV1 from a signal, with its resolved route. */
+function ticketRefFrom(t: TicketSignal, route: TicketRefV1["route"]): TicketRefV1 {
+  return {
+    identifier: t.identifier,
+    title: t.title === "" ? null : t.title,
+    status: t.status,
+    priority: t.priority,
+    originKind: t.originKind,
+    route,
+  };
+}
+
+/**
+ * Collapse routine_execution firings into ONE chip per routine definition, keyed
+ * by `parentId` (fallback: normalized title + `assigneeAgentId`). The chip carries
+ * the firing count + last-run date; a routine that fired N times becomes one row.
+ */
+function collapseRoutines(firings: readonly TicketSignal[]): TicketRefV1[] {
+  const byKey = new Map<string, TicketSignal[]>();
+  for (const t of firings) {
+    const key = t.parentId ?? `${normalizeRoutineTitle(t.title)}|${t.assigneeAgentId ?? ""}`;
+    const list = byKey.get(key) ?? [];
+    list.push(t);
+    byKey.set(key, list);
+  }
+
+  const chips: TicketRefV1[] = [];
+  for (const group of byKey.values()) {
+    const rep = group.reduce((a, b) => (firingTime(b) >= firingTime(a) ? b : a));
+    const count = group.length;
+    const last = rep.mtime ? ` · last ${rep.mtime.slice(0, 10)}` : "";
+    const base = rep.title === "" ? rep.identifier : rep.title;
+    chips.push({
+      identifier: rep.identifier,
+      title: `${base} · ${count} run${count === 1 ? "" : "s"}${last}`,
+      status: null,
+      priority: null,
+      originKind: "routine_execution",
+      route: "routine",
+    });
+  }
+  return chips.sort((a, b) => a.identifier.localeCompare(b.identifier));
+}
+
+function firingTime(t: TicketSignal): number {
+  const ms = t.mtime ? Date.parse(t.mtime) : NaN;
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+/** Strip dates / issue-numbers / redundant whitespace so daily firings share a key. */
+function normalizeRoutineTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/\d{4}-\d{2}-\d{2}/g, "")
+    .replace(/#\d+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** The synthetic Meta family — the Meta·Routines lane + Ops bucket in one card. */
+function buildMetaFamily(tickets: readonly TicketRefV1[]): FamilyV1 {
+  const routines = tickets.filter((t) => t.route === "routine").length;
+  const ops = tickets.filter((t) => t.route === "ops").length;
+  const sorted = [...tickets].sort((a, b) => a.identifier.localeCompare(b.identifier));
+  return {
+    prefix: META_PREFIX,
+    name: "Meta · Routines & Ops",
+    l1: "Company",
+    l2: "Meta",
+    domain: "Company",
+    laneId: "Company:Meta",
+    repos: ["company"],
+    isGeneric: false,
+    isRolling: true,
+    // Operational bucket — not a spec-driven build; the stepper reads "live", not
+    // a completion path, and builtPct stays 0 (nothing to "build"). The summary
+    // carries the real signal (routine + unrouted counts).
+    lifecycle: { spec: "done", plan: "done", build: "active", prod: "active", planState: "ok" },
+    builtPct: 0,
+    builtSummary: `${routines} routine${routines === 1 ? "" : "s"} · ${ops} unrouted`,
+    builds: [],
+    tickets: sorted,
+    lineageTags: [],
+  };
 }
 
 /** Group a family's work signals into one build per ticket, furthest-right state wins. */

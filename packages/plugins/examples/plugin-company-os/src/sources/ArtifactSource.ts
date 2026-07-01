@@ -35,6 +35,14 @@ const ARTIFACT_GLOBS = [
   "reports/**/*.md",
 ] as const;
 
+/**
+ * COS-5c dedup (spec §5.2 cohesion fix): the exported Paperclip tickets under
+ * `reports/paperclip/tickets/**` are indexed as `TicketSignal`s by
+ * `PaperclipTicketSource`. Prune the whole subtree (current + `archive/`) at WALK
+ * time so those ~500 files stop double-indexing here as generic artifacts.
+ */
+const TICKET_EXCLUDE_DIR = "reports/paperclip/tickets";
+
 /** Frontmatter `type` value → artifact type (authoritative when present). */
 const TYPE_BY_FRONTMATTER: Record<string, ArtifactType> = {
   spec: "spec",
@@ -66,7 +74,7 @@ export const artifactSource: WorkSignalSource = {
   id: ARTIFACT_SOURCE_ID,
   collect(ctx: CollectionContext): Promise<SignalBatch> {
     return collectPerRepo(ARTIFACT_SOURCE_ID, ctx, async (repo, c): Promise<RepoReadResult> => {
-      const files = await c.fs.list(repo.repo, [...ARTIFACT_GLOBS]);
+      const files = await c.fs.list(repo.repo, [...ARTIFACT_GLOBS], { exclude: [TICKET_EXCLUDE_DIR] });
       const signals: Signal[] = [];
       const errors: SignalError[] = [];
       const seen = new Set<string>();
