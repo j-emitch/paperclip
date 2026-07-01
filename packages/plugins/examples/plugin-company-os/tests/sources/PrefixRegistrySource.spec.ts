@@ -6,7 +6,7 @@ import { makeFixtureContext } from "../fixtures/context.js";
 
 const ENTRIES: RegistryEntry[] = [
   { prefix: "COS", family: "Company OS cockpit", l1_system: "Company", l2_subsystem: "Company-OS", description: "x", is_generic: false, created_at: "2026-06-23" },
-  { prefix: "IMPRV", family: "Improvements", l1_system: "JB", l2_subsystem: "Platform-infra", description: "y", is_generic: true, created_at: null },
+  { prefix: "IMPRV", family: "Improvements", l1_system: "JB", l2_subsystem: "Platform-infra", description: "y", is_generic: true, is_rolling: true, created_at: null },
 ];
 
 describe("PrefixRegistrySource", () => {
@@ -16,6 +16,14 @@ describe("PrefixRegistrySource", () => {
     expect(tax.map((t) => t.prefix)).toEqual(["COS", "IMPRV"]);
     expect(tax[0]).toMatchObject({ family: "Company OS cockpit", l1System: "Company", l2Subsystem: "Company-OS", isGeneric: false, repo: "company" });
     expect(tax[1].isGeneric).toBe(true);
+  });
+
+  it("maps registry is_rolling → TaxonomySignal.isRolling, defaulting a missing flag to false (COS-5g)", async () => {
+    const ctx = makeFixtureContext({ registry: ENTRIES });
+    const tax = (await prefixRegistrySource.collect(ctx)).signals.filter(isTaxonomySignal);
+    // COS row omits is_rolling → false; IMPRV row sets is_rolling:true → true.
+    expect(tax.find((t) => t.prefix === "COS")?.isRolling).toBe(false);
+    expect(tax.find((t) => t.prefix === "IMPRV")?.isRolling).toBe(true);
   });
 
   it("a scoped refresh of another repo leaves the taxonomy untouched (no signals)", async () => {

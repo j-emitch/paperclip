@@ -67,7 +67,14 @@ export function buildPrefixGrouping(taxa: readonly TaxonomySignal[]): Map<string
       l2,
       laneId: `${t.l1System}:${l2}`,
       isGeneric: t.isGeneric,
-      isRolling: t.isRolling,
+      // `?? false` hardens against a LEGACY cached taxonomy signal (codex-5g-A-P1):
+      // `cos_source_versions.signals` is reloaded by unchecked cast, so a taxonomy
+      // slice persisted before 5g lacks `isRolling`. Without the coalesce that would
+      // leak `undefined` into the persisted GroupingEntry. A stale slice reads
+      // non-rolling for at most one derive — the `*/5` board job is a full sweep
+      // (scopeRepo === null) and PrefixRegistrySource re-emits fresh signals with
+      // the flag, self-healing the row on the next tick.
+      isRolling: t.isRolling ?? false,
     });
   }
   return map;

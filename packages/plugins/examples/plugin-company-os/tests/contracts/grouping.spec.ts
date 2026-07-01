@@ -60,6 +60,17 @@ describe("grouping — prefix lens (buildPrefixGrouping / resolveGrouping)", () 
     const g = buildPrefixGrouping([taxon("IMPRV", "Improvements", "JB", "Platform-infra", true)]);
     expect(g.get("IMPRV")?.isGeneric).toBe(true);
   });
+
+  it("coalesces a LEGACY cached signal missing isRolling to false, never undefined (codex-5g-A-P1)", () => {
+    // A taxonomy slice persisted in cos_source_versions BEFORE 5g is reloaded by
+    // unchecked cast and lacks `isRolling`. buildPrefixGrouping must never leak
+    // `undefined` into the persisted GroupingEntry.
+    const legacy = taxon("INFRA", "Infra", "Company", "Company-OS", false, true);
+    const { isRolling: _drop, ...withoutRolling } = legacy;
+    const g = buildPrefixGrouping([withoutRolling as typeof legacy]);
+    expect(g.get("INFRA")?.isRolling).toBe(false);
+    expect(g.get("INFRA")).not.toHaveProperty("isRolling", undefined);
+  });
 });
 
 describe("grouping — repo lens facade (repoBadge)", () => {
