@@ -18,7 +18,7 @@ import { COS_DB_NAMESPACE } from "../../src/db/namespace.js";
 import { collectAndProject } from "../../src/collect-and-project.js";
 import type { SourceVersion } from "../../src/db/scoped-merge.js";
 import { FakeDb } from "../test-utils/fake-db.js";
-import { NOW, bundleOf, taxon, work } from "../fixtures/signals.js";
+import { NOW, agentSignal, bundleOf, taxon, work } from "../fixtures/signals.js";
 import { taxonomyFixture } from "../fixtures/taxonomy.js";
 
 const CO = "company-uuid";
@@ -160,6 +160,7 @@ describe("cache — COS-1R + COS-5 sibling snapshots (§8.1 both-append merge co
     bundleOf([
       taxon("COS", "Company OS", "Company", "Company-OS"),
       work("COS-0", "shipped", "commit_scope", { repo: "company" }),
+      agentSignal("cto", { displayName: "CTO" }),
     ]),
     NOW,
     taxonomyFixture(),
@@ -176,7 +177,11 @@ describe("cache — COS-1R + COS-5 sibling snapshots (§8.1 both-append merge co
     const buildAtlas = await readBuildAtlas(db, CO);
     expect(agentSystem).not.toBeNull();
     expect(buildAtlas).not.toBeNull();
-    // The build-atlas carries the COS family folded from the bundle.
+    // Assert the COS-1R PAYLOAD survived, not just a valid-but-empty row (codex-5d-a-B-P2):
+    // a regression that wrote a default AgentSystemV1 over set.agentSystem would pass a
+    // non-null check but fail this — proving build-atlas's upsert did not clobber the sibling.
+    expect(agentSystem?.agents[0]?.displayName).toBe("CTO");
+    // The build-atlas carries the COS family folded from the SAME bundle.
     expect(buildAtlas?.families.some((f) => f.prefix === "COS")).toBe(true);
     expect(buildAtlas?.schemaVersion).toBe(BUILD_ATLAS_SCHEMA_VERSION);
     expect(db.buildAtlas.get(CO)?.schemaVersion).toBe(BUILD_ATLAS_SCHEMA_VERSION);
