@@ -62,6 +62,9 @@ export function setActiveTab(key: CompanyOsTabKey): void {
 export function hydratePersistedTab(): void {
   if (hydrated) return;
   hydrated = true;
+  // Only adopt the persisted tab if the user hasn't already navigated — a click
+  // in the mount window (before this effect fires) wins over restoration.
+  if (activeTab !== DEFAULT_TAB_KEY) return;
   setActiveTab(readPersistedTab());
 }
 

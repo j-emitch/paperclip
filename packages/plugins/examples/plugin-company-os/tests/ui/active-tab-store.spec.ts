@@ -103,4 +103,13 @@ describe("active-tab-store persistence", () => {
     expect(() => hydratePersistedTab()).not.toThrow(); // read throw caught -> Home
     expect(() => setActiveTab("home")).not.toThrow();
   });
+
+  it("does not overwrite a tab the user navigated to before hydration runs", async () => {
+    const storage = makeFakeStorage({ [KEY]: "docs" });
+    const { setActiveTab, hydratePersistedTab } = await loadStore(storage);
+    setActiveTab("source"); // a click in the mount window, before the effect fires
+    storage.setItem.mockClear();
+    hydratePersistedTab(); // persisted "docs" must NOT clobber the user's "source"
+    expect(storage.setItem).not.toHaveBeenCalled();
+  });
 });

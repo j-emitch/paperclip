@@ -266,7 +266,7 @@ function TabBar({
             role="tab"
             id={`cos-tab-${tab.key}`}
             aria-selected={selected}
-            aria-controls={`cos-panel-${tab.key}`}
+            aria-controls={selected ? `cos-panel-${tab.key}` : undefined}
             onClick={() => onSelect(tab.key)}
             style={{
               display: "inline-flex",

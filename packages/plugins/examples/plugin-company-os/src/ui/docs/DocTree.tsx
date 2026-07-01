@@ -38,15 +38,15 @@ export function DocTree({ docIndex, selectedDocId, onSelect, now }: DocTreeProps
   const groups = docIndex.groups;
   const totalDocs = groups.reduce((sum, s) => sum + sectionDocCount(s), 0);
   // `deriveDocIndex` deliberately emits EVERY taxonomy group (show-0-counts), so
-  // don't filter empties out here. When the whole workspace is empty, one calm
-  // message reads better than a column of empty headers; once ANY project has
-  // docs, show EVERY project so an empty family reads as "0 docs" beside its
-  // populated siblings (mirrors SkillTree's empty-origin note).
-  if (totalDocs === 0) {
-    return <CalmNote>No documents indexed yet — specs, plans, handoffs, and reviews appear here on the next derive.</CalmNote>;
-  }
+  // render them all — an empty project reads as "0 docs" beside its siblings, and
+  // even a wholly-empty workspace keeps its project structure visible (mirrors
+  // SkillTree, which shows its empty origin sections). A global banner adds the
+  // "appears on the next derive" context only when nothing is indexed yet.
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
+      {totalDocs === 0 ? (
+        <CalmNote>No documents indexed yet — specs, plans, handoffs, and reviews appear here on the next derive.</CalmNote>
+      ) : null}
       {groups.map((section, i) => {
         const count = sectionDocCount(section);
         return (

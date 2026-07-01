@@ -1,6 +1,6 @@
 import { definePlugin, runWorker, type PluginContext } from "@paperclipai/plugin-sdk";
 import { createHash, randomUUID } from "node:crypto";
-import { lstatSync } from "node:fs";
+import { lstatSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import * as path from "node:path";
 import { DERIVE_BOARD_JOB_KEY, PLUGIN_ID } from "./manifest.js";
@@ -116,13 +116,24 @@ const plugin = definePlugin({
         // suffixed by presence order (`cache`, `cache-2`); if one root vanished between
         // derives the survivor could inherit the other's key and orphan its skillIds
         // (codex B P1). A path-hash suffix is presence-independent + collision-free.
-        const resolved = path.resolve(spec.absPath);
-        const base = path.basename(resolved) || spec.origin;
-        const digest = createHash("sha256").update(resolved).digest("hex").slice(0, 8);
+        // Canonicalize to a REAL filesystem identity: `realpathSync.native` resolves
+        // any symlink in the path AND normalizes case on a case-insensitive FS (macOS),
+        // so two spellings of the same dir can't mint two roots + duplicate skills
+        // (both convergence reviewers). A 16-hex (64-bit) digest keeps distinct paths
+        // collision-proof, so `seen` dedups only a genuinely repeated root. A path that
+        // vanished between `isRealDir` and here (race) degrades to a skip.
+        let canonical: string;
+        try {
+          canonical = realpathSync.native(spec.absPath);
+        } catch {
+          continue;
+        }
+        const base = path.basename(canonical) || spec.origin;
+        const digest = createHash("sha256").update(canonical).digest("hex").slice(0, 16);
         const key = `skillroot:${spec.origin}:${base}-${digest}`;
-        if (seen.has(key)) continue; // same absolute path listed twice → one root
+        if (seen.has(key)) continue; // same real dir listed twice → one root
         seen.add(key);
-        out.push({ key, absPath: spec.absPath, origin: spec.origin, collection: spec.collection });
+        out.push({ key, absPath: canonical, origin: spec.origin, collection: spec.collection });
       }
       return out;
     };
