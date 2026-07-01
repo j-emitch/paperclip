@@ -5,29 +5,33 @@
  * active` at 40% built without any contradiction, because the stepper reflects
  * lifecycle STAGE, not completion.
  *
- * Inputs are already-collected signals for ONE family (the caller pre-filters by
- * prefix), so this stays a deterministic, unit-testable transform with no I/O.
+ * Inputs are ONE family's spec/plan docs + its ALREADY-RESOLVED per-ticket work
+ * states (the caller — `deriveBuildAtlas` — resolves reverts/newest-ship-wins in
+ * `resolveBuilds` so a reverted-only ticket never reaches here as `shipped`).
+ * That single resolution point guarantees the build fold and the lifecycle can
+ * never contradict. Pure + unit-testable, no I/O.
  *   • Spec  — a spec doc exists → active; its `spec_verified` is set → done.
  *   • Plan  — a plan doc exists → active; its `plan_verified` is set → done;
  *             a spec with no plan → `warn` (the plan-gap).
- *   • Build — shipped work present → done; in-progress/in-review → active.
- *   • Prod  — shipped work present → active (prod is ongoing, never auto-"done").
+ *   • Build — a shipped build present → done; in-progress/in-review → active.
+ *   • Prod  — a shipped build present → active (prod is ongoing, never auto-"done").
  */
 
-import type { DocSignal, WorkSignal } from "../contracts/signals.js";
+import type { DocSignal } from "../contracts/signals.js";
+import type { WorkState } from "../contracts/vocab.js";
 import type { LifecycleV1, PlanState } from "../contracts/build-atlas.js";
 
 export function deriveLifecycle(
   _prefix: string,
   docs: readonly DocSignal[],
-  work: readonly WorkSignal[],
+  ticketStates: readonly WorkState[],
 ): LifecycleV1 {
   const hasSpec = docs.some((d) => d.docType === "spec");
   const specVerified = docs.some((d) => d.docType === "spec" && d.verified);
   const hasPlan = docs.some((d) => d.docType === "plan");
   const planVerified = docs.some((d) => d.docType === "plan" && d.verified);
 
-  const states = new Set(work.map((w) => w.state));
+  const states = new Set(ticketStates);
   const hasShipped = states.has("shipped");
   const hasActive = states.has("in_progress") || states.has("in_review");
 

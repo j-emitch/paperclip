@@ -66,6 +66,41 @@ describe("deriveBuildAtlas (5a — families + lifecycle)", () => {
     );
     const cos = atlas.families.find((f) => f.prefix === "COS");
     expect(cos?.builds).toEqual([]);
+    // The lifecycle must agree — no phantom shipped build.
+    expect(cos?.lifecycle.build).toBe("todo");
+    expect(cos?.lifecycle.prod).toBe("todo");
+  });
+
+  it("ship-then-revert (newest wins) → not shipped; builtPct 0; lifecycle build todo", () => {
+    const atlas = deriveBuildAtlas(
+      bundleOf([
+        taxon("COS", "Company OS", "JB", "Company-OS"),
+        work("COS-9", "shipped", "commit_scope", { prefix: "COS", mtime: "2026-05-01T00:00:00.000Z" }),
+        work("COS-9", "shipped", "commit_scope", { prefix: "COS", reverted: true, mtime: "2026-05-02T00:00:00.000Z" }),
+      ]),
+      NOW,
+    );
+    const cos = atlas.families.find((f) => f.prefix === "COS");
+    expect(cos?.builds).toEqual([]);
+    expect(cos?.builtPct).toBe(0);
+    expect(cos?.lifecycle.build).toBe("todo");
+  });
+
+  it("revert-then-reship (newest wins) → shipped again", () => {
+    const atlas = deriveBuildAtlas(
+      bundleOf([
+        taxon("COS", "Company OS", "JB", "Company-OS"),
+        work("COS-9", "shipped", "commit_scope", { prefix: "COS", mtime: "2026-05-01T00:00:00.000Z" }),
+        work("COS-9", "shipped", "commit_scope", { prefix: "COS", reverted: true, mtime: "2026-05-02T00:00:00.000Z" }),
+        work("COS-9", "shipped", "commit_scope", { prefix: "COS", mtime: "2026-05-03T00:00:00.000Z" }),
+      ]),
+      NOW,
+    );
+    const cos = atlas.families.find((f) => f.prefix === "COS");
+    expect(cos?.builds.map((b) => [b.ticketId, b.state])).toEqual([["COS-9", "shipped"]]);
+    expect(cos?.builtPct).toBe(100);
+    expect(cos?.lifecycle.build).toBe("done");
+    expect(cos?.lifecycle.prod).toBe("active");
   });
 
   it("attaches lifecycle from the family's spec/plan docs", () => {

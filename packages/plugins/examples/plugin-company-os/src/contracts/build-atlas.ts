@@ -20,7 +20,16 @@
 
 import { z } from "@paperclipai/plugin-sdk";
 import { diagnosticSchema, sourceFreshnessSchema } from "./diagnostics.js";
-import { WORK_STATES, type AssertEqual, type Expect, type WorkState } from "./vocab.js";
+import {
+  LANE_GROUP_KINDS,
+  LINEAGE_EDGE_KINDS,
+  WORK_STATES,
+  type AssertEqual,
+  type Expect,
+  type LaneGroupKind,
+  type LineageEdgeKind,
+  type WorkState,
+} from "./vocab.js";
 
 /** Bump only on a breaking shape change; the cache row carries it and stale versions re-derive. */
 export const BUILD_ATLAS_SCHEMA_VERSION = 1 as const;
@@ -48,23 +57,6 @@ export type GateState = (typeof GATE_STATES)[number];
  */
 export const PLAN_STATES = ["ok", "partial", "none", "authored", "approved"] as const;
 export type PlanState = (typeof PLAN_STATES)[number];
-
-/**
- * A lineage lane-group's kind. `flow` = a value-chain flow lane; `overlay` = a
- * cross-cutting control lane (governance/reliability) that overlays the flow;
- * `second-brain` = the Company-OS / knowledge lane (the prototype's Second-Brain
- * lane, first-class here).
- */
-export const LANE_GROUP_KINDS = ["flow", "overlay", "second-brain"] as const;
-export type LaneGroupKind = (typeof LANE_GROUP_KINDS)[number];
-
-/**
- * A lineage edge's relationship kind between two families (from the declarative
- * lineage layer, 5b): dependency / blocks / part-of / consumes / observes /
- * governs.
- */
-export const LINEAGE_EDGE_KINDS = ["dep", "blk", "part", "consumes", "observes", "governs"] as const;
-export type LineageEdgeKind = (typeof LINEAGE_EDGE_KINDS)[number];
 
 /** How an LYC ticket was routed into (or held out of) a family (5c three-tier routing). */
 export const TICKET_ROUTES = ["family", "routine", "ops"] as const;
@@ -262,3 +254,6 @@ type _LineageEdgeKindMatches = Expect<AssertEqual<z.infer<typeof lineageEdgeKind
 type _TicketRouteMatches = Expect<AssertEqual<z.infer<typeof ticketRouteSchema>, TicketRoute>>;
 type _BuildStateMatches = Expect<AssertEqual<z.infer<typeof buildStateSchema>, WorkState>>;
 type _AtlasDiagnosticCodeMatches = Expect<AssertEqual<z.infer<typeof atlasDiagnosticCodeSchema>, AtlasDiagnosticCode>>;
+type _AtlasDiagnosticSeverityMatches = Expect<
+  AssertEqual<z.infer<typeof atlasDiagnosticSeveritySchema>, AtlasDiagnosticSeverity>
+>;

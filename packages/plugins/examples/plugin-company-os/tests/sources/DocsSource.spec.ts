@@ -92,6 +92,38 @@ describe("DocsSource", () => {
     expect(byPath("backlog/b.md").docType).toBe("backlog");
   });
 
+  it("resolves DocSignal.prefix + verified (COS-5) from frontmatter id / filename / *_verified", async () => {
+    const files: FixtureFs = {
+      company: {
+        // Frontmatter id + spec_verified approved → prefix COS, verified true.
+        "specs/atlas.md": { content: "---\nid: COS-5\ntitle: Atlas\nspec_verified: approved\n---\n# Atlas" },
+        // No id → filename ticket fallback (COS-3), and no *_verified → verified false.
+        "specs/2026-07-01-COS-3-build.md": { content: "---\ntitle: Build\n---\n# Build" },
+        // Plan with plan_verified pending → verified false.
+        "docs/superpowers/plans/COS-5-plan.md": { content: "---\nid: COS-5\nplan_verified: pending\n---\n# Plan" },
+        // Plan approved → verified true.
+        "docs/superpowers/plans/COS-1-plan.md": { content: "---\nid: COS-1\nplan_verified: approved\n---\n# Plan" },
+        // No ticket anywhere → prefix null.
+        "specs/manifesto.md": { content: "---\ntitle: Manifesto\n---\n# No ticket" },
+        // A handoff carrying spec_verified must NOT be treated as verified (wrong docType).
+        "company/reports/handoffs/COS-9-h.md": { content: "---\nid: COS-9\nspec_verified: approved\n---\n# Handoff" },
+      },
+    };
+    const docs = (await run(files, []).collect()).signals.filter(isDocSignal) as DocSignal[];
+    const byPath = (p: string) => docs.find((d) => d.relPath === p)!;
+
+    expect(byPath("specs/atlas.md").prefix).toBe("COS");
+    expect(byPath("specs/atlas.md").verified).toBe(true);
+    expect(byPath("specs/2026-07-01-COS-3-build.md").prefix).toBe("COS"); // filename fallback
+    expect(byPath("specs/2026-07-01-COS-3-build.md").verified).toBe(false);
+    expect(byPath("docs/superpowers/plans/COS-5-plan.md").verified).toBe(false); // pending
+    expect(byPath("docs/superpowers/plans/COS-1-plan.md").verified).toBe(true); // approved
+    expect(byPath("specs/manifesto.md").prefix).toBeNull();
+    // Handoff docType never reads spec_verified.
+    expect(byPath("company/reports/handoffs/COS-9-h.md").verified).toBe(false);
+    expect(byPath("company/reports/handoffs/COS-9-h.md").prefix).toBe("COS");
+  });
+
   it("reads HEAD-only (readTextHead, never the whole-file readText)", async () => {
     const { ctx, collect } = run(fixtureFiles(), []);
     const headSpy = vi.spyOn(ctx.fs, "readTextHead");

@@ -254,6 +254,30 @@ export const TAXONOMY_SOURCES = ["configured", "derived-default", "merged"] as c
 export type TaxonomySource = (typeof TAXONOMY_SOURCES)[number];
 
 // ---------------------------------------------------------------------------
+// COS-5 — Build Atlas lineage vocabularies
+//
+// These two are in the shared vocab (not local to build-atlas.ts like the Atlas's
+// GATE_STATES) because BOTH the layer-1 `LineageSignal` (signals.ts) and the
+// layer-2 `BuildAtlasV1` contract build enums from them — a shared enum can't
+// live in a layer-2 contract without inverting the import layering.
+// ---------------------------------------------------------------------------
+
+/**
+ * A lineage lane-group's kind (spec §5, COS-5). `flow` = a value-chain flow lane;
+ * `overlay` = a cross-cutting control lane (governance/reliability) overlaying the
+ * flow; `second-brain` = the Company-OS / knowledge lane (first-class here).
+ */
+export const LANE_GROUP_KINDS = ["flow", "overlay", "second-brain"] as const;
+export type LaneGroupKind = (typeof LANE_GROUP_KINDS)[number];
+
+/**
+ * A lineage edge's relationship kind between two families: dependency / blocks /
+ * part-of / consumes / observes / governs.
+ */
+export const LINEAGE_EDGE_KINDS = ["dep", "blk", "part", "consumes", "observes", "governs"] as const;
+export type LineageEdgeKind = (typeof LINEAGE_EDGE_KINDS)[number];
+
+// ---------------------------------------------------------------------------
 // Compile-time guards — make vocabulary drift a type error, not a runtime bug
 // ---------------------------------------------------------------------------
 

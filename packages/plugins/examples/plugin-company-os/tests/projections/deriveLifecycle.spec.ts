@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { deriveLifecycle } from "../../src/projections/deriveLifecycle.js";
-import { docSignal, work } from "../fixtures/signals.js";
+import { docSignal } from "../fixtures/signals.js";
 
 const specDoc = (verified: boolean) => docSignal("specs/COS-1.md", { docType: "spec", prefix: "COS", verified });
 const planDoc = (verified: boolean) =>
@@ -38,23 +38,28 @@ describe("deriveLifecycle", () => {
     expect(lc.planState).toBe("approved");
   });
 
-  it("in-progress work → Build active", () => {
-    const lc = deriveLifecycle("COS", [specDoc(true)], [work("COS-1", "in_progress", "branch_path")]);
+  it("in-progress build → Build active", () => {
+    const lc = deriveLifecycle("COS", [specDoc(true)], ["in_progress"]);
     expect(lc.build).toBe("active");
     expect(lc.prod).toBe("todo");
   });
 
-  it("shipped work → Build done, Prod active (never auto-done, even below 100% built)", () => {
+  it("shipped build → Build done, Prod active (never auto-done, even below 100% built)", () => {
     // The cardinal AC: prod is decoupled from built-% — a family with a shipped
     // build AND an in-progress build is Prod active, NOT a contradictory 'done'.
-    const lc = deriveLifecycle("COS", [specDoc(true)], [
-      work("COS-1", "shipped", "commit_scope"),
-      work("COS-2", "in_progress", "branch_path"),
-    ]);
+    const lc = deriveLifecycle("COS", [specDoc(true)], ["shipped", "in_progress"]);
     expect(lc.build).toBe("done");
     expect(lc.prod).toBe("active");
     // No gate ever reads "done" for prod — prod is ongoing.
     expect(lc.prod).not.toBe("done");
+  });
+
+  it("no shipped state (reverted ship resolved out upstream) → Build/Prod todo", () => {
+    // deriveBuildAtlas.resolveBuilds excludes a reverted-only ticket, so its
+    // state never reaches here — lifecycle sees an empty state set.
+    const lc = deriveLifecycle("COS", [specDoc(true)], []);
+    expect(lc.build).toBe("todo");
+    expect(lc.prod).toBe("todo");
   });
 
   it("plan present without a spec → Spec todo, Plan active, planState authored", () => {

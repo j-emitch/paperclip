@@ -121,7 +121,9 @@ function buildFamily(taxon: Taxon, work: readonly WorkSignal[], docs: readonly D
     repos,
     isGeneric: taxon.isGeneric,
     isRolling,
-    lifecycle: deriveLifecycle(taxon.prefix, docs, work),
+    // Lifecycle reads the RESOLVED build states (not raw signals) so a reverted
+    // ship never counts as shipped in the stepper — one resolution point.
+    lifecycle: deriveLifecycle(taxon.prefix, docs, builds.map((b) => b.state)),
     builtPct: total === 0 ? 0 : Math.round((shipped / total) * 100),
     builtSummary: builtSummary(isRolling, builds),
     builds,
@@ -160,8 +162,9 @@ function resolveBuilds(work: readonly WorkSignal[]): BuildV1[] {
 }
 
 /**
- * Furthest-right present state. Shipped counts only when a non-reverted shipped
- * signal exists (a lightweight echo of the Board's revert handling — the Board
+ * Furthest-right present state. Shipped counts only when the NEWEST shipped-or-
+ * revert signal (by commit time) is a real ship — so ship→revert un-ships and
+ * revert→re-ship re-ships (mirrors `deriveBoardState.isShippedActive`; the Board
  * stays the authoritative column engine).
  */
 function resolveState(group: readonly WorkSignal[]): WorkState | null {
@@ -169,12 +172,24 @@ function resolveState(group: readonly WorkSignal[]): WorkState | null {
   for (const s of group) {
     if (s.state !== "shipped") stages.add(s.state);
   }
-  if (group.some((s) => s.state === "shipped" && s.reverted !== true)) stages.add("shipped");
+  if (isShippedActive(group.filter((s) => s.state === "shipped"))) stages.add("shipped");
   let best: WorkState | null = null;
   for (const s of stages) {
     if (best === null || STAGE_RANK[s] > STAGE_RANK[best]) best = s;
   }
   return best;
+}
+
+/** True when the latest shipped signal (by committer date) is NOT a revert. */
+function isShippedActive(shipped: readonly WorkSignal[]): boolean {
+  if (shipped.length === 0) return false;
+  const newest = shipped.reduce((a, b) => (shippedTime(b) >= shippedTime(a) ? b : a));
+  return newest.reverted !== true;
+}
+
+function shippedTime(s: WorkSignal): number {
+  const t = s.mtime ? Date.parse(s.mtime) : NaN;
+  return Number.isFinite(t) ? t : 0;
 }
 
 /** Among the signals arguing for `state`, prefer one carrying the richest metadata. */
