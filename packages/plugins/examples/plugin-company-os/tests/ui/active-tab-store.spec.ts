@@ -52,7 +52,7 @@ describe("active-tab-store persistence", () => {
     const { setActiveTab, hydratePersistedTab } = await loadStore(storage);
     hydratePersistedTab();
     expect(storage.setItem).toHaveBeenCalledWith(KEY, "atlas"); // adopted
-    setActiveTab("atlas"); // already source -> no further write
+    setActiveTab("atlas"); // already atlas -> no further write
     expect(storage.setItem).toHaveBeenCalledTimes(1);
   });
 

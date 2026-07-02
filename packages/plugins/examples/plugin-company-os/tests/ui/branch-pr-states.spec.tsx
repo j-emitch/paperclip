@@ -86,11 +86,11 @@ describe("Branch · PR Health SSR", () => {
     expect(html).toContain("§16 reconciliation");
   });
 
-  it("shows the 'local ahead of PR head' note when the branch tip is past the PR head", () => {
-    const branch = goldenGitState().groups[1].repos[0].branches[1]; // juice-bar PERF-02 (tip ahead of PR head)
+  it("shows the 'local differs from PR head' note when the branch tip != the PR head", () => {
+    const branch = goldenGitState().groups[1].repos[0].branches[1]; // juice-bar PERF-02 (tip != PR head)
     const html = renderToStaticMarkup(<BranchRow branch={branch} now={BRANCH_PR_NOW} defaultExpanded />);
     expect(html).toContain("#350");
-    expect(html).toContain("local ahead of PR head");
+    expect(html).toContain("local differs from PR head");
   });
 
   it("a collapsed BranchRow shows the header state + PR cue but hides the detail", () => {

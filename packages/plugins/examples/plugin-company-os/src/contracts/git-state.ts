@@ -130,13 +130,15 @@ export type PrReviewV1 = z.infer<typeof prReviewV1Schema>;
 export const branchPrV1Schema = z.object({
   prNumber: z.number().int().positive(),
   title: z.string().nullable(),
-  url: z.string().nullable(),
+  // Identity/link fields are non-empty-or-null (never "" — an empty string must not
+  // masquerade as a real ref/sha/url and, e.g., trip the local-vs-PR-head diff; codex P2).
+  url: z.string().min(1).nullable(),
   isDraft: z.boolean(),
   /** The PR's head branch ref — the branch-attachment join key; shown for orphan PRs. */
-  headRef: z.string().nullable(),
-  /** The PR head commit oid (git may be ahead locally); null when gh omitted it. */
-  headSha: z.string().nullable(),
-  updatedAt: z.string().nullable(),
+  headRef: z.string().min(1).nullable(),
+  /** The PR head commit oid (may differ from the local tip); null when gh omitted it. */
+  headSha: z.string().min(1).nullable(),
+  updatedAt: z.string().min(1).nullable(),
   /** Tickets this PR resolves (title scope, else head branch) — cross-links to the Atlas. */
   ticketIds: z.array(z.string()),
   review: prReviewV1Schema.nullable(),

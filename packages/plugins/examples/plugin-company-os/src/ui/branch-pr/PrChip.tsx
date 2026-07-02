@@ -103,7 +103,9 @@ export function PrDetailRow({
   showHeadRef?: boolean;
 }) {
   const updated = relativeTime(pr.updatedAt, now);
-  const localAhead = branchHeadSha !== null && pr.headSha !== null && branchHeadSha !== pr.headSha;
+  // The local tip differs from the pushed PR head — direction is NOT proven (local could be
+  // ahead OR behind OR diverged), so the copy stays neutral (codex/Opus P2): fetch-or-push.
+  const localDiffersFromPrHead = branchHeadSha !== null && pr.headSha !== null && branchHeadSha !== pr.headSha;
   const title = pr.title ?? pr.headRef ?? `PR #${pr.prNumber}`;
   const isLink = pr.url !== null && pr.url !== "";
 
@@ -162,7 +164,19 @@ export function PrDetailRow({
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0, paddingLeft: 2 }}>
         <IssueCounts pr={pr} />
         {showHeadRef && pr.headRef ? (
-          <span style={{ fontFamily: tokens.mono, fontSize: 11, color: tokens.muted }} title="PR head branch">
+          <span
+            title={pr.headRef}
+            style={{
+              fontFamily: tokens.mono,
+              fontSize: 11,
+              color: tokens.muted,
+              minWidth: 0,
+              maxWidth: 220,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
             {pr.headRef}
           </span>
         ) : null}
@@ -173,12 +187,12 @@ export function PrDetailRow({
             ))}
           </span>
         ) : null}
-        {localAhead ? (
+        {localDiffersFromPrHead ? (
           <Pill
-            label="local ahead of PR head"
+            label="local differs from PR head"
             tone={statusColors.cached}
             soft
-            title="your local branch tip has commits the pushed PR head doesn't — push to update the PR"
+            title="your local branch tip differs from the pushed PR head — fetch or push to sync"
           />
         ) : null}
         <span style={{ flex: 1 }} />

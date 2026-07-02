@@ -22,6 +22,7 @@ import {
 } from "../contracts/signals.js";
 import type { Diagnostic } from "../contracts/diagnostics.js";
 import type { ProjectTaxonomyV1 } from "../contracts/projects.js";
+import type { ReviewVerdict } from "../contracts/vocab.js";
 import { branchStatusSeverity } from "../contracts/branch-health.js";
 import {
   GIT_STATE_SCHEMA_VERSION,
@@ -259,7 +260,7 @@ function reviewForPr(
   if (candidates.length === 0) return null;
   const headCurrent = headSha !== null ? candidates.filter((r) => r.sha === headSha) : [];
   const pool = headCurrent.length > 0 ? headCurrent : candidates;
-  const best = pool.reduce((a, b) => (b.generatedAt.localeCompare(a.generatedAt) > 0 ? b : a));
+  const best = pool.reduce((a, b) => (compareReviewPreference(b, a) > 0 ? b : a));
   return {
     verdict: best.verdict,
     reportKind: best.reportKind,
@@ -269,6 +270,20 @@ function reviewForPr(
     p1: best.p1 ?? null,
     p2: best.p2 ?? null,
   };
+}
+
+/** How concerning a verdict is — the tie-break when two reports share a timestamp. */
+const VERDICT_CONCERN: Record<ReviewVerdict, number> = { block: 4, revise: 3, unknown: 2, proceed: 1, ship: 0 };
+
+/**
+ * Deterministic report preference: newest `generatedAt` wins; on an identical timestamp the
+ * MORE-concerning verdict wins (a same-instant block outranks a ship). This makes the join
+ * independent of the signal batch's array order (codex/Opus P2), and conservative on ties.
+ */
+function compareReviewPreference(x: ReviewSignal, y: ReviewSignal): number {
+  const t = x.generatedAt.localeCompare(y.generatedAt);
+  if (t !== 0) return t;
+  return VERDICT_CONCERN[x.verdict] - VERDICT_CONCERN[y.verdict];
 }
 
 /** Stable branch ordering: named branches first (alpha), detached worktrees last. */

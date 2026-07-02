@@ -10,7 +10,11 @@ import {
   compareSeverityWorstFirst,
   isAttentionSeverity,
 } from "../../src/contracts/branch-health.js";
-import { BRANCH_STATUSES, type HealthSeverity } from "../../src/contracts/vocab.js";
+import { BRANCH_STATUSES, HEALTH_SEVERITIES, type HealthSeverity } from "../../src/contracts/vocab.js";
+// The UI-side "browser twin" of the severity order/predicate (git-labels can't value-import
+// contracts per the COS-0 boundary). This test pins the twin to the source so they can't drift.
+import { HEALTH_SEVERITY_ORDER as UI_ORDER, isAttentionSeverity as uiIsAttention } from "../../src/ui/shared/git-labels.js";
+import { HEALTH_SEVERITY_ORDER as SRC_ORDER, isAttentionSeverity as srcIsAttention } from "../../src/contracts/branch-health.js";
 
 describe("branchStatusSeverity", () => {
   it("takes the WORST severity across a branch's statuses", () => {
@@ -44,5 +48,22 @@ describe("compareSeverityWorstFirst", () => {
   it("orders worst (high) before least (info)", () => {
     const sorted = (["info", "high", "low", "medium"] as HealthSeverity[]).sort(compareSeverityWorstFirst);
     expect(sorted).toEqual(["high", "medium", "low", "info"]);
+  });
+});
+
+// The Branch·PR view reads the persisted `attentionSeverity` (computed via the contract
+// source) but orders + filters the band with the UI-side twin in `git-labels`. If the twin
+// drifts from the source, Home's "N need attention" count and the band would silently diverge.
+describe("UI severity twin parity (Home count ≡ Branch·PR band invariant)", () => {
+  it("git-labels HEALTH_SEVERITY_ORDER matches contracts/branch-health for every severity", () => {
+    for (const s of HEALTH_SEVERITIES) {
+      expect(UI_ORDER[s]).toBe(SRC_ORDER[s]);
+    }
+  });
+
+  it("git-labels isAttentionSeverity matches contracts/branch-health for every severity", () => {
+    for (const s of HEALTH_SEVERITIES) {
+      expect(uiIsAttention(s)).toBe(srcIsAttention(s));
+    }
   });
 });

@@ -11,6 +11,7 @@
  * identically under SSR (the Playwright harness) and live.
  */
 
+import type { ReactNode } from "react";
 import type { BranchPrV1, GitStateV1, ProjectGitSectionV1, RepoGitStateV1 } from "../../contracts/index.js";
 import { statusColors, tokens } from "../tokens.js";
 import { Dot, Pill, RepoBadge } from "../shared/badges.js";
@@ -50,6 +51,32 @@ function branchCount(section: ProjectGitSectionV1): number {
   return section.repos.reduce((sum, r) => sum + r.branches.length, 0);
 }
 
+/** A mono branch-ref style with ellipsis truncation (the full ref lives in a `title`). */
+function branchRefStyle(color: string) {
+  return {
+    fontFamily: tokens.mono,
+    fontSize: 11.5,
+    fontWeight: 600 as const,
+    color,
+    display: "inline-block" as const,
+    maxWidth: 260,
+    minWidth: 0,
+    overflow: "hidden" as const,
+    textOverflow: "ellipsis" as const,
+    whiteSpace: "nowrap" as const,
+    verticalAlign: "bottom" as const,
+  };
+}
+
+/** A staggered entrance wrapper — the surface settles in top-to-bottom (reduced-motion-gated). */
+function Reveal({ index, children }: { index: number; children: ReactNode }) {
+  return (
+    <div className="cos-fx-enter" style={{ animationDelay: `${index * 60}ms` }}>
+      {children}
+    </div>
+  );
+}
+
 export function BranchPrHealthView({ gitState, now, isMobile = false, expandKey = null, onFocusBranch }: BranchPrHealthViewProps) {
   const derivedAge = relativeTime(gitState.derivedAt, now);
   const hasAnyRepo = gitState.groups.some((g) => g.repos.length > 0);
@@ -73,14 +100,22 @@ export function BranchPrHealthView({ gitState, now, isMobile = false, expandKey 
         <StaleSourcePills sources={gitState.sources} />
       </header>
 
-      {hasAnyRepo ? <VitalsBar vitals={view.vitals} /> : null}
+      {hasAnyRepo ? (
+        <Reveal index={0}>
+          <VitalsBar vitals={view.vitals} />
+        </Reveal>
+      ) : null}
 
       {view.attention.length > 0 ? (
-        <AttentionBand rows={view.attention} isMobile={isMobile} onFocusBranch={onFocusBranch} />
+        <Reveal index={1}>
+          <AttentionBand rows={view.attention} isMobile={isMobile} onFocusBranch={onFocusBranch} />
+        </Reveal>
       ) : null}
 
       {view.flaggedReviews.length > 0 ? (
-        <FlaggedReviewsCallout rows={view.flaggedReviews} now={now} onFocusBranch={onFocusBranch} />
+        <Reveal index={2}>
+          <FlaggedReviewsCallout rows={view.flaggedReviews} now={now} onFocusBranch={onFocusBranch} />
+        </Reveal>
       ) : null}
 
       {!hasAnyRepo ? (
@@ -88,7 +123,7 @@ export function BranchPrHealthView({ gitState, now, isMobile = false, expandKey 
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
           {gitState.groups.map((section, i) => (
-            <div key={section.group.key} className="cos-fx-enter" style={{ animationDelay: `${i * 70}ms` }}>
+            <div key={section.group.key} className="cos-fx-enter" style={{ animationDelay: `${(i + 3) * 60}ms` }}>
               <ProjectSection group={section.group} count={branchCount(section)}>
                 {section.repos.length === 0 ? (
                   <CalmNote>No repositories in this project.</CalmNote>
@@ -195,7 +230,8 @@ function AttentionBand({
         background: tokens.card,
       }}
     >
-      <div style={{ fontSize: 12.5, fontWeight: 650, color: tokens.fg }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, fontWeight: 650, color: tokens.fg }}>
+        <Dot tone={statusColors.stale} size={7} />
         Needs attention <span style={{ color: tokens.muted, fontWeight: 500 }}>· {rows.length}</span>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -220,7 +256,10 @@ function AttentionRowView({
   const magnitudes: string[] = [];
   if (row.behind !== null && row.behind > 0) magnitudes.push(`${row.behind} behind`);
   if (row.staleDays > 0) magnitudes.push(`${row.staleDays}d stale`);
-  const clickable = onFocusBranch !== undefined && row.branch !== null;
+  // Focusable/openable whenever a handler exists — detached rows included, since
+  // branchExpandKey() supports a null branch (codex P2). Non-clickable rows render as a
+  // plain <div>, never a dead focusable <button>.
+  const clickable = onFocusBranch !== undefined;
 
   const branchCode = (
     <code
@@ -267,7 +306,7 @@ function AttentionRowView({
     cursor: clickable ? "pointer" : "default",
   };
   const onClick = clickable ? () => onFocusBranch?.(row.repoKey, row.branch) : undefined;
-  const title = clickable ? `Jump to ${row.repoKey} · ${row.branch} below` : undefined;
+  const title = clickable ? `Jump to ${row.repoKey} · ${row.branch ?? "detached"} below` : undefined;
 
   const inner = isMobile ? (
     <>
@@ -304,16 +343,21 @@ function AttentionRowView({
     </>
   );
 
-  return (
-    <button
-      type="button"
-      className="cos-fx-row"
-      onClick={onClick}
-      title={title}
-      style={{ ...baseStyle, display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 7 : 10 }}
-    >
+  const layoutStyle = {
+    ...baseStyle,
+    display: "flex",
+    flexDirection: isMobile ? ("column" as const) : ("row" as const),
+    alignItems: isMobile ? ("stretch" as const) : ("center" as const),
+    gap: isMobile ? 7 : 10,
+  };
+  // A clickable row is a real <button> (keyboard-focusable); a non-interactive row (no
+  // handler wired, e.g. the SSR harness) is a plain <div> so it's never a dead tab-stop.
+  return clickable ? (
+    <button type="button" className="cos-fx-row" onClick={onClick} title={title} style={layoutStyle}>
       {inner}
     </button>
+  ) : (
+    <div style={layoutStyle}>{inner}</div>
   );
 }
 
@@ -344,7 +388,8 @@ function FlaggedReviewsCallout({
         background: tokens.card,
       }}
     >
-      <div style={{ fontSize: 12.5, fontWeight: 650, color: tokens.fg }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, fontWeight: 650, color: tokens.fg }}>
+        <Dot tone={statusColors.danger} size={7} />
         Flagged by review <span style={{ color: tokens.muted, fontWeight: 500 }}>· {rows.length}</span>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -358,12 +403,14 @@ function FlaggedReviewsCallout({
                   className="cos-fx-row"
                   onClick={() => onFocusBranch(row.repoKey, row.branch)}
                   title={`Jump to ${row.repoKey} · ${row.branch} below`}
-                  style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", font: "inherit", minWidth: 0 }}
+                  style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", font: "inherit", minWidth: 0, maxWidth: "100%", overflow: "hidden" }}
                 >
-                  <code style={{ fontFamily: tokens.mono, fontSize: 11.5, color: tokens.accent, fontWeight: 600 }}>{row.branch}</code>
+                  <code style={branchRefStyle(tokens.accent)}>{row.branch}</code>
                 </button>
               ) : (
-                <code style={{ fontFamily: tokens.mono, fontSize: 11.5, color: tokens.muted }}>{row.branch ?? "no local branch"}</code>
+                <code title={row.branch ?? undefined} style={branchRefStyle(tokens.muted)}>
+                  {row.branch ?? "no local branch"}
+                </code>
               )}
             </div>
             <PrDetailRow pr={row.pr} now={now} showHeadRef={row.branch === null} />
