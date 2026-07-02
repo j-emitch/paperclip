@@ -78,6 +78,93 @@ export interface DbClient {
 
 const NS = COS_DB_NAMESPACE;
 
+// ---------------------------------------------------------------------------
+// Projection registry (COS-5i cohesion) — ONE typed spec per persisted projection.
+// Collapses the three formerly-parallel 9-element lists (validate-before-write,
+// after-fence upsert, per-projection read) into a single source of truth: the write
+// path loops it and each named `read*` export is a thin typed wrapper over
+// `readProjection(spec)`. Adding a projection = add ONE spec (+ its ProjectionSet
+// field); the completeness test (cache.spec.ts) fails if any ProjectionSet field has
+// no spec, so the loop can never silently drop a projection — the both-append failure
+// mode COS-5d-a guarded, now enforced structurally instead of by three hand-kept lists.
+// ---------------------------------------------------------------------------
+
+interface HasDerivedAt {
+  readonly derivedAt: string;
+}
+
+interface ProjectionSpec<T extends HasDerivedAt> {
+  /** The ProjectionSet field this spec persists — the completeness key. */
+  readonly key: keyof ProjectionSet;
+  /** Physical table in the COS namespace. */
+  readonly table: string;
+  readonly version: number;
+  /**
+   * The board is the derive FENCE — its lock-owned CAS UPDATE gates the whole write,
+   * so it is NOT an after-fence lockless upsert. Every other projection is secondary.
+   */
+  readonly secondary: boolean;
+  readonly select: (set: ProjectionSet) => T;
+  /** Strict parse — throws on a malformed projection (validate-before-write). */
+  readonly parse: (value: unknown) => T;
+  /** Safe parse — a bad/wrong-version row reads as null (re-derive), never throws. */
+  readonly safeParse: (value: unknown) => { success: boolean; data?: T };
+}
+
+/** Build a spec with T inferred from its selector/parsers (no explicit generic at the call site). */
+function defineSpec<T extends HasDerivedAt>(spec: ProjectionSpec<T>): ProjectionSpec<T> {
+  return spec;
+}
+
+const BOARD_SPEC = defineSpec({
+  key: "board", table: "cos_board_state", version: BOARD_STATE_SCHEMA_VERSION, secondary: false,
+  select: (s) => s.board, parse: parseBoardStateV1, safeParse: safeParseBoardStateV1,
+});
+const ARTIFACT_INDEX_SPEC = defineSpec({
+  key: "artifactIndex", table: "cos_artifact_index", version: ARTIFACT_INDEX_SCHEMA_VERSION, secondary: true,
+  select: (s) => s.artifactIndex, parse: parseArtifactIndexV1, safeParse: safeParseArtifactIndexV1,
+});
+const ROUTINE_HEALTH_SPEC = defineSpec({
+  key: "routineHealth", table: "cos_routine_health", version: ROUTINE_HEALTH_SCHEMA_VERSION, secondary: true,
+  select: (s) => s.routineHealth, parse: parseRoutineHealthV1, safeParse: safeParseRoutineHealthV1,
+});
+const ORIENTATION_SPEC = defineSpec({
+  key: "orientation", table: "cos_orientation", version: ORIENTATION_SCHEMA_VERSION, secondary: true,
+  select: (s) => s.orientation, parse: parseOrientationV1, safeParse: safeParseOrientationV1,
+});
+const GIT_STATE_SPEC = defineSpec({
+  key: "gitState", table: "cos_git_state", version: GIT_STATE_SCHEMA_VERSION, secondary: true,
+  select: (s) => s.gitState, parse: parseGitStateV1, safeParse: safeParseGitStateV1,
+});
+const DOC_INDEX_SPEC = defineSpec({
+  key: "docIndex", table: "cos_doc_index", version: DOC_INDEX_SCHEMA_VERSION, secondary: true,
+  select: (s) => s.docIndex, parse: parseDocIndexV1, safeParse: safeParseDocIndexV1,
+});
+const SKILLS_CATALOG_SPEC = defineSpec({
+  key: "skillsCatalog", table: "cos_skills_catalog", version: SKILLS_CATALOG_SCHEMA_VERSION, secondary: true,
+  select: (s) => s.skillsCatalog, parse: parseSkillsCatalogV1, safeParse: safeParseSkillsCatalogV1,
+});
+const AGENT_SYSTEM_SPEC = defineSpec({
+  key: "agentSystem", table: "cos_agent_system", version: AGENT_SYSTEM_SCHEMA_VERSION, secondary: true,
+  select: (s) => s.agentSystem, parse: parseAgentSystemV1, safeParse: safeParseAgentSystemV1,
+});
+const BUILD_ATLAS_SPEC = defineSpec({
+  key: "buildAtlas", table: "cos_build_atlas", version: BUILD_ATLAS_SCHEMA_VERSION, secondary: true,
+  select: (s) => s.buildAtlas, parse: parseBuildAtlasV1, safeParse: safeParseBuildAtlasV1,
+});
+
+/**
+ * The projection registry — board first (the fence), then the eight lockless
+ * secondaries in write order. Widened to `ProjectionSpec<HasDerivedAt>` for the
+ * write-loop: every `T` occurs only in return position, so the widening is sound
+ * (no unsafe cast needed). This is the single list every write consumer loops; the
+ * reads use the individually-typed specs so each `read*` keeps its precise return type.
+ */
+export const PROJECTION_SPECS: readonly ProjectionSpec<HasDerivedAt>[] = [
+  BOARD_SPEC, ARTIFACT_INDEX_SPEC, ROUTINE_HEALTH_SPEC, ORIENTATION_SPEC, GIT_STATE_SPEC,
+  DOC_INDEX_SPEC, SKILLS_CATALOG_SPEC, AGENT_SYSTEM_SPEC, BUILD_ATLAS_SPEC,
+];
+
 /**
  * Guard: the host-provided namespace MUST equal the literal the migration hard-codes.
  * A mismatch means the host derivation changed — fail loud rather than read/write
@@ -142,16 +229,13 @@ export async function writeProjections(
   owner: string,
 ): Promise<void> {
   // Validate-before-write: a malformed projection throws here, never reaches the DB.
-  parseBoardStateV1(set.board);
-  parseArtifactIndexV1(set.artifactIndex);
-  parseRoutineHealthV1(set.routineHealth);
-  parseOrientationV1(set.orientation);
-  parseGitStateV1(set.gitState);
-  parseDocIndexV1(set.docIndex);
-  parseSkillsCatalogV1(set.skillsCatalog);
-  parseAgentSystemV1(set.agentSystem);
-  parseBuildAtlasV1(set.buildAtlas);
+  // The registry loop covers all nine (board + eight secondaries) — the same set the
+  // reads and upserts use, so validation can never fall out of sync with persistence.
+  for (const spec of PROJECTION_SPECS) spec.parse(spec.select(set));
 
+  // Board is the derive FENCE: the lock-owned CAS UPDATE. If a slow derive lost its
+  // lease and another took over (changing lock_owner), this write affects 0 rows and
+  // throws — a stale derive can never overwrite a newer one (codex A P0).
   const { rowCount } = await db.execute(
     `UPDATE ${NS}.cos_board_state
        SET snapshot = $2::jsonb, schema_version = $3, derived_at = $4, updated_at = now()
@@ -161,16 +245,16 @@ export async function writeProjections(
   if (rowCount !== 1) {
     throw new Error(`derive lease lost for ${companyId} — aborting write (owner=${owner})`);
   }
-  // The eight lockless secondaries upsert only AFTER the board fence passes (same
-  // after-fence pattern COS-0 already uses for artifact-index + routine-health).
-  await upsertSnapshot(db, "cos_artifact_index", companyId, set.artifactIndex, ARTIFACT_INDEX_SCHEMA_VERSION, set.artifactIndex.derivedAt, owner);
-  await upsertSnapshot(db, "cos_routine_health", companyId, set.routineHealth, ROUTINE_HEALTH_SCHEMA_VERSION, set.routineHealth.derivedAt, owner);
-  await upsertSnapshot(db, "cos_orientation", companyId, set.orientation, ORIENTATION_SCHEMA_VERSION, set.orientation.derivedAt, owner);
-  await upsertSnapshot(db, "cos_git_state", companyId, set.gitState, GIT_STATE_SCHEMA_VERSION, set.gitState.derivedAt, owner);
-  await upsertSnapshot(db, "cos_doc_index", companyId, set.docIndex, DOC_INDEX_SCHEMA_VERSION, set.docIndex.derivedAt, owner);
-  await upsertSnapshot(db, "cos_skills_catalog", companyId, set.skillsCatalog, SKILLS_CATALOG_SCHEMA_VERSION, set.skillsCatalog.derivedAt, owner);
-  await upsertSnapshot(db, "cos_agent_system", companyId, set.agentSystem, AGENT_SYSTEM_SCHEMA_VERSION, set.agentSystem.derivedAt, owner);
-  await upsertSnapshot(db, "cos_build_atlas", companyId, set.buildAtlas, BUILD_ATLAS_SCHEMA_VERSION, set.buildAtlas.derivedAt, owner);
+
+  // The lockless secondaries upsert only AFTER the board fence passes, each gated by
+  // the same ownership check inside upsertSnapshot (the after-fence pattern COS-0 uses
+  // for artifact-index + routine-health, extended to all eight secondaries). Order is
+  // the registry order (board excluded via `secondary`).
+  for (const spec of PROJECTION_SPECS) {
+    if (!spec.secondary) continue;
+    const projection = spec.select(set);
+    await upsertSnapshot(db, spec.table, companyId, projection, spec.version, projection.derivedAt, owner);
+  }
 }
 
 /**
@@ -215,77 +299,42 @@ interface SnapshotRow {
   schema_version: number;
 }
 
-export async function readBoardState(db: DbClient, companyId: string): Promise<BoardStateV1 | null> {
+/**
+ * Generic read: fetch the row for a projection's table, then safeParse + version-gate
+ * it (a bad or wrong-version row reads as null → re-derive). The named `read*` exports
+ * below are thin wrappers that pass their typed spec, so each keeps its precise return
+ * type without repeating the SQL + gate nine times.
+ */
+async function readProjection<T extends HasDerivedAt>(
+  db: DbClient,
+  companyId: string,
+  spec: ProjectionSpec<T>,
+): Promise<T | null> {
   const rows = await db.query<SnapshotRow>(
-    `SELECT snapshot, schema_version FROM ${NS}.cos_board_state WHERE company_id = $1`,
+    `SELECT snapshot, schema_version FROM ${NS}.${spec.table} WHERE company_id = $1`,
     [companyId],
   );
-  return readSnapshot(rows, BOARD_STATE_SCHEMA_VERSION, (s) => safeParseBoardStateV1(s));
+  return readSnapshot(rows, spec.version, spec.safeParse);
 }
 
-export async function readArtifactIndex(db: DbClient, companyId: string): Promise<ArtifactIndexV1 | null> {
-  const rows = await db.query<SnapshotRow>(
-    `SELECT snapshot, schema_version FROM ${NS}.cos_artifact_index WHERE company_id = $1`,
-    [companyId],
-  );
-  return readSnapshot(rows, ARTIFACT_INDEX_SCHEMA_VERSION, (s) => safeParseArtifactIndexV1(s));
-}
-
-export async function readRoutineHealth(db: DbClient, companyId: string): Promise<RoutineHealthV1 | null> {
-  const rows = await db.query<SnapshotRow>(
-    `SELECT snapshot, schema_version FROM ${NS}.cos_routine_health WHERE company_id = $1`,
-    [companyId],
-  );
-  return readSnapshot(rows, ROUTINE_HEALTH_SCHEMA_VERSION, (s) => safeParseRoutineHealthV1(s));
-}
-
-export async function readOrientation(db: DbClient, companyId: string): Promise<OrientationV1 | null> {
-  const rows = await db.query<SnapshotRow>(
-    `SELECT snapshot, schema_version FROM ${NS}.cos_orientation WHERE company_id = $1`,
-    [companyId],
-  );
-  return readSnapshot(rows, ORIENTATION_SCHEMA_VERSION, (s) => safeParseOrientationV1(s));
-}
-
-export async function readGitState(db: DbClient, companyId: string): Promise<GitStateV1 | null> {
-  const rows = await db.query<SnapshotRow>(
-    `SELECT snapshot, schema_version FROM ${NS}.cos_git_state WHERE company_id = $1`,
-    [companyId],
-  );
-  return readSnapshot(rows, GIT_STATE_SCHEMA_VERSION, (s) => safeParseGitStateV1(s));
-}
-
-export async function readDocIndex(db: DbClient, companyId: string): Promise<DocIndexV1 | null> {
-  const rows = await db.query<SnapshotRow>(
-    `SELECT snapshot, schema_version FROM ${NS}.cos_doc_index WHERE company_id = $1`,
-    [companyId],
-  );
-  return readSnapshot(rows, DOC_INDEX_SCHEMA_VERSION, (s) => safeParseDocIndexV1(s));
-}
-
-export async function readSkillsCatalog(db: DbClient, companyId: string): Promise<SkillsCatalogV1 | null> {
-  const rows = await db.query<SnapshotRow>(
-    `SELECT snapshot, schema_version FROM ${NS}.cos_skills_catalog WHERE company_id = $1`,
-    [companyId],
-  );
-  return readSnapshot(rows, SKILLS_CATALOG_SCHEMA_VERSION, (s) => safeParseSkillsCatalogV1(s));
-}
-
-export async function readAgentSystem(db: DbClient, companyId: string): Promise<AgentSystemV1 | null> {
-  const rows = await db.query<SnapshotRow>(
-    `SELECT snapshot, schema_version FROM ${NS}.cos_agent_system WHERE company_id = $1`,
-    [companyId],
-  );
-  return readSnapshot(rows, AGENT_SYSTEM_SCHEMA_VERSION, (s) => safeParseAgentSystemV1(s));
-}
-
-export async function readBuildAtlas(db: DbClient, companyId: string): Promise<BuildAtlasV1 | null> {
-  const rows = await db.query<SnapshotRow>(
-    `SELECT snapshot, schema_version FROM ${NS}.cos_build_atlas WHERE company_id = $1`,
-    [companyId],
-  );
-  return readSnapshot(rows, BUILD_ATLAS_SCHEMA_VERSION, (s) => safeParseBuildAtlasV1(s));
-}
+export const readBoardState = (db: DbClient, companyId: string): Promise<BoardStateV1 | null> =>
+  readProjection(db, companyId, BOARD_SPEC);
+export const readArtifactIndex = (db: DbClient, companyId: string): Promise<ArtifactIndexV1 | null> =>
+  readProjection(db, companyId, ARTIFACT_INDEX_SPEC);
+export const readRoutineHealth = (db: DbClient, companyId: string): Promise<RoutineHealthV1 | null> =>
+  readProjection(db, companyId, ROUTINE_HEALTH_SPEC);
+export const readOrientation = (db: DbClient, companyId: string): Promise<OrientationV1 | null> =>
+  readProjection(db, companyId, ORIENTATION_SPEC);
+export const readGitState = (db: DbClient, companyId: string): Promise<GitStateV1 | null> =>
+  readProjection(db, companyId, GIT_STATE_SPEC);
+export const readDocIndex = (db: DbClient, companyId: string): Promise<DocIndexV1 | null> =>
+  readProjection(db, companyId, DOC_INDEX_SPEC);
+export const readSkillsCatalog = (db: DbClient, companyId: string): Promise<SkillsCatalogV1 | null> =>
+  readProjection(db, companyId, SKILLS_CATALOG_SPEC);
+export const readAgentSystem = (db: DbClient, companyId: string): Promise<AgentSystemV1 | null> =>
+  readProjection(db, companyId, AGENT_SYSTEM_SPEC);
+export const readBuildAtlas = (db: DbClient, companyId: string): Promise<BuildAtlasV1 | null> =>
+  readProjection(db, companyId, BUILD_ATLAS_SPEC);
 
 function readSnapshot<T>(
   rows: readonly SnapshotRow[],

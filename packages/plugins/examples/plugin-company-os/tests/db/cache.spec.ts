@@ -4,6 +4,7 @@ import {
   assertNamespace,
   ensureBoardRow,
   loadSourceVersions,
+  PROJECTION_SPECS,
   readAgentSystem,
   readBoardState,
   readBuildAtlas,
@@ -85,6 +86,17 @@ describe("cache — projection write/read round-trip + version gate", () => {
     await ensureBoardRow(db, CO);
     await acquireDeriveLock(db, CO, owner, 120_000, NOW);
   }
+
+  it("PROJECTION_SPECS covers every ProjectionSet field (registry can't silently drop a projection)", () => {
+    // `projections` is a full ProjectionSet — its keys are the ground truth. The registry
+    // the validate/upsert/read paths all loop MUST cover exactly those keys, or a projection
+    // would be persisted/read by nobody — the both-append drop COS-5d-a guarded, now structural.
+    expect(new Set(PROJECTION_SPECS.map((s) => s.key))).toEqual(new Set(Object.keys(projections)));
+    // Exactly one fence (the board); every other projection is a lockless secondary.
+    expect(PROJECTION_SPECS.filter((s) => !s.secondary).map((s) => s.key)).toEqual(["board"]);
+    // Tables are unique — no two specs write the same row.
+    expect(new Set(PROJECTION_SPECS.map((s) => s.table)).size).toBe(PROJECTION_SPECS.length);
+  });
 
   it("writes validated projections (owner-fenced) and reads the board back", async () => {
     const db = new FakeDb();
