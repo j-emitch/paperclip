@@ -1,14 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  BOARD_STALE_THRESHOLD_MS,
-  buildBoardView,
-  defaultCollapsedLaneIds,
-  deriveAgeMs,
-  isBoardEmpty,
-  isBoardStale,
-  relativeTime,
-  staleSources,
-} from "../../src/ui/board/view-model.js";
+import { buildBoardView, defaultCollapsedLaneIds, isBoardEmpty, relativeTime } from "../../src/ui/board/view-model.js";
+// Surface-freshness math is shared (5i) — the Board consumes it from the one home, not a re-export.
+import { SURFACE_STALE_THRESHOLD_MS, deriveAgeMs, isStale, staleSources } from "../../src/ui/shared/derive-freshness.js";
 import { NOW } from "../fixtures/signals.js";
 import { barrenBoard, goldenBoard, staleBoard, zeroChipBoard } from "./fixtures/board.js";
 
@@ -45,15 +38,15 @@ describe("board view-model", () => {
     expect(isBoardEmpty(barrenBoard())).toBe(true);
   });
 
-  it("isBoardStale flips at the 5-minute threshold", () => {
+  it("board staleness (shared isStale) flips at the 5-minute threshold", () => {
     const board = goldenBoard(NOW); // derived exactly at NOW
-    expect(isBoardStale(board, NOW + BOARD_STALE_THRESHOLD_MS)).toBe(false); // == threshold, not over
-    expect(isBoardStale(board, NOW + BOARD_STALE_THRESHOLD_MS + 1)).toBe(true);
+    expect(isStale(board, NOW + SURFACE_STALE_THRESHOLD_MS)).toBe(false); // == threshold, not over
+    expect(isStale(board, NOW + SURFACE_STALE_THRESHOLD_MS + 1)).toBe(true);
     expect(deriveAgeMs(board, NOW + 1000)).toBe(1000);
   });
 
   it("staleBoard (derived 10m ago) is stale relative to NOW", () => {
-    expect(isBoardStale(staleBoard(), NOW)).toBe(true);
+    expect(isStale(staleBoard(), NOW)).toBe(true);
   });
 
   it("staleSources surfaces only non-live sources", () => {

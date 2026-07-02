@@ -108,13 +108,18 @@ export function StaleSourcePills({ sources }: { sources: readonly SourceFreshnes
         const errorSuffix = s.errorCount > 0 ? ` · ${errorPhrase(s.errorCount)}` : "";
         // Hover reveals exactly how stale — the last successful read for this (source, repo).
         const lastOk = s.lastOkAt ? ` · last ok ${s.lastOkAt}` : " · never read successfully";
+        // The full degradation detail — surfaced to hover (title) AND screen readers
+        // (ariaLabel), so the a11y path keeps the message the deleted board badge exposed
+        // rather than dropping to the terse visible label (codex-5i.3-B).
+        const detail = `${s.source} · ${s.repo} · ${s.freshness}${errorSuffix}${s.message ? ` — ${s.message}` : ""}${lastOk}`;
         return (
           <Pill
             key={`${s.source}:${s.repo}`}
             label={`${s.source} · ${s.repo} ${s.freshness}${errorSuffix}`}
             tone={tokens.muted}
             withDot
-            title={`${s.message ?? `${s.source} · ${s.repo} is ${s.freshness}${errorSuffix}`}${lastOk}`}
+            ariaLabel={detail}
+            title={detail}
           />
         );
       })}

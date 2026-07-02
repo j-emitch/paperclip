@@ -67,11 +67,19 @@ describe("StaleSourcePills — honest per-source degradation", () => {
     expect(one).not.toContain("1 errors");
   });
 
-  it("reveals the exact last-ok timestamp on hover (title), never in the label", () => {
+  it("reveals the exact last-ok timestamp (or 'never read successfully') in the detail", () => {
     const html = renderToStaticMarkup(<StaleSourcePills sources={[src({ freshness: "stale", lastOkAt: "2026-07-02T11:00:00.000Z" })]} />);
     expect(html).toContain("last ok 2026-07-02T11:00:00.000Z");
     const never = renderToStaticMarkup(<StaleSourcePills sources={[src({ freshness: "stale", lastOkAt: null })]} />);
     expect(never).toContain("never read successfully");
+  });
+
+  it("exposes the full degradation detail to screen readers via aria-label, not title-only (codex-5i.3-B)", () => {
+    const html = renderToStaticMarkup(
+      <StaleSourcePills sources={[src({ freshness: "stale", errorCount: 2, message: "gh rate-limited", lastOkAt: "2026-07-02T11:00:00.000Z" })]} />,
+    );
+    // The source message + last-ok reach the aria-label, not just the terse visible label.
+    expect(html).toMatch(/aria-label="[^"]*gh rate-limited[^"]*last ok 2026-07-02T11:00:00\.000Z/);
   });
 });
 

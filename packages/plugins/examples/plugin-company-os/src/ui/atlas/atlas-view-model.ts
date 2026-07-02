@@ -8,10 +8,10 @@
  * the shared `relativeTime`, so "3m ago" reads identically to the Board it
  * replaces.
  *
- * The staleness math itself now lives once in `shared/derive-freshness` (5i
- * cohesion audit) — Atlas + Board both re-export it under their surface-named
- * aliases, so the shared `SurfaceFreshnessBadge` and every existing test read the
- * exact same 5-min stale / 60-s clock-skew tolerance.
+ * The staleness math lives once in `shared/derive-freshness` (5i cohesion audit);
+ * the Atlas UI reads it only through the shared `SurfaceFreshnessBadge`, so this
+ * view-model no longer re-exports freshness at all — the badge owns the 5-min
+ * stale / 60-s clock-skew tolerance for every surface.
  */
 
 import type {
@@ -22,29 +22,10 @@ import type {
   GateState,
 } from "../../contracts/index.js";
 import { relativeTime } from "../shared/time.js";
-import {
-  deriveAgeMs,
-  deriveSkewMs,
-  isClockSkewed,
-  isStale,
-  staleSources,
-  CLOCK_SKEW_TOLERANCE_MS,
-  SURFACE_STALE_THRESHOLD_MS,
-} from "../shared/derive-freshness.js";
 
-// Re-exported so Atlas components + tests keep one import site while the impl lives once.
+// `relativeTime` is shared across cockpit surfaces — re-exported so Atlas components
+// (FamilyCard) keep one import site while the impl lives once in `shared/time`.
 export { relativeTime };
-
-// Surface-freshness math lives once in `shared/derive-freshness`; Atlas re-exports it
-// under its historical names so components + tests keep their import site (the impl no
-// longer lives here — see the module header).
-export { deriveAgeMs, deriveSkewMs, isClockSkewed, staleSources, CLOCK_SKEW_TOLERANCE_MS };
-
-/** The atlas is "stale" (surface-level badge) when its derive is older than this. */
-export const ATLAS_STALE_THRESHOLD_MS = SURFACE_STALE_THRESHOLD_MS;
-
-/** Surface-level staleness for a `BuildAtlasV1` — derive older than the shared threshold. */
-export const isAtlasStale = isStale;
 
 /** The Spec·Plan·Build·Prod lifecycle gates, in render order. */
 export const LIFECYCLE_GATES = ["spec", "plan", "build", "prod"] as const;
