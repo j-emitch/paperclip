@@ -44,8 +44,8 @@ export const COMPANY_OS_TABS: readonly CompanyOsTab[] = [
   {
     key: "teaching",
     label: "Teaching",
-    description: "The teaching loop surface — arrives in COS-1.",
-    liveIn: "COS-1",
+    description: "The teaching loop — inbox backlog, synthesis health, and the internal/external curriculum.",
+    liveIn: "COS-2",
     placeholder: true,
   },
   {

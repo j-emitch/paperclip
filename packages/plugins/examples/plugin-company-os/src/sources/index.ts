@@ -31,4 +31,8 @@ export * from "./ReviewReportSource.js";
 export * from "./RoutineContractSource.js";
 export * from "./ArtifactSource.js";
 export * from "./PrefixRegistrySource.js";
+// COS-2f teaching seam fill. Exported for the `teaching-overview` handler + tests,
+// but INTENTIONALLY absent from DEFAULT_SOURCES: the Teaching tab is a live,
+// file-backed read (no cached table), so the shared derive stays byte-identical.
+export * from "./TeachingSource.js";
 export * from "./parse.js";

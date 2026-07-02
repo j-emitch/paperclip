@@ -27,8 +27,9 @@ export * from "./board-state.js";
 export * from "./artifact-index.js";
 export * from "./routine-health.js";
 
-// Layer 2 — the live docs-viewer payload contract (read per-request, not cached)
+// Layer 2 — live per-request payload contracts (read on demand, not cached)
 export * from "./report-content.js";
+export * from "./teaching.js";
 
 // Extension seams (empty in COS-0b; COS-1/COS-2 implement)
 export * from "./extensions.js";

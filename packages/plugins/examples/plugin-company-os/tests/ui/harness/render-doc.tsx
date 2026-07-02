@@ -14,10 +14,13 @@ import { EmptyState, ErrorState, LoadingState } from "../../../src/ui/board/stat
 import { ReportsView } from "../../../src/ui/reports/ReportsView.js";
 import { ReportViewerPanel } from "../../../src/ui/reports/ReportViewerPanel.js";
 import { RoutinesView } from "../../../src/ui/routines/RoutinesView.js";
+import { TeachingView } from "../../../src/ui/teaching/TeachingView.js";
 import { EMPTY_FILTER } from "../../../src/ui/reports/reports-view-model.js";
-import type { BoardStateV1 } from "../../../src/contracts/index.js";
+import { EMPTY_TEACHING_FILTER } from "../../../src/ui/teaching/teaching-view-model.js";
+import type { BoardStateV1, TeachingOverviewV1 } from "../../../src/contracts/index.js";
 import { goldenBoard, staleBoard, zeroChipBoard, RENDER_NOW } from "../fixtures/board.js";
 import { goldenArtifactIndex, goldenRoutineHealth, okMarkdownContent, REPORTS_NOW } from "../fixtures/reports.js";
+import { goldenTeachingOverview, healthyTeachingOverview, TEACHING_NOW } from "../fixtures/teaching.js";
 import { NOW } from "../../fixtures/signals.js";
 
 const noop = () => {};
@@ -83,6 +86,10 @@ function routines(isMobile: boolean): ReactElement {
   return <RoutinesView health={goldenRoutineHealth()} now={REPORTS_NOW} isMobile={isMobile} />;
 }
 
+function teaching(overview: TeachingOverviewV1, isMobile: boolean): ReactElement {
+  return <TeachingView overview={overview} filter={EMPTY_TEACHING_FILTER} onFilterChange={noop} now={TEACHING_NOW} isMobile={isMobile} />;
+}
+
 export interface HarnessDoc {
   name: string;
   width: number;
@@ -103,5 +110,8 @@ export function harnessDocs(): HarnessDoc[] {
     { name: "reports-mobile", width: 390, html: document("Reports · mobile", renderToStaticMarkup(reports(true)), 390) },
     { name: "routines-desktop", width: 1180, html: document("Routines · populated", renderToStaticMarkup(routines(false)), 1180) },
     { name: "routines-mobile", width: 390, html: document("Routines · mobile", renderToStaticMarkup(routines(true)), 390) },
+    { name: "teaching-desktop", width: 1180, html: document("Teaching · stalled loop", renderToStaticMarkup(teaching(goldenTeachingOverview(), false)), 1180) },
+    { name: "teaching-mobile", width: 390, html: document("Teaching · mobile", renderToStaticMarkup(teaching(goldenTeachingOverview(), true)), 390) },
+    { name: "teaching-healthy", width: 1180, html: document("Teaching · healthy loop", renderToStaticMarkup(teaching(healthyTeachingOverview(), false)), 1180) },
   ];
 }

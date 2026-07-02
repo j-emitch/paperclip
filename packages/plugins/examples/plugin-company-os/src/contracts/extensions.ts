@@ -17,10 +17,11 @@ import type { ArtifactSignal, TaxonomySignal } from "./signals.js";
 import type { ArtifactType, SignalConfidence } from "./vocab.js";
 
 /**
- * COS-1: the teaching loop becomes a `WorkSignalSource` — teaching nuggets in
- * `docs/teachings/**` surface as `ArtifactSignal`s (`artifactType: "teaching"`).
+ * COS-2f: the teaching loop becomes a `WorkSignalSource` — the teaching corpus in
+ * `docs/teachings` (inbox / units / synthesis receipts) surfaces as
+ * `ArtifactSignal`s (`artifactType: "teaching"`, carrying `TeachingArtifactMeta`).
  * It is a plain source, marked with a discriminant so the Teaching tab can find
- * its batch without coupling to the source's id.
+ * its batch without coupling to the source's id. Implemented by `TeachingSource`.
  */
 export interface TeachingSignalSource extends WorkSignalSource {
   readonly extensionKind: "teaching";

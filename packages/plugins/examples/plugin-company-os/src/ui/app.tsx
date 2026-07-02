@@ -4,16 +4,35 @@ import {
   type PluginRouteSidebarProps,
   type PluginSidebarProps,
 } from "@paperclipai/plugin-sdk/ui";
-import type { CSSProperties } from "react";
 import { COMPANY_OS_ROUTE } from "../manifest.js";
+import { isTeachingTabEnabled } from "./flags.js";
 import { tokens, springTransition } from "./tokens.js";
-import { COMPANY_OS_TABS, type CompanyOsTab } from "./tabs.js";
+import { COMPANY_OS_TABS, type CompanyOsTab, type CompanyOsTabKey } from "./tabs.js";
 import { TAB_ICONS, CompanyOsGlyph } from "./icons.js";
 import { useActiveTab } from "./active-tab-store.js";
 import { useIsMobile } from "./hooks/useMediaQuery.js";
 import { CompanyOsBoard } from "./board/CompanyOsBoard.js";
 import { Reports } from "./reports/Reports.js";
 import { Routines } from "./routines/Routines.js";
+import { Teaching } from "./teaching/Teaching.js";
+import { PlaceholderPanel, PhasePill } from "./shared/placeholder-panel.js";
+
+/**
+ * Which tabs own their panel chrome (live surfaces) vs. sit inside a placeholder
+ * card. COS-2f: `teaching` is live ONLY behind `COS_TEACHING_TAB_ENABLED`, so the
+ * cockpit is byte-identical (the COS-0 placeholder) when the flag is off. The
+ * single predicate drives the panel switch, the header chrome, and the phase pill,
+ * so they can't drift.
+ */
+function tabIsLive(key: CompanyOsTabKey): boolean {
+  if (key === "teaching") return isTeachingTabEnabled();
+  return key === "board" || key === "reports" || key === "routines";
+}
+
+/** A tab shows its "live in COS-N" phase pill when it is reserved AND not yet live. */
+function tabShowsPhasePill(tab: CompanyOsTab): boolean {
+  return tab.placeholder === true && !tabIsLive(tab.key);
+}
 
 // ---------------------------------------------------------------------------
 // Sidebar entry — top-level nav link into the cockpit.
@@ -103,7 +122,7 @@ export function CompanyOsRouteSidebar(_props: PluginRouteSidebarProps) {
               <Icon size={16} />
             </span>
             <span style={{ flex: 1 }}>{tab.label}</span>
-            {tab.placeholder ? <PhasePill label={tab.liveIn} muted /> : null}
+            {tabShowsPhasePill(tab) ? <PhasePill label={tab.liveIn} muted /> : null}
           </button>
         );
       })}
@@ -120,7 +139,7 @@ export function CompanyOsPage({ context }: PluginPageProps) {
   const [activeTab, setTab] = useActiveTab();
   const current = COMPANY_OS_TABS.find((tab) => tab.key === activeTab) ?? COMPANY_OS_TABS[0];
   // The live surfaces own their own panel chrome; placeholders sit inside a card.
-  const isLive = current.key === "board" || current.key === "reports" || current.key === "routines";
+  const isLive = tabIsLive(current.key);
 
   return (
     <main
@@ -176,6 +195,9 @@ function TabPanel({
       return <Reports key={key} companyId={companyId} />;
     case "routines":
       return <Routines key={key} companyId={companyId} />;
+    case "teaching":
+      // COS-2f: live only behind the flag; otherwise the untouched placeholder.
+      return tabIsLive("teaching") ? <Teaching key={key} companyId={companyId} /> : <PlaceholderPanel tab={tab} />;
     default:
       return <PlaceholderPanel tab={tab} />;
   }
@@ -268,7 +290,7 @@ function TabBar({
               <Icon size={16} />
             </span>
             {tab.label}
-            {tab.placeholder ? <PhasePill label="Soon" muted /> : null}
+            {tabShowsPhasePill(tab) ? <PhasePill label="Soon" muted /> : null}
           </button>
         );
       })}
@@ -276,55 +298,5 @@ function TabBar({
   );
 }
 
-function PlaceholderPanel({ tab }: { tab: CompanyOsTab }) {
-  const Icon = TAB_ICONS[tab.key];
-  return (
-    <div role="tabpanel" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 650 }}>{tab.label}</h2>
-        <PhasePill label={`live in ${tab.liveIn}`} />
-      </div>
-      <p style={{ margin: 0, fontSize: 14, color: tokens.muted, maxWidth: 640, lineHeight: 1.5 }}>
-        {tab.description}
-      </p>
-      <div
-        style={{
-          border: `1px dashed ${tokens.border}`,
-          borderRadius: tokens.radius,
-          padding: 20,
-          background: tokens.bg,
-          color: tokens.muted,
-          fontSize: 13,
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-        }}
-      >
-        <span aria-hidden="true" style={{ color: tokens.accent, display: "inline-flex" }}>
-          <Icon size={20} />
-        </span>
-        <span>
-          <strong style={{ color: tokens.fg, fontWeight: 600 }}>{tab.label}</strong> arrives in{" "}
-          <code style={{ fontFamily: tokens.mono, color: tokens.fg }}>{tab.liveIn}</code>.
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function PhasePill({ label, muted = false }: { label: string; muted?: boolean }) {
-  const style: CSSProperties = {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "2px 8px",
-    borderRadius: 999,
-    fontSize: 11,
-    fontWeight: 600,
-    letterSpacing: 0.2,
-    fontFamily: tokens.mono,
-    color: muted ? tokens.muted : tokens.accent,
-    background: muted ? tokens.secondary : tokens.accentSoft,
-    border: `1px solid ${muted ? tokens.border : tokens.accentBorder}`,
-  };
-  return <span style={style}>{label}</span>;
-}
+// `PlaceholderPanel` + `PhasePill` moved to ./shared/placeholder-panel.js so the
+// COS-2f render-slot (flag-off byte-identity snapshot) renders the identical tree.
