@@ -75,6 +75,14 @@ const CSS = `
 .cos-fx-live-dot { border-radius: 999px; animation: cos-fx-live 2200ms ease-in-out infinite; }
 /* A slow leftward flow for a rolling-program's striped built bar. */
 .cos-fx-flow { animation: cos-fx-flow 1.4s linear infinite; }
+/* Surface-freshness badge — hovering warms its border to its own status tone, so the
+   shared pill is a tactile handle for the exact derive time it reveals in its title. */
+.cos-fx-fresh { transition: border-color 160ms ease; }
+@media (hover: hover) {
+  .cos-fx-fresh-live:hover { border-color: ${withAlpha(statusColors.live, 0.5)}; }
+  .cos-fx-fresh-stale:hover { border-color: ${withAlpha(statusColors.stale, 0.5)}; }
+  .cos-fx-fresh-skew:hover { border-color: ${withAlpha(statusColors.cached, 0.5)}; }
+}
 
 summary.cos-fx-summary { list-style: none; }
 summary.cos-fx-summary::-webkit-details-marker { display: none; }
@@ -90,7 +98,7 @@ details[open] > .cos-fx-drawer-body { animation: cos-fx-drawer-open 260ms cubic-
      still play under reduced-motion — match the selector so the override actually wins. */
   details[open] > .cos-fx-drawer-body { animation: none; }
   .cos-fx-card, .cos-fx-tile, .cos-fx-row, .cos-fx-seeall, .cos-fx-seeall span, .cos-fx-caret,
-  .cos-fx-tile-arrow, .cos-fx-row-go { transition: none; }
+  .cos-fx-tile-arrow, .cos-fx-row-go, .cos-fx-fresh { transition: none; }
   .cos-fx-card:hover, .cos-fx-tile:hover, .cos-fx-row:hover,
   .cos-fx-card:active, .cos-fx-tile:active, .cos-fx-row:active,
   .cos-fx-seeall:hover span { transform: none; }

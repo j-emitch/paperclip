@@ -66,4 +66,29 @@ describe("StaleSourcePills — honest per-source degradation", () => {
     expect(one).toContain("· 1 error");
     expect(one).not.toContain("1 errors");
   });
+
+  it("reveals the exact last-ok timestamp on hover (title), never in the label", () => {
+    const html = renderToStaticMarkup(<StaleSourcePills sources={[src({ freshness: "stale", lastOkAt: "2026-07-02T11:00:00.000Z" })]} />);
+    expect(html).toContain("last ok 2026-07-02T11:00:00.000Z");
+    const never = renderToStaticMarkup(<StaleSourcePills sources={[src({ freshness: "stale", lastOkAt: null })]} />);
+    expect(never).toContain("never read successfully");
+  });
+});
+
+describe("SurfaceFreshnessBadge — 5i.2 polish (hover affordance)", () => {
+  it("tags the badge with a tone-specific hover class per state", () => {
+    const live = renderToStaticMarkup(<SurfaceFreshnessBadge noun="Board" derivedAt={iso(-1000)} sources={[]} now={NOW} />);
+    expect(live).toContain("cos-fx-fresh cos-fx-fresh-live");
+    const stale = renderToStaticMarkup(<SurfaceFreshnessBadge noun="Board" derivedAt={iso(-(STALE_MS + 1000))} sources={[]} now={NOW} />);
+    expect(stale).toContain("cos-fx-fresh-stale");
+    const skew = renderToStaticMarkup(<SurfaceFreshnessBadge noun="Board" derivedAt={iso(120_000)} sources={[]} now={NOW} />);
+    expect(skew).toContain("cos-fx-fresh-skew");
+  });
+
+  it("reveals the exact derive timestamp on hover (title), keeps the relative label for a11y", () => {
+    const html = renderToStaticMarkup(<SurfaceFreshnessBadge noun="Atlas" derivedAt="2026-07-02T11:59:00.000Z" sources={[]} now={NOW} />);
+    // aria-label stays relative; title carries the exact stamp.
+    expect(html).toContain('aria-label="Atlas is live — derived 1m ago"');
+    expect(html).toContain("derived 2026-07-02T11:59:00.000Z");
+  });
 });

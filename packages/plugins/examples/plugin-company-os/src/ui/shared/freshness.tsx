@@ -62,11 +62,14 @@ export function SurfaceFreshnessBadge({
 }) {
   const { stale, skewed, staleSourceCount } = deriveFreshness({ derivedAt, sources }, now);
   const ageLabel = relativeTime(derivedAt, now) ?? "unknown";
+  // A hover warms the border to the state's tone (cockpit-motion); reduced-motion stills it.
+  const freshClass = `cos-fx-fresh cos-fx-fresh-${skewed ? "skew" : stale ? "stale" : "live"}`;
 
   if (skewed) {
     const aria = `${noun} derive timestamp is in the future — likely clock skew between machines`;
+    // The exact derive stamp on hover; the relative phrasing stays the screen-reader label.
     return (
-      <span style={surfacePillStyle} aria-label={aria} title={aria}>
+      <span className={freshClass} style={surfacePillStyle} aria-label={aria} title={`${aria} · derived ${derivedAt}`}>
         <Dot tone={statusColors.cached} />
         <span aria-hidden="true">derived in the future · clock skew</span>
       </span>
@@ -77,7 +80,7 @@ export function SurfaceFreshnessBadge({
   const sourceSuffix = stale && staleSourceCount > 0 ? `, ${staleSourceCount} source${staleSourceCount === 1 ? "" : "s"} not live` : "";
   const aria = stale ? `${noun} is stale — derived ${ageLabel}${sourceSuffix}` : `${noun} is live — derived ${ageLabel}`;
   return (
-    <span style={surfacePillStyle} aria-label={aria} title={aria}>
+    <span className={freshClass} style={surfacePillStyle} aria-label={aria} title={`${aria} · derived ${derivedAt}`}>
       <Dot tone={tone} pulse={!stale} />
       <span aria-hidden="true">
         derived {ageLabel}
@@ -103,13 +106,15 @@ export function StaleSourcePills({ sources }: { sources: readonly SourceFreshnes
         // labels, and the error count so a degraded source states how badly (a
         // superset of the retired per-source board badge — no info lost on migration).
         const errorSuffix = s.errorCount > 0 ? ` · ${errorPhrase(s.errorCount)}` : "";
+        // Hover reveals exactly how stale — the last successful read for this (source, repo).
+        const lastOk = s.lastOkAt ? ` · last ok ${s.lastOkAt}` : " · never read successfully";
         return (
           <Pill
             key={`${s.source}:${s.repo}`}
             label={`${s.source} · ${s.repo} ${s.freshness}${errorSuffix}`}
             tone={tokens.muted}
             withDot
-            title={s.message ?? `${s.source} · ${s.repo} is ${s.freshness}${errorSuffix}`}
+            title={`${s.message ?? `${s.source} · ${s.repo} is ${s.freshness}${errorSuffix}`}${lastOk}`}
           />
         );
       })}
