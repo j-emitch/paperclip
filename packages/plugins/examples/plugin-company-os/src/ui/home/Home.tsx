@@ -34,16 +34,17 @@ function renderHostMarkdown(markdown: string) {
 }
 
 /**
- * Map a typed deep-link to the tab that hosts its target. The orientation
- * contract's deep-link vocabulary keeps its own names (`board`), while the cockpit
- * tab it resolves to can differ — exactly the split this indirection was built
- * for: post-COS-5d the `board` deep-link resolves to the `atlas` tab (the Build
- * Atlas replaced the Kanban). `docs`/`source` stay 1:1.
+ * Map a typed deep-link to the tab that hosts its target. The orientation contract's
+ * deep-link vocabulary keeps its own stable names (`board`, `source`), while the
+ * cockpit tab each resolves to can differ — exactly the split this indirection was
+ * built for: post-COS-5d the `board` deep-link resolves to the `atlas` tab (the Build
+ * Atlas replaced the Kanban), and post-COS-5e the `source` deep-link resolves to the
+ * `branch-pr` tab (Source grew into Branch · PR Health). `docs` stays 1:1.
  */
 function deepLinkTabKey(link: DeepLink): CompanyOsTabKey {
   switch (link.tab) {
     case "source":
-      return "source";
+      return "branch-pr";
     case "board":
       return "atlas";
     case "docs":

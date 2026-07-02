@@ -20,7 +20,7 @@ import { TAB_ICONS } from "../../src/ui/icons.js";
 const EXPECTED_ORDER: readonly CompanyOsTabKey[] = [
   "home",
   "atlas",
-  "source",
+  "branch-pr",
   "docs",
   "agents",
   "skills",
@@ -67,6 +67,16 @@ describe("tab taxonomy", () => {
     expect(isCompanyOsTabKey("board")).toBe(false);
   });
 
+  it("has fully retired the `source` key in favour of `branch-pr` (COS-5e)", () => {
+    const keys = COMPANY_OS_TABS.map((t) => t.key);
+    expect(keys).not.toContain("source" as CompanyOsTabKey);
+    expect(keys).toContain("branch-pr");
+    const branchPr = COMPANY_OS_TABS.find((t) => t.key === "branch-pr");
+    expect(branchPr?.label).toBe("Branch · PR Health");
+    expect(branchPr?.liveIn).toBe("COS-5e");
+    expect(isCompanyOsTabKey("source")).toBe(false);
+  });
+
   it("orders every live surface ahead of every placeholder", () => {
     const firstPlaceholder = COMPANY_OS_TABS.findIndex((t) => t.placeholder);
     const lastLive = [...COMPANY_OS_TABS].map((t, i) => ({ t, i })).filter(({ t }) => !t.placeholder).at(-1)?.i ?? -1;
@@ -100,6 +110,10 @@ describe("normalizeTabKey", () => {
 
   it("maps the legacy `board` key forward to `atlas` (COS-5d)", () => {
     expect(normalizeTabKey("board")).toBe("atlas");
+  });
+
+  it("maps the legacy `source` key forward to `branch-pr` (COS-5e)", () => {
+    expect(normalizeTabKey("source")).toBe("branch-pr");
   });
 
   it("passes every current tab key through unchanged", () => {

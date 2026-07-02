@@ -36,7 +36,12 @@ import {
   type OrientationV1,
   type RecentWorkV1,
 } from "../contracts/orientation.js";
-import type { BranchStatus, HealthSeverity, RecentWorkKind } from "../contracts/vocab.js";
+import type { HealthSeverity, RecentWorkKind } from "../contracts/vocab.js";
+import {
+  branchStatusSeverity,
+  compareSeverityWorstFirst,
+  isAttentionSeverity,
+} from "../contracts/branch-health.js";
 import { evaluateRoutine } from "./routine-freshness.js";
 import { aggregateSourceFreshness, diagnosticsFromFreshness, isoFrom } from "./_shared.js";
 
@@ -55,19 +60,6 @@ const PINNED_ROLE_TO_ROUTINE: Record<string, string> = {
   "process-audit": "weekly-process-enforcement",
   "weekly-summary": "weekly-report",
 };
-
-const STATUS_SEVERITY: Record<BranchStatus, HealthSeverity> = {
-  conflicting: "high",
-  behind: "medium",
-  stale: "medium",
-  dirty: "medium",
-  unmerged_orphan: "medium",
-  orphaned_worktree: "low",
-  comparison_unavailable: "low",
-  conflict_not_evaluated: "low",
-  ahead_clean: "info",
-};
-const SEVERITY_RANK: Record<HealthSeverity, number> = { high: 3, medium: 2, low: 1, info: 0 };
 
 export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy: ProjectTaxonomyV1): OrientationV1 {
   const signals = bundle.batches.flatMap((b) => b.signals);
@@ -103,7 +95,7 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
   // --- Branch health (alert-worthy only) ---
   const branchHealth: BranchHealthEntryV1[] = branches
     .map((b): { entry: BranchHealthEntryV1; severity: HealthSeverity } => {
-      const severity = severityOf(b.statuses);
+      const severity = branchStatusSeverity(b.statuses);
       return {
         severity,
         entry: {
@@ -118,8 +110,8 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
         },
       };
     })
-    .filter((x) => x.severity === "high" || x.severity === "medium")
-    .sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity])
+    .filter((x) => isAttentionSeverity(x.severity))
+    .sort((a, b) => compareSeverityWorstFirst(a.severity, b.severity))
     .map((x) => x.entry);
 
   // --- Recent commits glance (newest, deduped by sha, capped) ---
@@ -244,14 +236,6 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
       ...diagnosticsFromFreshness(sources),
     ],
   };
-}
-
-function severityOf(statuses: readonly BranchStatus[]): HealthSeverity {
-  let best: HealthSeverity = "info";
-  for (const s of statuses) {
-    if (SEVERITY_RANK[STATUS_SEVERITY[s]] > SEVERITY_RANK[best]) best = STATUS_SEVERITY[s];
-  }
-  return best;
 }
 
 function workKind(w: WorkSignal): RecentWorkKind {

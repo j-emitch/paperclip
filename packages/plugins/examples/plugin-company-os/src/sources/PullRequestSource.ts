@@ -74,6 +74,12 @@ function prSignals(repo: RepoRoot, pr: GhPr): WorkSignal[] {
     sha: pr.headRefOid || undefined,
     url: pr.url || undefined,
     title: pr.title || undefined,
+    // Branch·PR Health join keys (COS-5e): the head ref names the local branch the
+    // PR belongs to; isDraft + updatedAt(mtime) drive its lifecycle chip. The board
+    // ignores these; only the git-state projection reads them.
+    headRef: pr.headRefName || undefined,
+    isDraft: pr.isDraft,
+    mtime: pr.updatedAt || undefined,
   } as const satisfies Partial<WorkSignal>;
 
   if (ticketIds.length === 0) {

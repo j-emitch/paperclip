@@ -25,29 +25,12 @@ export {
   labelForNullableVerdict as labelForNullableBriefingVerdict,
   toneForNullableVerdict as toneForNullableBriefingVerdict,
 } from "../shared/verdict-labels.js";
-// The branch-health flag labels are shared git vocabulary (Source + Home) — one
-// source of truth in `shared/git-labels`. Re-exported so the Home panels that
-// already import it from here keep working.
-export { BRANCH_STATUS_LABELS } from "../shared/git-labels.js";
-
-/** Branch-health severity → tone (color cue). Pair with the LABEL for the non-color cue. */
-export const HEALTH_SEVERITY_TONES: Record<HealthSeverity, string> = {
-  high: statusColors.danger,
-  medium: statusColors.stale,
-  low: statusColors.proceed,
-  info: statusColors.reviewUnknown,
-};
-
-/** The non-color severity cue (Joe's "severity by color AND a non-color cue"). */
-export const HEALTH_SEVERITY_LABELS: Record<HealthSeverity, string> = {
-  high: "At risk",
-  medium: "Needs a look",
-  low: "Minor",
-  info: "FYI",
-};
-
-/** Worst-first ordering for branch-health rows within a project. */
-export const HEALTH_SEVERITY_RANK: Record<HealthSeverity, number> = { high: 0, medium: 1, low: 2, info: 3 };
+// The branch-health flag labels + severity label/tone maps are shared git/health
+// vocabulary (Branch·PR Health tab + Home) — one source of truth in
+// `shared/git-labels`. COS-5e moved the severity maps there (a second consumer);
+// re-exported so Home panels that import them from here keep working.
+export { BRANCH_STATUS_LABELS, HEALTH_SEVERITY_LABELS, HEALTH_SEVERITY_TONES } from "../shared/git-labels.js";
+import { HEALTH_SEVERITY_ORDER } from "../shared/git-labels.js";
 
 /** Alert severity → tone. Alerts are only ever high/medium (spec §5.3/§7). */
 export const ALERT_SEVERITY_TONES: Record<AlertSeverity, string> = {
@@ -146,7 +129,7 @@ export function groupByProject<T extends { projectKey: string }>(
 /** Sort a copy of branch-health rows worst-severity-first, then most-behind. */
 export function sortByHealth<T extends { severity: HealthSeverity; behind: number | null }>(items: readonly T[]): T[] {
   return [...items].sort((a, b) => {
-    const sev = HEALTH_SEVERITY_RANK[a.severity] - HEALTH_SEVERITY_RANK[b.severity];
+    const sev = HEALTH_SEVERITY_ORDER[b.severity] - HEALTH_SEVERITY_ORDER[a.severity]; // worst first
     if (sev !== 0) return sev;
     return (b.behind ?? 0) - (a.behind ?? 0);
   });

@@ -62,6 +62,33 @@ describe("GitStateV1", () => {
                     },
                   ],
                   statuses: ["behind", "stale", "dirty"],
+                  attentionSeverity: "medium",
+                  pullRequests: [
+                    {
+                      prNumber: 42,
+                      title: "feat(COS-1): cockpit",
+                      url: "https://github.com/x/y/pull/42",
+                      isDraft: false,
+                      headRef: "cos/COS-1",
+                      headSha: "abc1234",
+                      updatedAt: "2026-06-23T01:05:00.000Z",
+                      ticketIds: ["COS-1"],
+                      review: { verdict: "ship", reportKind: "cannons", generatedAt: "2026-06-23T01:04:00.000Z", current: true, p0: 0, p1: 1, p2: 2 },
+                    },
+                  ],
+                },
+              ],
+              orphanPullRequests: [
+                {
+                  prNumber: 43,
+                  title: "chore: orphan",
+                  url: null,
+                  isDraft: false,
+                  headRef: "cos/gone",
+                  headSha: null,
+                  updatedAt: null,
+                  ticketIds: [],
+                  review: null,
                 },
               ],
             },
@@ -71,6 +98,7 @@ describe("GitStateV1", () => {
               availability: "missing",
               trunk: { ref: null, state: "missing" },
               branches: [],
+              orphanPullRequests: [],
             },
           ],
         },
@@ -79,6 +107,12 @@ describe("GitStateV1", () => {
     const parsed = parseGitStateV1(populated);
     expect(parsed.groups[0]!.displayPrimaryRepoKey).toBe("arc-scraper");
     expect(parsed.groups[0]!.repos[0]!.branches[0]!.statuses).toContain("dirty");
+    // COS-5e: the joined PR + review round-trip
+    const pr = parsed.groups[0]!.repos[0]!.branches[0]!.pullRequests[0]!;
+    expect(pr.prNumber).toBe(42);
+    expect(pr.review?.verdict).toBe("ship");
+    expect(pr.review?.current).toBe(true);
+    expect(parsed.groups[0]!.repos[0]!.orphanPullRequests[0]!.prNumber).toBe(43);
     expect(parsed.groups[0]!.repos[1]!.availability).toBe("missing");
     expect(parsed.groups[0]!.repos[1]!.branches).toEqual([]);
   });
@@ -86,7 +120,7 @@ describe("GitStateV1", () => {
   it("rejects a malformed availability", () => {
     const bad = {
       ...MINIMAL,
-      groups: [{ group: GROUP, repos: [{ repoKey: "x", role: "primary", availability: "bogus", trunk: { ref: null, state: "missing" }, branches: [] }] }],
+      groups: [{ group: GROUP, repos: [{ repoKey: "x", role: "primary", availability: "bogus", trunk: { ref: null, state: "missing" }, branches: [], orphanPullRequests: [] }] }],
     };
     expect(safeParseGitStateV1(bad).success).toBe(false);
   });
@@ -104,8 +138,38 @@ describe("GitStateV1", () => {
               availability: "ok",
               trunk: { ref: "origin/main", state: "ok" },
               branches: [
-                { branch: "m", headSha: "a", worktrees: [], trunk: { ref: "origin/main", state: "ok" }, comparison: "ok", ahead: 0, behind: 0, conflictsWithTrunk: null, lastCommitAt: "2026-06-23T01:00:00.000Z", staleDays: 0, recentCommits: [], statuses: ["not_a_status"] },
+                { branch: "m", headSha: "a", worktrees: [], trunk: { ref: "origin/main", state: "ok" }, comparison: "ok", ahead: 0, behind: 0, conflictsWithTrunk: null, lastCommitAt: "2026-06-23T01:00:00.000Z", staleDays: 0, recentCommits: [], statuses: ["not_a_status"], attentionSeverity: "info", pullRequests: [] },
               ],
+              orphanPullRequests: [],
+            },
+          ],
+        },
+      ],
+    };
+    expect(safeParseGitStateV1(bad).success).toBe(false);
+  });
+
+  it("rejects a malformed PR review verdict (COS-5e)", () => {
+    const bad = {
+      ...MINIMAL,
+      groups: [
+        {
+          group: GROUP,
+          repos: [
+            {
+              repoKey: "x",
+              role: "primary",
+              availability: "ok",
+              trunk: { ref: "origin/main", state: "ok" },
+              branches: [
+                {
+                  branch: "m", headSha: "a", worktrees: [], trunk: { ref: "origin/main", state: "ok" }, comparison: "ok", ahead: 0, behind: 0, conflictsWithTrunk: null, lastCommitAt: "2026-06-23T01:00:00.000Z", staleDays: 0, recentCommits: [], statuses: [], attentionSeverity: "info",
+                  pullRequests: [
+                    { prNumber: 1, title: null, url: null, isDraft: false, headRef: "m", headSha: "a", updatedAt: null, ticketIds: [], review: { verdict: "totally-bogus", reportKind: "cannons", generatedAt: "2026-06-23T01:00:00.000Z", current: true, p0: null, p1: null, p2: null } },
+                  ],
+                },
+              ],
+              orphanPullRequests: [],
             },
           ],
         },

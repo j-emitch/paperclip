@@ -2,14 +2,14 @@
  * The cockpit's tab taxonomy — single source of truth consumed by both the page
  * tab bar and the route sidebar so they cannot drift. The array order IS the
  * display order: the live daily-driver surfaces first, in workflow order
- * (Home -> Atlas -> Source -> Docs -> Agents -> Skills), then the placeholders
+ * (Home -> Atlas -> Branch·PR -> Docs -> Agents -> Skills), then the placeholders
  * in arrival order (Teaching = COS-2, Knowledge = COS-3, Hygiene = COS-4).
  * Adding a surface or lighting one up is a one-line change here.
  */
 export type CompanyOsTabKey =
   | "home"
   | "atlas"
-  | "source"
+  | "branch-pr"
   | "docs"
   | "agents"
   | "skills"
@@ -41,10 +41,10 @@ export const COMPANY_OS_TABS: readonly CompanyOsTab[] = [
     liveIn: "COS-5d",
   },
   {
-    key: "source",
-    label: "Source",
-    description: "Per-branch working-tree-vs-trunk state across every repo + worktree — ahead/behind, dirty, stale, conflicts.",
-    liveIn: "COS-1f",
+    key: "branch-pr",
+    label: "Branch · PR Health",
+    description: "Every branch + worktree vs trunk — ahead/behind, dirty, stale, conflicts — with each open PR's lifecycle + review verdict, and what needs attention.",
+    liveIn: "COS-5e",
   },
   {
     key: "docs",
@@ -100,13 +100,16 @@ export function isCompanyOsTabKey(value: string): value is CompanyOsTabKey {
  * `docs` when the Docs surface superseded the Reports tab (COS-1g/1h); `routines`
  * became `agents` when the Agents cockpit subsumed the standalone routine board
  * (COS-1R); `board` became `atlas` when the Build Atlas replaced the Kanban
- * (COS-5d). Single source of the legacy tab-key map, consumed by the active-tab
- * store to resolve a persisted pre-rename key forward instead of onto a dead tab.
+ * (COS-5d); `source` became `branch-pr` when the Source tab grew into the dedicated
+ * Branch · PR Health section (COS-5e). Single source of the legacy tab-key map,
+ * consumed by the active-tab store to resolve a persisted pre-rename key forward
+ * instead of onto a dead tab.
  */
 const LEGACY_TAB_KEYS: Readonly<Record<string, CompanyOsTabKey>> = {
   reports: "docs",
   routines: "agents",
   board: "atlas",
+  source: "branch-pr",
 };
 
 /**
@@ -114,8 +117,8 @@ const LEGACY_TAB_KEYS: Readonly<Record<string, CompanyOsTabKey>> = {
  * known legacy key (e.g. `reports`) maps forward, and anything unrecognized
  * falls back to the default landing tab. Used by the active-tab store to
  * sanitize a persisted key across the `reports` -> `docs`, `routines` ->
- * `agents`, and `board` -> `atlas` renames so a returning session never lands on
- * a dead tab.
+ * `agents`, `board` -> `atlas`, and `source` -> `branch-pr` renames so a returning
+ * session never lands on a dead tab.
  */
 export function normalizeTabKey(value: string): CompanyOsTabKey {
   if (isCompanyOsTabKey(value)) return value;

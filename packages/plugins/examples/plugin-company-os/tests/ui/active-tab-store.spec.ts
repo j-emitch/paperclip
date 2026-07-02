@@ -40,7 +40,7 @@ afterEach(() => {
 
 describe("active-tab-store persistence", () => {
   it("does NOT read storage at import — starts at Home even with a persisted value", async () => {
-    const storage = makeFakeStorage({ [KEY]: "source" });
+    const storage = makeFakeStorage({ [KEY]: "atlas" });
     const { setActiveTab } = await loadStore(storage);
     expect(storage.getItem).not.toHaveBeenCalled(); // SSR/hydration-safe: no import-time read
     setActiveTab("home"); // still Home -> no-op, proving the pre-hydration value
@@ -48,11 +48,11 @@ describe("active-tab-store persistence", () => {
   });
 
   it("hydratePersistedTab adopts a persisted valid key", async () => {
-    const storage = makeFakeStorage({ [KEY]: "source" });
+    const storage = makeFakeStorage({ [KEY]: "atlas" });
     const { setActiveTab, hydratePersistedTab } = await loadStore(storage);
     hydratePersistedTab();
-    expect(storage.setItem).toHaveBeenCalledWith(KEY, "source"); // adopted
-    setActiveTab("source"); // already source -> no further write
+    expect(storage.setItem).toHaveBeenCalledWith(KEY, "atlas"); // adopted
+    setActiveTab("atlas"); // already source -> no further write
     expect(storage.setItem).toHaveBeenCalledTimes(1);
   });
 
@@ -73,7 +73,7 @@ describe("active-tab-store persistence", () => {
   });
 
   it("hydratePersistedTab runs only once (idempotent)", async () => {
-    const storage = makeFakeStorage({ [KEY]: "source" });
+    const storage = makeFakeStorage({ [KEY]: "atlas" });
     const { hydratePersistedTab } = await loadStore(storage);
     hydratePersistedTab();
     storage.getItem.mockClear();
@@ -91,7 +91,7 @@ describe("active-tab-store persistence", () => {
   it("is SSR-safe: no `localStorage` degrades to Home without throwing", async () => {
     const mod = await loadStore(undefined);
     expect(() => mod.hydratePersistedTab()).not.toThrow();
-    expect(() => mod.setActiveTab("source")).not.toThrow();
+    expect(() => mod.setActiveTab("atlas")).not.toThrow();
   });
 
   it("survives a throwing storage (sandboxed iframe / private mode) by degrading to Home", async () => {
@@ -107,9 +107,9 @@ describe("active-tab-store persistence", () => {
   it("does not overwrite a tab the user navigated to before hydration runs", async () => {
     const storage = makeFakeStorage({ [KEY]: "docs" });
     const { setActiveTab, hydratePersistedTab } = await loadStore(storage);
-    setActiveTab("source"); // a click in the mount window, before the effect fires
+    setActiveTab("atlas"); // a click in the mount window, before the effect fires
     storage.setItem.mockClear();
-    hydratePersistedTab(); // persisted "docs" must NOT clobber the user's "source"
+    hydratePersistedTab(); // persisted "docs" must NOT clobber the user's "atlas"
     expect(storage.setItem).not.toHaveBeenCalled();
   });
 });

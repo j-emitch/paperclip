@@ -11,13 +11,24 @@
  */
 
 import type { SignalBundle } from "../contracts/WorkSignalSource.js";
-import { isBranchSignal, isRepoGitSignal, type BranchSignal } from "../contracts/signals.js";
+import {
+  isBranchSignal,
+  isRepoGitSignal,
+  isReviewSignal,
+  isWorkSignal,
+  type BranchSignal,
+  type ReviewSignal,
+  type WorkSignal,
+} from "../contracts/signals.js";
 import type { Diagnostic } from "../contracts/diagnostics.js";
 import type { ProjectTaxonomyV1 } from "../contracts/projects.js";
+import { branchStatusSeverity } from "../contracts/branch-health.js";
 import {
   GIT_STATE_SCHEMA_VERSION,
   type BranchGitV1,
+  type BranchPrV1,
   type GitStateV1,
+  type PrReviewV1,
   type ProjectGitSectionV1,
   type RepoGitStateV1,
 } from "../contracts/git-state.js";
@@ -27,6 +38,12 @@ export function deriveGitState(bundle: SignalBundle, nowMs: number, taxonomy: Pr
   const signals = bundle.batches.flatMap((b) => b.signals);
   const repoGits = signals.filter(isRepoGitSignal);
   const branches = signals.filter(isBranchSignal);
+  // PR + review signals (PullRequestSource / ReviewReportSource). The board folds
+  // these too; here they enrich each branch row with its open-PR lifecycle + joined
+  // review state (COS-5e). A PR signal is a work signal carrying a prNumber; a
+  // multi-ticket PR fans into several signals, so the collector dedups by number.
+  const prSignals = signals.filter(isWorkSignal).filter((w) => typeof w.prNumber === "number");
+  const reviews = signals.filter(isReviewSignal);
 
   const branchesByRepo = new Map<string, BranchSignal[]>();
   for (const b of branches) {
@@ -34,22 +51,30 @@ export function deriveGitState(bundle: SignalBundle, nowMs: number, taxonomy: Pr
     list.push(b);
     branchesByRepo.set(b.repo, list);
   }
+  const prsByRepo = collectPullRequestsByRepo(prSignals, reviews);
 
   // One RepoGitStateV1 per repoGit header signal (the carrier for absent repos).
   const repoStates = new Map<string, RepoGitStateV1>();
   for (const rg of repoGits) {
+    const repoPrs = prsByRepo.get(rg.repo) ?? [];
     const repoBranches =
       rg.availability === "ok"
         ? (branchesByRepo.get(rg.repo) ?? [])
-            .map(toBranchGitV1)
+            .map((b) => toBranchGitV1(b, repoPrs))
             .sort((a, b) => branchSortKey(a).localeCompare(branchSortKey(b)))
         : [];
+    // A PR whose head ref matches NO local branch (branch on another machine, deleted
+    // locally, or a null head ref) is an orphan — kept visible, never dropped (show-0
+    // honesty). An available repo with no local branches surfaces all its PRs here.
+    const localNames = new Set(repoBranches.map((b) => b.branch).filter((n): n is string => n !== null));
+    const orphanPullRequests = repoPrs.filter((pr) => pr.headRef === null || !localNames.has(pr.headRef));
     repoStates.set(rg.repo, {
       repoKey: rg.repo,
       role: "primary", // overwritten per group membership below
       availability: rg.availability,
       trunk: { ref: rg.trunk.ref, state: rg.trunk.state },
       branches: repoBranches,
+      orphanPullRequests,
     });
   }
 
@@ -70,6 +95,7 @@ export function deriveGitState(bundle: SignalBundle, nowMs: number, taxonomy: Pr
         availability: "missing",
         trunk: { ref: null, state: "missing" },
         branches: [],
+        orphanPullRequests: [],
       };
     });
 
@@ -108,7 +134,7 @@ export function deriveGitState(bundle: SignalBundle, nowMs: number, taxonomy: Pr
 }
 
 /** Map a BranchSignal's git payload → the persisted BranchGitV1 row (drop provenance). */
-function toBranchGitV1(b: BranchSignal): BranchGitV1 {
+function toBranchGitV1(b: BranchSignal, repoPrs: readonly BranchPrV1[]): BranchGitV1 {
   return {
     branch: b.branch,
     headSha: b.headSha,
@@ -133,6 +159,115 @@ function toBranchGitV1(b: BranchSignal): BranchGitV1 {
       ...(c.stat ? { stat: { ...c.stat } } : {}),
     })),
     statuses: [...b.statuses],
+    // Worst-of-statuses severity, computed once here via the SAME shared function
+    // deriveOrientation uses for Home — persisted so the browser never recomputes it.
+    attentionSeverity: branchStatusSeverity(b.statuses),
+    // Open PRs whose head ref is this branch (COS-5e). A detached HEAD (branch===null)
+    // can't match a head ref, so it carries no PRs.
+    pullRequests: b.branch === null ? [] : repoPrs.filter((pr) => pr.headRef === b.branch),
+  };
+}
+
+/**
+ * Collect open PRs per repo, deduped by `{repo, prNumber}` (a multi-ticket PR fans
+ * into one WorkSignal per ticket — merge their ticketIds into one row) and joined
+ * with their review report. Keyed by repo so the repo builder attaches each PR to
+ * its head branch or surfaces it as an orphan; newest-updated first within a repo.
+ */
+function collectPullRequestsByRepo(
+  prSignals: readonly WorkSignal[],
+  reviews: readonly ReviewSignal[],
+): Map<string, BranchPrV1[]> {
+  interface Acc {
+    repo: string;
+    prNumber: number;
+    title: string | null;
+    url: string | null;
+    isDraft: boolean;
+    headRef: string | null;
+    headSha: string | null;
+    updatedAt: string | null;
+    ticketIds: string[];
+  }
+  const byKey = new Map<string, Acc>();
+  for (const w of prSignals) {
+    if (typeof w.prNumber !== "number") continue;
+    const key = `${w.repo}#${w.prNumber}`;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, {
+        repo: w.repo,
+        prNumber: w.prNumber,
+        title: w.title ?? null,
+        url: w.url ?? null,
+        isDraft: w.isDraft ?? false,
+        headRef: w.headRef ?? null,
+        headSha: w.sha ?? null,
+        updatedAt: w.mtime ?? null,
+        ticketIds: w.ticketId ? [w.ticketId] : [],
+      });
+      continue;
+    }
+    // Merge the fan-out siblings: union ticketIds, fill any field the first lacked.
+    if (w.ticketId && !existing.ticketIds.includes(w.ticketId)) existing.ticketIds.push(w.ticketId);
+    existing.title ??= w.title ?? null;
+    existing.url ??= w.url ?? null;
+    existing.headRef ??= w.headRef ?? null;
+    existing.headSha ??= w.sha ?? null;
+    existing.updatedAt ??= w.mtime ?? null;
+  }
+
+  const byRepo = new Map<string, BranchPrV1[]>();
+  for (const acc of byKey.values()) {
+    const pr: BranchPrV1 = {
+      prNumber: acc.prNumber,
+      title: acc.title,
+      url: acc.url,
+      isDraft: acc.isDraft,
+      headRef: acc.headRef,
+      headSha: acc.headSha,
+      updatedAt: acc.updatedAt,
+      ticketIds: acc.ticketIds,
+      review: reviewForPr(acc.repo, acc.prNumber, acc.headSha, reviews),
+    };
+    const list = byRepo.get(acc.repo) ?? [];
+    list.push(pr);
+    byRepo.set(acc.repo, list);
+  }
+  for (const list of byRepo.values()) {
+    list.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || b.prNumber - a.prNumber);
+  }
+  return byRepo;
+}
+
+/**
+ * The review joined onto a PR: a head-current report (report sha === PR head oid)
+ * wins — it pertains to what's open now — else the latest older report for the same
+ * PR number, marked `current: false`. Reports join by sha OR prNumber; a report with
+ * neither can't be attributed to this PR (left to the docs viewer). Absent ⇒ null
+ * (unknown, never "unreviewed" — reports are gitignored + machine-local).
+ */
+function reviewForPr(
+  repo: string,
+  prNumber: number,
+  headSha: string | null,
+  reviews: readonly ReviewSignal[],
+): PrReviewV1 | null {
+  const candidates = reviews.filter(
+    (r) => r.repo === repo && ((headSha !== null && r.sha === headSha) || r.prNumber === prNumber),
+  );
+  if (candidates.length === 0) return null;
+  const headCurrent = headSha !== null ? candidates.filter((r) => r.sha === headSha) : [];
+  const pool = headCurrent.length > 0 ? headCurrent : candidates;
+  const best = pool.reduce((a, b) => (b.generatedAt.localeCompare(a.generatedAt) > 0 ? b : a));
+  return {
+    verdict: best.verdict,
+    reportKind: best.reportKind,
+    generatedAt: best.generatedAt,
+    current: headSha !== null && best.sha === headSha,
+    p0: best.p0 ?? null,
+    p1: best.p1 ?? null,
+    p2: best.p2 ?? null,
   };
 }
 

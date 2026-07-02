@@ -26,8 +26,8 @@ interface TileSpec {
 const TILES: readonly TileSpec[] = [
   { key: "inProgress", label: "In progress", tone: tokens.accent, attention: false, to: "atlas" },
   { key: "openPrs", label: "Open PRs", tone: statusColors.proceed, attention: false, to: "atlas" },
-  { key: "branchesNeedingAttention", label: "Branches at risk", tone: statusColors.stale, attention: true, to: "source" },
-  { key: "dirtyWorktrees", label: "Dirty worktrees", tone: statusColors.cached, attention: true, to: "source" },
+  { key: "branchesNeedingAttention", label: "Branches at risk", tone: statusColors.stale, attention: true, to: "branch-pr" },
+  { key: "dirtyWorktrees", label: "Dirty worktrees", tone: statusColors.cached, attention: true, to: "branch-pr" },
   { key: "alerts", label: "Alerts", tone: statusColors.danger, attention: true },
 ];
 

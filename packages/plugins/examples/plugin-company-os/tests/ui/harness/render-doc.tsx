@@ -14,8 +14,8 @@ import { EmptyState, ErrorState, LoadingState } from "../../../src/ui/board/stat
 import { ReportsView } from "../../../src/ui/reports/ReportsView.js";
 import { DocumentViewerPanel } from "../../../src/ui/shared/DocumentViewerPanel.js";
 import { HomeView } from "../../../src/ui/home/HomeView.js";
-import { SourceView } from "../../../src/ui/source/SourceView.js";
-import { BranchRow } from "../../../src/ui/source/BranchRow.js";
+import { BranchPrHealthView } from "../../../src/ui/branch-pr/BranchPrHealthView.js";
+import { BranchRow } from "../../../src/ui/branch-pr/BranchRow.js";
 import { DocsView } from "../../../src/ui/docs/DocsView.js";
 import { AgentsView } from "../../../src/ui/agents/AgentsView.js";
 import { BuildAtlasView } from "../../../src/ui/atlas/BuildAtlasView.js";
@@ -28,7 +28,7 @@ import type { BoardStateV1 } from "../../../src/contracts/index.js";
 import { goldenBoard, staleBoard, zeroChipBoard, RENDER_NOW } from "../fixtures/board.js";
 import { goldenArtifactIndex, okMarkdownContent, REPORTS_NOW } from "../fixtures/reports.js";
 import { goldenOrientation, emptyOrientation, HOME_NOW } from "../fixtures/home.js";
-import { goldenGitState, emptyGitState, SOURCE_NOW } from "../fixtures/source.js";
+import { goldenGitState, emptyGitState, BRANCH_PR_NOW } from "../fixtures/branch-pr.js";
 import { goldenDocIndex, emptyDocIndex, dogfoodSpecDocId, DOCS_NOW } from "../fixtures/docs.js";
 import { goldenAgentSystem, emptyAgentSystem, AGENTS_NOW } from "../fixtures/agents.js";
 import { goldenAtlas, ATLAS_NOW } from "../fixtures/atlas.js";
@@ -112,8 +112,8 @@ function home(isMobile: boolean, opts?: { empty?: boolean; drawer?: boolean }): 
   );
 }
 
-function source(isMobile: boolean, opts?: { empty?: boolean }): ReactElement {
-  return <SourceView gitState={opts?.empty ? emptyGitState() : goldenGitState()} now={SOURCE_NOW} isMobile={isMobile} />;
+function branchPr(isMobile: boolean, opts?: { empty?: boolean }): ReactElement {
+  return <BranchPrHealthView gitState={opts?.empty ? emptyGitState() : goldenGitState()} now={BRANCH_PR_NOW} isMobile={isMobile} />;
 }
 
 function docs(isMobile: boolean, opts?: { empty?: boolean; selected?: boolean }): ReactElement {
@@ -181,15 +181,15 @@ function atlasExpanded(): ReactElement {
   );
 }
 
-/** A single expanded BranchRow — proves the commit list renders (the harness is
- *  SSR-only with no hydration, so an open row is screenshotted via `defaultExpanded`,
- *  not a click). */
-function sourceExpandedBranch(): ReactElement {
-  const branch = goldenGitState().groups[0].repos[0].branches[0]; // company/main, has commits
+/** A single expanded BranchRow — proves the open-PR detail + commit list render (the
+ *  harness is SSR-only with no hydration, so an open row is screenshotted via
+ *  `defaultExpanded`, not a click). Uses docs/COS-1 (a branch WITH an open PR). */
+function branchPrExpandedBranch(): ReactElement {
+  const branch = goldenGitState().groups[0].repos[0].branches[1]; // company/docs/COS-1, PR #361 + commits
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
       <CockpitMotionStyles />
-      <BranchRow branch={branch} now={SOURCE_NOW} defaultExpanded />
+      <BranchRow branch={branch} now={BRANCH_PR_NOW} defaultExpanded />
     </div>
   );
 }
@@ -216,10 +216,10 @@ export function harnessDocs(): HarnessDoc[] {
     { name: "home-mobile", width: 390, html: document("Home · mobile", renderToStaticMarkup(home(true)), 390) },
     { name: "home-empty", width: 1180, html: document("Home · empty (all 0-states)", renderToStaticMarkup(home(false, { empty: true })), 1180) },
     { name: "home-drawer", width: 1180, html: document("Home · briefing drawer", renderToStaticMarkup(home(false, { drawer: true })), 1180) },
-    { name: "source-desktop", width: 1180, html: document("Source · populated", renderToStaticMarkup(source(false)), 1180) },
-    { name: "source-mobile", width: 390, html: document("Source · mobile", renderToStaticMarkup(source(true)), 390) },
-    { name: "source-empty", width: 1180, html: document("Source · empty", renderToStaticMarkup(source(false, { empty: true })), 1180) },
-    { name: "source-expanded", width: 760, html: document("Source · expanded branch", renderToStaticMarkup(sourceExpandedBranch()), 760) },
+    { name: "branch-pr-desktop", width: 1180, html: document("Branch · PR Health · populated", renderToStaticMarkup(branchPr(false)), 1180) },
+    { name: "branch-pr-mobile", width: 390, html: document("Branch · PR Health · mobile", renderToStaticMarkup(branchPr(true)), 390) },
+    { name: "branch-pr-empty", width: 1180, html: document("Branch · PR Health · empty", renderToStaticMarkup(branchPr(false, { empty: true })), 1180) },
+    { name: "branch-pr-expanded", width: 760, html: document("Branch · PR Health · expanded branch", renderToStaticMarkup(branchPrExpandedBranch()), 760) },
     { name: "docs-desktop", width: 1180, html: document("Docs · populated", renderToStaticMarkup(docs(false)), 1180) },
     { name: "docs-mobile", width: 390, html: document("Docs · mobile", renderToStaticMarkup(docs(true)), 390) },
     { name: "docs-empty", width: 1180, html: document("Docs · empty", renderToStaticMarkup(docs(false, { empty: true })), 1180) },

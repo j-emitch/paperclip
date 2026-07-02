@@ -52,8 +52,9 @@ test.describe("Company OS home", () => {
         // Metric tiles are labelled navigation buttons (icon-only arrow has aria-hidden).
         await expect(p.locator('[aria-label="Current snapshot"]')).toHaveCount(1);
         await expect(p.locator('button[title="Go to In progress"]')).toHaveCount(1);
-        // The cross-repo dependency badge surfaced in branch health.
-        await expect(p.getByText("arc-scraper").first()).toBeVisible();
+        // Branch health is slimmed to a one-line alert link into Branch · PR Health (COS-5e);
+        // the full per-branch detail (repo badges etc.) moved to that tab.
+        await expect(p.getByText("branches need attention", { exact: false }).first()).toBeVisible();
       },
       page,
       testInfo.project.name,

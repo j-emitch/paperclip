@@ -14,13 +14,12 @@
 
 import { z } from "@paperclipai/plugin-sdk";
 import { diagnosticSchema, sourceFreshnessSchema } from "./diagnostics.js";
-import { branchStatusSchema } from "./git-state.js";
+import { branchStatusSchema, healthSeveritySchema } from "./git-state.js";
 import { projectTaxonomyV1Schema } from "./projects.js";
 import {
   ALERT_SEVERITIES,
   DEEP_LINK_TABS,
   FRESHNESS_KINDS,
-  HEALTH_SEVERITIES,
   ORIENTATION_ALERT_KINDS,
   RECENT_WORK_KINDS,
   ROUTINE_VERDICTS,
@@ -59,7 +58,8 @@ export const DEFAULT_PINNED_ROLES = [
   "weekly-summary",
 ] as const;
 
-export const healthSeveritySchema = z.enum(HEALTH_SEVERITIES);
+// `healthSeveritySchema` is owned by `git-state.ts` (the foundational branch contract)
+// and imported above — orientation shares it rather than defining a second copy (COS-5e).
 export const alertSeveritySchema = z.enum(ALERT_SEVERITIES);
 export const orientationAlertKindSchema = z.enum(ORIENTATION_ALERT_KINDS);
 export const recentWorkKindSchema = z.enum(RECENT_WORK_KINDS);

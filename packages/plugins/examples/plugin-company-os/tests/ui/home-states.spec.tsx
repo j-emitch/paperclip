@@ -23,11 +23,9 @@ describe("Home SSR", () => {
     // Metrics strip values + a label
     expect(html).toContain("In progress");
     expect(html).toContain("Branches at risk");
-    // Branch health — project header + a branch + severity label + status chip
-    expect(html).toContain("Juice Bar");
-    expect(html).toContain("claude/SSF-04/reconciliation-rehaul");
-    expect(html).toContain("At risk");
-    expect(html).toContain("conflicts");
+    // Branch health — slimmed to a one-line alert link into Branch · PR Health (COS-5e);
+    // the full per-branch detail moved to that tab. 2 juice-bar rows in the fixture.
+    expect(html).toContain("2 branches need attention");
     // Recent commits — short sha + subject
     expect(html).toContain("44edce3"); // 7-char short sha
     expect(html).toContain("add User Roles");

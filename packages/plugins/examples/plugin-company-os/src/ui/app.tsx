@@ -13,7 +13,7 @@ import { useActiveTab, usePersistedTabHydration } from "./active-tab-store.js";
 import { useIsMobile } from "./hooks/useMediaQuery.js";
 import { WorkSurface } from "./work-surface.js";
 import { Home } from "./home/Home.js";
-import { Source } from "./source/Source.js";
+import { BranchPrHealth } from "./branch-pr/BranchPrHealth.js";
 import { Docs } from "./docs/Docs.js";
 import { Agents } from "./agents/Agents.js";
 import { Skills } from "./skills/Skills.js";
@@ -127,7 +127,7 @@ export function CompanyOsPage({ context }: PluginPageProps) {
   // The live surfaces own their own panel chrome; placeholders sit inside a card.
   const isLive =
     current.key === "home" ||
-    current.key === "source" ||
+    current.key === "branch-pr" ||
     current.key === "atlas" ||
     current.key === "docs" ||
     current.key === "agents" ||
@@ -193,8 +193,8 @@ function TabPanel({
       return <Skills key={key} companyId={companyId} />;
     case "home":
       return <Home key={key} companyId={companyId} />;
-    case "source":
-      return <Source key={key} companyId={companyId} />;
+    case "branch-pr":
+      return <BranchPrHealth key={key} companyId={companyId} />;
     default:
       return <PlaceholderPanel tab={tab} />;
   }

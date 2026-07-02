@@ -36,6 +36,8 @@ export * from "./projects.js";
 // COS-5g — the unified grouping resolver (prefix lens + repo-badge facade)
 export * from "./grouping.js";
 export * from "./git-state.js";
+// COS-5e — shared branch-health severity (Home digest + Branch·PR Health view)
+export * from "./branch-health.js";
 export * from "./orientation.js";
 export * from "./doc-index.js";
 // Layer 2 — COS-1h skills catalog projection contract

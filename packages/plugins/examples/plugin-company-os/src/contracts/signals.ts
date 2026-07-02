@@ -92,6 +92,15 @@ export interface WorkSignal extends SignalProvenance {
   readonly title?: string;
   /** Deep-link URL (PR url, etc.), when available. */
   readonly url?: string;
+  /**
+   * The PR's head branch name (`gh pr list --json headRefName`) — PR sources only.
+   * The Branch·PR Health projection joins an open PR onto its local branch by this
+   * ref (a name join survives local commits landing ahead of the pushed PR head, a
+   * sha join would not). Absent on non-PR work signals.
+   */
+  readonly headRef?: string;
+  /** True when the PR is a draft (`gh pr list --json isDraft`) — PR sources only. */
+  readonly isDraft?: boolean;
   /** Set when `ticketId` is null — why this work couldn't be classified. */
   readonly unclassifiedReason?: UnclassifiedReason;
   /**

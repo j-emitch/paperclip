@@ -21,13 +21,19 @@ import { projectGroupV1Schema, projectTaxonomyV1Schema } from "./projects.js";
 import {
   BRANCH_COMPARISONS,
   BRANCH_STATUSES,
+  HEALTH_SEVERITIES,
   PROJECT_REPO_ROLES,
   REPO_AVAILABILITY,
+  REVIEW_REPORT_KINDS,
+  REVIEW_VERDICTS,
   type AssertEqual,
   type BranchComparison,
   type BranchStatus,
   type Expect,
+  type HealthSeverity,
   type RepoAvailability,
+  type ReviewReportKind,
+  type ReviewVerdict,
 } from "./vocab.js";
 
 export const GIT_STATE_SCHEMA_VERSION = 1 as const;
@@ -44,6 +50,16 @@ export const repoAvailabilitySchema = z.enum(REPO_AVAILABILITY);
 export const branchComparisonSchema = z.enum(BRANCH_COMPARISONS);
 /** Shared by `BranchGitV1` here AND `BranchHealthEntryV1` in `orientation.ts`. */
 export const branchStatusSchema = z.enum(BRANCH_STATUSES);
+/** Review verdict + report store — the `ReviewSignal` half of the Branch·PR join (COS-5e). */
+export const reviewVerdictSchema = z.enum(REVIEW_VERDICTS);
+export const reviewReportKindSchema = z.enum(REVIEW_REPORT_KINDS);
+/**
+ * Per-branch git-status severity (COS-5e) — computed ONCE in `deriveGitState` via the
+ * shared `branchStatusSeverity`, the same function `deriveOrientation` uses for Home,
+ * and PERSISTED so the browser UI reads it as data (the COS-0 import boundary forbids
+ * the UI value-importing the severity function). Keeps Home's count ≡ the Branch·PR band.
+ */
+export const healthSeveritySchema = z.enum(HEALTH_SEVERITIES);
 
 /** Resolved trunk the branch is compared against (mirrors the signal `TrunkRef`). */
 export const trunkRefV1Schema = z.object({
@@ -84,6 +100,49 @@ export const worktreeGitV1Schema = z.object({
 });
 export type WorktreeGitV1 = z.infer<typeof worktreeGitV1Schema>;
 
+/**
+ * The review joined onto an open PR (COS-5e) — the `ReviewSignal` payload minus its
+ * provenance envelope. `current` is the head-freshness of the join: true when the
+ * report's commit sha matches the PR's head oid (the review pertains to what's open
+ * now), false when only a stale/older report for that PR exists. An ABSENT review is
+ * `null` (unknown — never "unreviewed"; reports are gitignored + machine-local).
+ */
+export const prReviewV1Schema = z.object({
+  verdict: reviewVerdictSchema,
+  reportKind: reviewReportKindSchema,
+  generatedAt: z.string().min(1),
+  /** true ⇒ report sha === PR head sha (head-current); false ⇒ an older report for this PR. */
+  current: z.boolean(),
+  p0: z.number().int().nonnegative().nullable(),
+  p1: z.number().int().nonnegative().nullable(),
+  p2: z.number().int().nonnegative().nullable(),
+});
+export type PrReviewV1 = z.infer<typeof prReviewV1Schema>;
+
+/**
+ * An open pull request joined onto its local branch (COS-5e). One row per open PR
+ * (a multi-ticket PR fans into multiple `WorkSignal`s in the board projection, but
+ * the git-state join dedups them by `prNumber` and merges their `ticketIds`).
+ * `headSha` is the PR's head oid — compared against the local branch tip to flag
+ * "local N commits ahead of the pushed PR head". `review` is the joined report or
+ * null (unknown).
+ */
+export const branchPrV1Schema = z.object({
+  prNumber: z.number().int().positive(),
+  title: z.string().nullable(),
+  url: z.string().nullable(),
+  isDraft: z.boolean(),
+  /** The PR's head branch ref — the branch-attachment join key; shown for orphan PRs. */
+  headRef: z.string().nullable(),
+  /** The PR head commit oid (git may be ahead locally); null when gh omitted it. */
+  headSha: z.string().nullable(),
+  updatedAt: z.string().nullable(),
+  /** Tickets this PR resolves (title scope, else head branch) — cross-links to the Atlas. */
+  ticketIds: z.array(z.string()),
+  review: prReviewV1Schema.nullable(),
+});
+export type BranchPrV1 = z.infer<typeof branchPrV1Schema>;
+
 /** The persisted per-branch row — the `BranchSignal` git payload (no provenance envelope). */
 export const branchGitV1Schema = z.object({
   branch: z.string().nullable(),
@@ -98,6 +157,10 @@ export const branchGitV1Schema = z.object({
   staleDays: z.number().int().nonnegative(),
   recentCommits: z.array(commitRefV1Schema),
   statuses: z.array(branchStatusSchema),
+  /** Worst-of-`statuses` severity (COS-5e) — projection-computed, so the UI needn't recompute it. */
+  attentionSeverity: healthSeveritySchema,
+  /** Open PRs whose head ref is this branch (COS-5e); [] when none — shown as 0, not hidden. */
+  pullRequests: z.array(branchPrV1Schema),
 });
 export type BranchGitV1 = z.infer<typeof branchGitV1Schema>;
 
@@ -110,6 +173,12 @@ export const repoGitStateV1Schema = z.object({
   trunk: trunkRefV1Schema,
   /** [] when availability !== "ok". */
   branches: z.array(branchGitV1Schema),
+  /**
+   * Open PRs for this repo whose head ref matches NO local branch (COS-5e) — a PR
+   * from a branch checked out on another machine, or already deleted locally. Kept
+   * visible (never dropped) so the branch/PR picture is honest; [] when none.
+   */
+  orphanPullRequests: z.array(branchPrV1Schema),
 });
 export type RepoGitStateV1 = z.infer<typeof repoGitStateV1Schema>;
 
@@ -147,3 +216,6 @@ export function safeParseGitStateV1(input: unknown): z.SafeParseReturnType<unkno
 type _AvailabilityMatches = Expect<AssertEqual<z.infer<typeof repoAvailabilitySchema>, RepoAvailability>>;
 type _ComparisonMatches = Expect<AssertEqual<z.infer<typeof branchComparisonSchema>, BranchComparison>>;
 type _BranchStatusMatches = Expect<AssertEqual<z.infer<typeof branchStatusSchema>, BranchStatus>>;
+type _ReviewVerdictMatches = Expect<AssertEqual<z.infer<typeof reviewVerdictSchema>, ReviewVerdict>>;
+type _ReviewReportKindMatches = Expect<AssertEqual<z.infer<typeof reviewReportKindSchema>, ReviewReportKind>>;
+type _HealthSeverityMatches = Expect<AssertEqual<z.infer<typeof healthSeveritySchema>, HealthSeverity>>;

@@ -1,10 +1,12 @@
 /**
- * `BranchRow` — one branch in the Source tree (spec §5.1), expandable to its
- * recent commits. The header shows the branch name (or a "detached" chip when
- * `branch===null`), the derived health flags as toned chips (the authoritative
- * `statuses[]` — which already encodes conflict + comparison state, so we never
- * double-render those), the ahead/behind + staleness magnitudes, the last-commit
- * age, and a per-worktree dirty badge. Expanding reveals the `CommitList`.
+ * `BranchRow` — one branch in the Branch·PR Health tree (spec §5.1), expandable to
+ * its open PRs + recent commits. The header shows the branch name (or a "detached"
+ * chip when `branch===null`), the derived health flags as toned chips (the
+ * authoritative `statuses[]` — which already encodes conflict + comparison state, so
+ * we never double-render those), a compact PR cue (its primary open PR's number +
+ * lifecycle + review verdict, COS-5e), the ahead/behind + staleness magnitudes, the
+ * last-commit age, and a per-worktree dirty badge. Expanding reveals each open PR's
+ * detail (verdict, findings, local-ahead note) then the `CommitList`.
  *
  * Local collapse state (default collapsed; `defaultExpanded` lets the harness
  * screenshot an open row) — pure + SSR-faithful, like the board's lanes.
@@ -19,6 +21,7 @@ import { relativeTime } from "../shared/time.js";
 import { BRANCH_COMPARISON_LABELS, BRANCH_STATUS_LABELS, BRANCH_STATUS_TONES } from "../shared/git-labels.js";
 import { WorktreeBadge } from "./WorktreeBadge.js";
 import { CommitList } from "./CommitList.js";
+import { PrChip, PrDetailRow } from "./PrChip.js";
 
 export interface BranchRowProps {
   branch: BranchGitV1;
@@ -27,20 +30,36 @@ export interface BranchRowProps {
   defaultExpanded?: boolean;
 }
 
+/** A small uppercase section label inside the expanded body. */
+function SectionLabel({ children }: { children: string }) {
+  return (
+    <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: tokens.muted }}>
+      {children}
+    </div>
+  );
+}
+
 export function BranchRow({ branch, now, isMobile = false, defaultExpanded = false }: BranchRowProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const rootRef = useRef<HTMLDivElement | null>(null);
-  // When this row is the target of a consumed deep-link (defaultExpanded), bring
-  // it into view on mount. `block:"center"` (no smooth) is reduced-motion-safe.
-  // Mount-only by design — the deep-link is a one-shot, consumed once.
+  // Open + scroll into view when this row becomes the focus target — both on mount
+  // (a consumed Home deep-link) and later (an in-view attention-band click flips
+  // `defaultExpanded` true). Only ever opens on true, so it never force-collapses a
+  // row the user opened by hand. `block:"center"` (no smooth) is reduced-motion-safe.
   useEffect(() => {
-    if (defaultExpanded) rootRef.current?.scrollIntoView({ block: "center" });
+    if (defaultExpanded) {
+      setExpanded(true);
+      rootRef.current?.scrollIntoView({ block: "center" });
+    }
   }, [defaultExpanded]);
   // "in sync" only when there's genuinely nothing to flag — a dirty/stale branch
   // at ahead=0/behind=0 must still show its status chips, not collapse to a calm
   // "in sync" pill (codex B).
   const inSync = branch.comparison === "ok" && (branch.ahead ?? 0) === 0 && (branch.behind ?? 0) === 0 && branch.statuses.length === 0;
   const lastCommitAge = relativeTime(branch.lastCommitAt, now);
+  const prs = branch.pullRequests;
+  const primary = prs.length > 0 ? prs[0] : null;
+  const hasDetail = branch.recentCommits.length > 0 || prs.length > 0;
 
   const caret = (
     <span
@@ -86,6 +105,17 @@ export function BranchRow({ branch, now, isMobile = false, defaultExpanded = fal
       )}
     </div>
   );
+  // Compact PR cue — the primary open PR + a "+N" when a branch has several.
+  const prCue = primary ? (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+      <PrChip pr={primary} />
+      {prs.length > 1 ? (
+        <span style={{ fontSize: 11, color: tokens.muted }} title={`${prs.length} open PRs on this branch`}>
+          +{prs.length - 1}
+        </span>
+      ) : null}
+    </span>
+  ) : null;
   const magnitudes = (
     <span style={{ display: "flex", alignItems: "center", gap: 9, flex: "0 0 auto", fontSize: 11.5, color: tokens.muted, fontVariantNumeric: "tabular-nums" }}>
       {branch.comparison === "ok" ? (
@@ -120,27 +150,33 @@ export function BranchRow({ branch, now, isMobile = false, defaultExpanded = fal
     className: "cos-fx-row",
     "aria-expanded": expanded,
     onClick: () => setExpanded((v) => !v),
-    title: branch.recentCommits.length > 0 ? `${expanded ? "Collapse" : "Expand"} recent commits` : undefined,
+    title: hasDetail ? `${expanded ? "Collapse" : "Expand"} PR + commit detail` : undefined,
   };
 
   return (
     <div ref={rootRef} style={{ border: `1px solid ${tokens.border}`, borderRadius: tokens.radiusSm, background: tokens.card, overflow: "hidden" }}>
       {isMobile ? (
         // Mobile: header line (caret + name + magnitudes) over a chips line, so the
-        // branch name + flags + ahead/behind never collide on a narrow viewport.
+        // branch name + flags + PR cue + ahead/behind never collide on a narrow viewport.
         <button {...buttonProps} style={{ ...buttonBase, display: "flex", flexDirection: "column", gap: 7 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0, width: "100%" }}>
             {caret}
             {branchName}
             {magnitudes}
           </div>
-          {(!inSync && branch.statuses.length > 0) || inSync ? <div style={{ paddingLeft: 22, width: "100%" }}>{statusChips}</div> : null}
+          {inSync || branch.statuses.length > 0 || prCue ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", paddingLeft: 22, width: "100%" }}>
+              {statusChips}
+              {prCue}
+            </div>
+          ) : null}
         </button>
       ) : (
         <button {...buttonProps} style={{ ...buttonBase, display: "flex", alignItems: "center", gap: 9 }}>
           {caret}
           {branchName}
           {statusChips}
+          {prCue}
           <span style={{ flex: 1 }} />
           {magnitudes}
         </button>
@@ -155,8 +191,26 @@ export function BranchRow({ branch, now, isMobile = false, defaultExpanded = fal
       ) : null}
 
       {expanded ? (
-        <div className="cos-fx-fade" style={{ borderTop: `1px solid ${tokens.border}`, background: tokens.bg, padding: "8px 11px 9px" }}>
-          <CommitList commits={branch.recentCommits} now={now} />
+        <div
+          className="cos-fx-fade"
+          style={{ borderTop: `1px solid ${tokens.border}`, background: tokens.bg, padding: "9px 11px", display: "flex", flexDirection: "column", gap: 10 }}
+        >
+          {prs.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <SectionLabel>{prs.length === 1 ? "Open PR" : `Open PRs (${prs.length})`}</SectionLabel>
+              {prs.map((pr) => (
+                <PrDetailRow key={pr.prNumber} pr={pr} now={now} branchHeadSha={branch.headSha} />
+              ))}
+            </div>
+          ) : null}
+          {branch.recentCommits.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <SectionLabel>Recent commits</SectionLabel>
+              <CommitList commits={branch.recentCommits} now={now} />
+            </div>
+          ) : prs.length === 0 ? (
+            <CommitList commits={branch.recentCommits} now={now} />
+          ) : null}
         </div>
       ) : null}
     </div>

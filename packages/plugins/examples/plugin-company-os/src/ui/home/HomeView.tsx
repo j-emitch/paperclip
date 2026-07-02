@@ -71,14 +71,8 @@ export function HomeView({
     </Panel>
   );
   const branches = (
-    <Panel
-      index={3}
-      title="Branches needing attention"
-      count={orientation.branchHealth.length}
-      isMobile={isMobile}
-      action={orientation.branchHealth.length > 0 ? <SeeAll label="Source" onClick={() => onNavigateTab?.("source")} /> : undefined}
-    >
-      <BranchHealthPanel branchHealth={orientation.branchHealth} taxonomy={orientation.taxonomy} isMobile={isMobile} onFollow={onFollow} />
+    <Panel index={3} title="Branches needing attention" count={orientation.branchHealth.length} isMobile={isMobile}>
+      <BranchHealthPanel count={orientation.branchHealth.length} onOpen={() => onNavigateTab?.("branch-pr")} />
     </Panel>
   );
   const work = (
@@ -98,7 +92,7 @@ export function HomeView({
       title="Recent commits"
       count={orientation.recentCommits.length}
       isMobile={isMobile}
-      action={orientation.recentCommits.length > 0 ? <SeeAll label="Source" onClick={() => onNavigateTab?.("source")} /> : undefined}
+      action={orientation.recentCommits.length > 0 ? <SeeAll label="Branches" onClick={() => onNavigateTab?.("branch-pr")} /> : undefined}
     >
       <RecentCommitsGlance recentCommits={orientation.recentCommits} now={now} />
     </Panel>

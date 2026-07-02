@@ -219,8 +219,8 @@ export function HomeIcon({ size = 16, strokeWidth = 1.8 }: IconProps) {
   ));
 }
 
-export function SourceIcon({ size = 16, strokeWidth = 1.8 }: IconProps) {
-  // A git-branch glyph — the working-tree-vs-main source surface.
+export function BranchPrIcon({ size = 16, strokeWidth = 1.8 }: IconProps) {
+  // A git-branch glyph with a PR merge-in arrowhead — branch + PR health (COS-5e).
   return svg(size, strokeWidth, (
     <>
       <circle cx="6.5" cy="5" r="2.2" />
@@ -228,6 +228,7 @@ export function SourceIcon({ size = 16, strokeWidth = 1.8 }: IconProps) {
       <circle cx="17.5" cy="8" r="2.2" />
       <path d="M6.5 7.2v9.6" />
       <path d="M17.5 10.2c0 4-3.5 4.3-6.5 5.4" />
+      <path d="M14.6 5.2l2.9 2.8-2.9 2.8" />
     </>
   ));
 }
@@ -246,7 +247,7 @@ export function SkillsIcon({ size = 16, strokeWidth = 1.8 }: IconProps) {
 export const TAB_ICONS: Record<CompanyOsTabKey, (props: IconProps) => ReactElement> = {
   home: HomeIcon,
   atlas: AtlasIcon,
-  source: SourceIcon,
+  "branch-pr": BranchPrIcon,
   docs: DocsIcon,
   agents: AgentsIcon,
   skills: SkillsIcon,
