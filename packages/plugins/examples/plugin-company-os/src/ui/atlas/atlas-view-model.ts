@@ -16,6 +16,7 @@
  */
 
 import type {
+  AtlasDiagnosticV1,
   BuildAtlasV1,
   DomainV1,
   FamilyV1,
@@ -86,10 +87,37 @@ export interface AtlasVitals {
   edgeCount: number;
 }
 
-/** The fully prepared atlas: domain sections (each with ordered families) + vitals. */
+/** Diagnostics prepared for the rail: worst-first (total-ordered) + severity counts. */
+export interface DiagnosticsView {
+  sorted: AtlasDiagnosticV1[];
+  warnCount: number;
+  infoCount: number;
+}
+
+/** The fully prepared atlas: domain sections (each with ordered families) + vitals + diagnostics. */
 export interface AtlasView {
   sections: DomainSection[];
   vitals: AtlasVitals;
+  diagnostics: DiagnosticsView;
+}
+
+/** Warn before info — the atlas rail surfaces derivation problems worst-first. */
+const SEVERITY_RANK: Record<AtlasDiagnosticV1["severity"], number> = { warn: 0, info: 1 };
+
+/**
+ * Total order over diagnostics so the rail is deterministic regardless of the
+ * projection's emit order: severity (warn first) → code → prefix (null last) →
+ * message. Every comparator step is total, so `Array.sort` is stable + testable.
+ */
+export function sortDiagnostics(diagnostics: readonly AtlasDiagnosticV1[]): AtlasDiagnosticV1[] {
+  return [...diagnostics].sort(
+    (a, b) =>
+      SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] ||
+      a.code.localeCompare(b.code) ||
+      Number(a.prefix === null) - Number(b.prefix === null) || // a null prefix (global) sorts last
+      (a.prefix ?? "").localeCompare(b.prefix ?? "") ||
+      a.message.localeCompare(b.message),
+  );
 }
 
 /**
@@ -114,6 +142,7 @@ export function buildAtlasView(atlas: BuildAtlasV1): AtlasView {
   const shippedBuilds = atlas.families.reduce((sum, f) => sum + countShipped(f), 0);
   const totalBuilds = atlas.families.reduce((sum, f) => sum + f.builds.length, 0);
   const laneCount = atlas.laneGroups.reduce((sum, g) => sum + g.lanes.length, 0);
+  const warnCount = atlas.diagnostics.filter((d) => d.severity === "warn").length;
 
   return {
     sections,
@@ -126,6 +155,11 @@ export function buildAtlasView(atlas: BuildAtlasV1): AtlasView {
       diagnosticsCount: atlas.diagnostics.length,
       laneCount,
       edgeCount: atlas.edges.length,
+    },
+    diagnostics: {
+      sorted: sortDiagnostics(atlas.diagnostics),
+      warnCount,
+      infoCount: atlas.diagnostics.length - warnCount,
     },
   };
 }

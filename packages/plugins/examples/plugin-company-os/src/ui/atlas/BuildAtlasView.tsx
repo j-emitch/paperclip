@@ -18,7 +18,7 @@ import type { CSSProperties, ReactNode } from "react";
 import type { AtlasDiagnosticV1, BuildAtlasV1, GateState } from "../../contracts/index.js";
 import { statusColors, tokens } from "../tokens.js";
 import { withAlpha } from "../shared/color.js";
-import { Dot } from "../shared/badges.js";
+import { Dot, Pill } from "../shared/badges.js";
 import { CalmNote } from "../shared/feedback.js";
 import { StaleSourcePills } from "../shared/freshness.js";
 import { CockpitSurfaceStyles } from "../shared/surface-styles.js";
@@ -33,6 +33,7 @@ import {
   isClockSkewed,
   relativeTime,
   type AtlasVitals,
+  type DiagnosticsView,
   type DomainSection,
 } from "./atlas-view-model.js";
 
@@ -90,7 +91,7 @@ export function BuildAtlasView({ atlas, now, isMobile = false, onRefresh, refres
       ) : null}
 
       <Reveal delayMs={110 + view.sections.length * 60}>
-        <DiagnosticsRail diagnostics={atlas.diagnostics} sourceDiagnosticsCount={atlas.sourceDiagnostics.length} />
+        <DiagnosticsRail diagnostics={view.diagnostics} sourceDiagnosticsCount={atlas.sourceDiagnostics.length} />
       </Reveal>
 
       <FooterMeta derivedAt={atlas.derivedAt} sourceCount={atlas.sources.length} />
@@ -267,13 +268,10 @@ function DomainSectionView({ section, now, isMobile }: { section: DomainSection;
 // Diagnostics rail
 // ---------------------------------------------------------------------------
 
-/** Warn before info — the atlas rail surfaces derivation problems worst-first. */
-const SEVERITY_RANK: Record<AtlasDiagnosticV1["severity"], number> = { warn: 0, info: 1 };
-
-function DiagnosticsRail({ diagnostics, sourceDiagnosticsCount }: { diagnostics: readonly AtlasDiagnosticV1[]; sourceDiagnosticsCount: number }) {
-  const sorted = [...diagnostics].sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
-  const warnCount = diagnostics.filter((d) => d.severity === "warn").length;
-  const infoCount = diagnostics.length - warnCount;
+function DiagnosticsRail({ diagnostics, sourceDiagnosticsCount }: { diagnostics: DiagnosticsView; sourceDiagnosticsCount: number }) {
+  // Sorting + counts live in the view-model (buildAtlasView) so the rail is a pure
+  // renderer with a deterministic, unit-tested order (codex-5d-b-B-P2).
+  const { sorted, warnCount, infoCount } = diagnostics;
 
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -317,8 +315,10 @@ function DiagnosticRow({ diag }: { diag: AtlasDiagnosticV1 }) {
         color: tokens.fg,
       }}
     >
-      <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: tone, marginTop: 4, flex: "0 0 auto" }} />
-      <span style={{ minWidth: 0 }}>
+      {/* A text severity label — a non-colour cue so the level reads without relying on hue (WCAG color-not-only). */}
+      <Pill label={diag.severity} tone={tone} soft style={{ flex: "0 0 auto", textTransform: "uppercase", letterSpacing: 0.3 }} />
+      <span style={{ minWidth: 0, paddingTop: 1 }}>
+        <code style={{ fontFamily: tokens.mono, fontSize: 11, color: tokens.muted, marginRight: 6 }}>{diag.code}</code>
         {diag.prefix ? <strong style={{ fontFamily: tokens.mono, fontWeight: 700 }}>{diag.prefix}</strong> : null}
         {diag.prefix ? " — " : ""}
         {diag.message}
@@ -415,7 +415,8 @@ const badgeStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   gap: 6,
-  padding: "3px 9px",
+  // A touch more room so the live-dot's pulse ring stays graceful inside the pill (codex-5d-b Opus P2).
+  padding: "4px 10px",
   borderRadius: 999,
   background: tokens.secondary,
   border: `1px solid ${tokens.border}`,

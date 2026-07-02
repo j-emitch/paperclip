@@ -17,7 +17,8 @@ import { LifecycleStepper } from "../../src/ui/atlas/LifecycleStepper.js";
 import { SurfaceEmpty, SurfaceError, SurfaceLoading } from "../../src/ui/shared/surface-state.js";
 import { AtlasIcon } from "../../src/ui/icons.js";
 import { COCKPIT_MOTION_STYLE_ID } from "../../src/ui/shared/cockpit-motion.js";
-import type { LifecycleV1 } from "../../src/contracts/build-atlas.js";
+import { buildAtlasView, sortDiagnostics } from "../../src/ui/atlas/atlas-view-model.js";
+import type { AtlasDiagnosticV1, LifecycleV1 } from "../../src/contracts/build-atlas.js";
 import { goldenAtlas, ATLAS_NOW } from "./fixtures/atlas.js";
 
 const noop = () => {};
@@ -128,11 +129,26 @@ describe("BuildAtlasView — lineage", () => {
 describe("BuildAtlasView — diagnostics rail", () => {
   const html = render();
 
-  it("surfaces every diagnostic class worst-first", () => {
+  it("surfaces every diagnostic class", () => {
     expect(html).toContain("unregistered prefix"); // unknown_prefix (XYZ work + ZZZ ticket ref)
     expect(html).toContain("no lineage lane"); // orphan_family (IMPRV / LDI)
     expect(html).toContain("parked in Meta·Ops"); // unrouted_ticket (LYC-200)
     expect(html).toContain("source diagnostic"); // the stale-source rollup line
+  });
+
+  it("shows a non-colour severity label + the diagnostic code (a11y color-not-only)", () => {
+    expect(html).toContain("unknown_prefix"); // the code label
+    expect(html).toContain("orphan_family");
+    expect(html).toContain("unrouted_ticket");
+    expect(html).toContain("warn"); // the severity pill text (a non-colour cue)
+    expect(html).toContain("info");
+  });
+
+  it("orders warn rows before info rows (worst-first) in the rendered rail", () => {
+    const firstWarn = html.indexOf("unknown_prefix"); // a warn code
+    const firstInfo = html.indexOf("orphan_family"); // an info code
+    expect(firstWarn).toBeGreaterThanOrEqual(0);
+    expect(firstInfo).toBeGreaterThan(firstWarn);
   });
 });
 
@@ -222,6 +238,32 @@ describe("LifecycleStepper", () => {
     const html = renderToStaticMarkup(<LifecycleStepper lifecycle={done} size="mini" />);
     expect(html).toContain("Lifecycle — Spec done");
     expect(html).not.toContain(">Spec<"); // no visible label text node at mini size
+  });
+});
+
+describe("sortDiagnostics — deterministic total order (view-model)", () => {
+  it("orders warn before info, then by code, then prefix (nulls last), then message", () => {
+    const diags: AtlasDiagnosticV1[] = [
+      { code: "orphan_family", severity: "info", message: "b", prefix: "ZZ" },
+      { code: "unknown_prefix", severity: "warn", message: "m", prefix: "BB" },
+      { code: "unknown_prefix", severity: "warn", message: "m", prefix: null },
+      { code: "unknown_prefix", severity: "warn", message: "m", prefix: "AA" },
+      { code: "orphan_family", severity: "info", message: "a", prefix: "ZZ" },
+    ];
+    expect(sortDiagnostics(diags).map((d) => [d.severity, d.code, d.prefix, d.message])).toEqual([
+      ["warn", "unknown_prefix", "AA", "m"],
+      ["warn", "unknown_prefix", "BB", "m"],
+      ["warn", "unknown_prefix", null, "m"], // a null (global) prefix sorts last within its code
+      ["info", "orphan_family", "ZZ", "a"], // message "a" before "b"
+      ["info", "orphan_family", "ZZ", "b"],
+    ]);
+  });
+
+  it("buildAtlasView exposes the sorted diagnostics + severity counts (warn-first)", () => {
+    const view = buildAtlasView(goldenAtlas());
+    expect(view.diagnostics.warnCount).toBe(3); // unknown_prefix ×2 (XYZ, ZZZ) + unrouted_ticket
+    expect(view.diagnostics.infoCount).toBe(2); // orphan_family ×2 (IMPRV, LDI)
+    expect(view.diagnostics.sorted.map((d) => d.severity)).toEqual(["warn", "warn", "warn", "info", "info"]);
   });
 });
 
