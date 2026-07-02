@@ -19,9 +19,8 @@ import { CalmNote } from "../shared/feedback.js";
 import { CockpitSurfaceStyles } from "../shared/surface-styles.js";
 import { CockpitMotionStyles } from "../shared/cockpit-motion.js";
 import { ProjectSection } from "../shared/ProjectSection.js";
-import { StaleSourcePills } from "../shared/freshness.js";
-import { ClockIcon } from "../icons.js";
-import { relativeTime, safeTime } from "../shared/time.js";
+import { StaleSourcePills, SurfaceFreshnessBadge } from "../shared/freshness.js";
+import { safeTime } from "../shared/time.js";
 import {
   HEALTH_SEVERITY_LABELS,
   HEALTH_SEVERITY_TONES,
@@ -78,7 +77,6 @@ function Reveal({ index, children }: { index: number; children: ReactNode }) {
 }
 
 export function BranchPrHealthView({ gitState, now, isMobile = false, expandKey = null, onFocusBranch }: BranchPrHealthViewProps) {
-  const derivedAge = relativeTime(gitState.derivedAt, now);
   const hasAnyRepo = gitState.groups.some((g) => g.repos.length > 0);
   const view = buildBranchPrView(gitState);
 
@@ -89,14 +87,7 @@ export function BranchPrHealthView({ gitState, now, isMobile = false, expandKey 
 
       <header style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 650, color: tokens.fg }}>Branch · PR Health</h2>
-        {derivedAge ? (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: tokens.muted }}>
-            <span aria-hidden="true" style={{ display: "inline-flex" }}>
-              <ClockIcon size={12} />
-            </span>
-            as of {derivedAge}
-          </span>
-        ) : null}
+        <SurfaceFreshnessBadge noun="Branch · PR" derivedAt={gitState.derivedAt} sources={gitState.sources} now={now} />
         <StaleSourcePills sources={gitState.sources} />
       </header>
 

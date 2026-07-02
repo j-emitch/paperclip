@@ -10,11 +10,17 @@ import type { CSSProperties, ReactNode } from "react";
 import { tokens } from "../tokens.js";
 import { withAlpha } from "./color.js";
 
-/** A small status dot in an arbitrary tone. */
-export function Dot({ tone, size = 8 }: { tone: string; size?: number }) {
+/**
+ * A small status dot in an arbitrary tone. `pulse` adds the shared "live" ring
+ * animation (`cos-fx-live-dot`, reduced-motion-gated) — the caller's surface must
+ * have rendered `CockpitMotionStyles` for the animation to apply; without it the
+ * dot degrades to a static (still correctly-toned) dot.
+ */
+export function Dot({ tone, size = 8, pulse = false }: { tone: string; size?: number; pulse?: boolean }) {
   return (
     <span
       aria-hidden="true"
+      className={pulse ? "cos-fx-live-dot" : undefined}
       style={{ display: "inline-block", width: size, height: size, borderRadius: 999, background: tone, flex: "0 0 auto" }}
     />
   );

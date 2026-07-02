@@ -10,7 +10,7 @@ import type { CSSProperties } from "react";
 import type { Chip as ChipModel } from "../../contracts/index.js";
 import { columnAccent, statusColors, tokens } from "../tokens.js";
 import { CheckIcon, ExternalLinkIcon } from "../icons.js";
-import { StatusDot } from "./StaleBadge.js";
+import { Dot } from "../shared/badges.js";
 import { relativeTime } from "./view-model.js";
 
 const REVIEW_VISUAL: Record<
@@ -168,5 +168,5 @@ function ReviewMark({ color, reviewed }: { color: string; reviewed: boolean }) {
       </span>
     );
   }
-  return <StatusDot color={color} size={7} />;
+  return <Dot tone={color} size={7} />;
 }

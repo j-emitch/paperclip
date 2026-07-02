@@ -18,9 +18,9 @@ import type { CSSProperties, ReactNode } from "react";
 import type { AtlasDiagnosticV1, BuildAtlasV1, GateState } from "../../contracts/index.js";
 import { statusColors, tokens } from "../tokens.js";
 import { withAlpha } from "../shared/color.js";
-import { Dot, Pill } from "../shared/badges.js";
+import { Pill } from "../shared/badges.js";
 import { CalmNote } from "../shared/feedback.js";
-import { StaleSourcePills } from "../shared/freshness.js";
+import { StaleSourcePills, SurfaceFreshnessBadge } from "../shared/freshness.js";
 import { CockpitSurfaceStyles } from "../shared/surface-styles.js";
 import { CockpitMotionStyles } from "../shared/cockpit-motion.js";
 import { RefreshIcon } from "../icons.js";
@@ -29,9 +29,6 @@ import { LineageView } from "./LineageView.js";
 import { GATE_TONE } from "./LifecycleStepper.js";
 import {
   buildAtlasView,
-  isAtlasStale,
-  isClockSkewed,
-  relativeTime,
   type AtlasVitals,
   type DiagnosticsView,
   type DomainSection,
@@ -134,9 +131,6 @@ function Masthead({
     { value: String(vitals.laneCount), label: "Lineage lanes" },
     { value: String(vitals.diagnosticsCount), label: "Diagnostics", tone: vitals.diagnosticsCount > 0 ? statusColors.revise : undefined },
   ];
-  const stale = isAtlasStale(atlas, now);
-  const skewed = isClockSkewed(atlas, now);
-  const ageLabel = relativeTime(atlas.derivedAt, now) ?? "unknown";
 
   return (
     <header
@@ -183,7 +177,7 @@ function Masthead({
 
       {/* Freshness + controls row. */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <FreshnessBadge ageLabel={ageLabel} stale={stale} skewed={skewed} />
+        <SurfaceFreshnessBadge noun="Atlas" derivedAt={atlas.derivedAt} sources={atlas.sources} now={now} />
         <span style={{ fontSize: 12, color: tokens.muted, fontVariantNumeric: "tabular-nums" }}>
           {vitals.builtSummary} · {vitals.edgeCount} lineage link{vitals.edgeCount === 1 ? "" : "s"}
         </span>
@@ -206,36 +200,6 @@ function Masthead({
         ) : null}
       </div>
     </header>
-  );
-}
-
-/** Surface freshness — derive age + clock-skew. Mirrors the Board's badge a11y contract
- *  (unifying the two into one shared primitive is a 5i cohesion item — see atlas-view-model). */
-function FreshnessBadge({ ageLabel, stale, skewed }: { ageLabel: string; stale: boolean; skewed: boolean }) {
-  if (skewed) {
-    const aria = "Atlas derive timestamp is in the future — likely clock skew between machines";
-    return (
-      <span style={badgeStyle} aria-label={aria} title={aria}>
-        <Dot tone={statusColors.cached} />
-        <span aria-hidden="true">derived in the future · clock skew</span>
-      </span>
-    );
-  }
-  const tone = stale ? statusColors.stale : statusColors.live;
-  const aria = stale ? `Atlas is stale — derived ${ageLabel}` : `Atlas is live — derived ${ageLabel}`;
-  return (
-    <span style={badgeStyle} aria-label={aria} title={aria}>
-      {stale ? (
-        <Dot tone={tone} />
-      ) : (
-        // Live: a gentle green ring pulse (reduced-motion-gated in cockpit-motion).
-        <span aria-hidden="true" className="cos-fx-live-dot" style={{ display: "inline-block", width: 8, height: 8, background: tone, flex: "0 0 auto" }} />
-      )}
-      <span aria-hidden="true">
-        derived {ageLabel}
-        {stale ? " · stale" : ""}
-      </span>
-    </span>
   );
 }
 
@@ -410,21 +374,6 @@ function FooterMeta({ derivedAt, sourceCount }: { derivedAt: string; sourceCount
     </p>
   );
 }
-
-const badgeStyle: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 6,
-  // A touch more room so the live-dot's pulse ring stays graceful inside the pill (codex-5d-b Opus P2).
-  padding: "4px 10px",
-  borderRadius: 999,
-  background: tokens.secondary,
-  border: `1px solid ${tokens.border}`,
-  fontSize: 11.5,
-  fontWeight: 500,
-  color: tokens.fg,
-  whiteSpace: "nowrap",
-};
 
 const toolbarButtonStyle: CSSProperties = {
   display: "inline-flex",

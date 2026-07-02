@@ -37,6 +37,9 @@ describe("Branch · PR Health SSR", () => {
     expect(html).toContain("not found on disk");
     // Honest degradation pill (repo-distinguished)
     expect(html).toContain("branch · viacava-arts stale");
+    // Shared surface-freshness badge (COS-5i): the derive is 4m old (< 5m) so the surface
+    // reads "live" even though one SOURCE is stale — the pill carries the source degradation.
+    expect(html).toContain("Branch · PR is live — derived 4m ago");
   });
 
   it("surfaces PR lifecycle + review verdicts (text, not color-only)", () => {

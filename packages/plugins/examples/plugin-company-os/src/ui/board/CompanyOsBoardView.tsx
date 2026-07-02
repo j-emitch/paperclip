@@ -11,11 +11,12 @@
 import type { BoardStateV1 } from "../../contracts/index.js";
 import { statusColors, tokens } from "../tokens.js";
 import { RefreshIcon } from "../icons.js";
+import { CockpitMotionStyles } from "../shared/cockpit-motion.js";
+import { StaleSourcePills, SurfaceFreshnessBadge } from "../shared/freshness.js";
 import { BOARD_ROOT_CLASS, BoardStyles } from "./board-styles.js";
 import { Swimlane } from "./Swimlane.js";
 import { UnclassifiedLane } from "./UnclassifiedLane.js";
-import { BoardFreshnessBadge, StaleBadge } from "./StaleBadge.js";
-import { buildBoardView, isBoardStale, isClockSkewed, relativeTime, staleSources } from "./view-model.js";
+import { buildBoardView } from "./view-model.js";
 
 export interface CompanyOsBoardViewProps {
   state: BoardStateV1;
@@ -46,15 +47,14 @@ export function CompanyOsBoardView({
   refreshError = null,
 }: CompanyOsBoardViewProps) {
   const view = buildBoardView(state);
-  const skewed = isClockSkewed(state, now);
-  const stale = isBoardStale(state, now);
-  const ageLabel = relativeTime(state.derivedAt, now) ?? "unknown";
-  const staleList = staleSources(state);
   const allCollapsed = view.lanes.every((l) => collapsedLanes.has(l.lane.id)) && (!view.ops || collapsedLanes.has(view.ops.lane.id));
 
   return (
     <div className={BOARD_ROOT_CLASS} style={{ display: "flex", flexDirection: "column", gap: 12, fontFamily: tokens.font }}>
       <BoardStyles />
+      {/* The shared surface-freshness badge's live pulse (`cos-fx-live-dot`) lives in this
+          stylesheet — the retained fallback board injects it too so the dot pulses here. */}
+      <CockpitMotionStyles />
 
       {/* Toolbar — freshness, counts, stale-source badges, controls. */}
       <div
@@ -67,16 +67,10 @@ export function CompanyOsBoardView({
           borderBottom: `1px solid ${tokens.border}`,
         }}
       >
-        <BoardFreshnessBadge ageLabel={ageLabel} stale={stale} skewed={skewed} staleSourceCount={staleList.length} />
+        <SurfaceFreshnessBadge noun="Board" derivedAt={state.derivedAt} sources={state.sources} now={now} />
         <Counts chips={view.chipCount} unclassified={view.unclassifiedCount} />
         <span style={{ flex: 1 }} />
-        {staleList.length > 0 ? (
-          <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }} aria-label={`${staleList.length} source(s) not live`}>
-            {staleList.map((s) => (
-              <StaleBadge key={`${s.source}:${s.repo}`} source={s} />
-            ))}
-          </span>
-        ) : null}
+        <StaleSourcePills sources={state.sources} />
         {onSetAllCollapsed ? (
           <button
             type="button"
