@@ -43,8 +43,9 @@ export * from "./doc-index.js";
 // Layer 2 — COS-1h skills catalog projection contract
 export * from "./skills-catalog.js";
 
-// Layer 2 — the live docs-viewer payload contract (read per-request, not cached)
+// Layer 2 — live per-request payload contracts (read on demand, not cached)
 export * from "./report-content.js";
+export * from "./teaching.js";
 
 // Extension seams (empty in COS-0b; COS-1/COS-2 implement)
 export * from "./extensions.js";

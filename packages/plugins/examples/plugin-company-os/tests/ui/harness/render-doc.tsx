@@ -23,8 +23,10 @@ import { FamilyCard } from "../../../src/ui/atlas/FamilyCard.js";
 import { SurfaceEmpty } from "../../../src/ui/shared/surface-state.js";
 import { AtlasIcon } from "../../../src/ui/icons.js";
 import { CockpitMotionStyles } from "../../../src/ui/shared/cockpit-motion.js";
+import { TeachingView } from "../../../src/ui/teaching/TeachingView.js";
 import { EMPTY_FILTER } from "../../../src/ui/reports/reports-view-model.js";
-import type { BoardStateV1 } from "../../../src/contracts/index.js";
+import { EMPTY_TEACHING_FILTER } from "../../../src/ui/teaching/teaching-view-model.js";
+import type { BoardStateV1, TeachingOverviewV1 } from "../../../src/contracts/index.js";
 import { goldenBoard, staleBoard, zeroChipBoard, RENDER_NOW } from "../fixtures/board.js";
 import { goldenArtifactIndex, okMarkdownContent, REPORTS_NOW } from "../fixtures/reports.js";
 import { goldenOrientation, emptyOrientation, HOME_NOW } from "../fixtures/home.js";
@@ -32,6 +34,7 @@ import { goldenGitState, emptyGitState, BRANCH_PR_NOW } from "../fixtures/branch
 import { goldenDocIndex, emptyDocIndex, dogfoodSpecDocId, DOCS_NOW } from "../fixtures/docs.js";
 import { goldenAgentSystem, emptyAgentSystem, AGENTS_NOW } from "../fixtures/agents.js";
 import { goldenAtlas, ATLAS_NOW } from "../fixtures/atlas.js";
+import { goldenTeachingOverview, healthyTeachingOverview, TEACHING_NOW } from "../fixtures/teaching.js";
 import { NOW } from "../../fixtures/signals.js";
 
 const noop = () => {};
@@ -194,6 +197,10 @@ function branchPrExpandedBranch(): ReactElement {
   );
 }
 
+function teaching(overview: TeachingOverviewV1, isMobile: boolean): ReactElement {
+  return <TeachingView overview={overview} filter={EMPTY_TEACHING_FILTER} onFilterChange={noop} now={TEACHING_NOW} isMobile={isMobile} />;
+}
+
 export interface HarnessDoc {
   name: string;
   width: number;
@@ -233,5 +240,8 @@ export function harnessDocs(): HarnessDoc[] {
     { name: "atlas-stale", width: 1180, html: document("Atlas · stale", renderToStaticMarkup(atlasStale()), 1180) },
     { name: "atlas-empty", width: 1180, html: document("Atlas · empty", renderToStaticMarkup(atlasEmpty()), 720) },
     { name: "atlas-expanded", width: 760, html: document("Atlas · expanded family", renderToStaticMarkup(atlasExpanded()), 760) },
+    { name: "teaching-desktop", width: 1180, html: document("Teaching · stalled loop", renderToStaticMarkup(teaching(goldenTeachingOverview(), false)), 1180) },
+    { name: "teaching-mobile", width: 390, html: document("Teaching · mobile", renderToStaticMarkup(teaching(goldenTeachingOverview(), true)), 390) },
+    { name: "teaching-healthy", width: 1180, html: document("Teaching · healthy loop", renderToStaticMarkup(teaching(healthyTeachingOverview(), false)), 1180) },
   ];
 }

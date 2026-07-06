@@ -24,6 +24,8 @@ import { DOCS_VIEWER_MAX_BYTES, readReportContent } from "./report-content-read.
 import { readDocContent } from "./doc-content-read.js";
 import { readSkillContent } from "./skill-content-read.js";
 import { projectGroupV1Schema, resolveTaxonomy, type ProjectGroupV1 } from "./contracts/projects.js";
+import { readTeachingOverview } from "./teaching-overview-read.js";
+import { teachingSource } from "./sources/TeachingSource.js";
 
 /**
  * Company OS cockpit worker — COS-0d/0g.
@@ -239,6 +241,23 @@ const plugin = definePlugin({
         str(params.skillId),
       );
     });
+    // --- Teaching tab: a LIVE, file-backed corpus read (COS-2f) ---
+    //     No cached table (deferred to COS-3): runs the TeachingSource against a
+    //     full-sweep context and folds it on demand. The corpus is workspace-wide
+    //     (the `company` repo), so `companyId` is not part of the read.
+    ctx.data.register("teaching-overview", async () =>
+      readTeachingOverview({
+        collectBundle: async () => {
+          const context = await makeCollectionContext({
+            repoRoots: await readRepoRoots(),
+            scopeRepo: null,
+            logger: ctx.logger,
+          });
+          return { collectedAt: context.clock.now(), batches: [await teachingSource.collect(context)] };
+        },
+        now: () => Date.now(),
+      }),
+    );
 
     // --- on-demand refresh (the COS-0g hook + a manual UI refresh both hit this) ---
     ctx.actions.register("refresh-board", async (params) => {

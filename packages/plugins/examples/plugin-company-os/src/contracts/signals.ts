@@ -27,6 +27,10 @@ import type {
   SignalConfidence,
   SignalErrorCode,
   SignalFreshness,
+  TeachingAudience,
+  TeachingEntryKind,
+  TeachingLens,
+  TeachingPublishState,
   UnclassifiedReason,
   WorkSignalPrecedence,
   WorkState,
@@ -112,6 +116,34 @@ export interface WorkSignal extends SignalProvenance {
   readonly reverted?: boolean;
 }
 
+/**
+ * Teaching-corpus metadata a `TeachingSignalSource` (COS-2f) attaches to the
+ * `ArtifactSignal`s it emits — the ONE piece of teaching-specific shape allowed
+ * on the core signal, deliberately a single optional nested field so a
+ * non-teaching artifact (spec / handoff / cannons) never grows a teaching column.
+ * `undefined` on every artifact except teaching corpus files; the generic
+ * artifact-index projection ignores it, and only `deriveTeachingOverview` reads
+ * it. This is what lets teaching flow through the existing `ArtifactSignal` seam
+ * (`artifactType: "teaching"`) — as COS-0b intended ("teaching is first-class in
+ * the index") — without a parallel signal kind or a schema bump.
+ */
+export interface TeachingArtifactMeta {
+  /** Which teaching artifact this is: an inbox promote-log, a unit, or a synthesis receipt. */
+  readonly entryKind: TeachingEntryKind;
+  /** Corpus lens derived from the PATH (`internal`/`external`; `unspecified` pre-migration). */
+  readonly lens: TeachingLens | null;
+  /** Unit frontmatter `audience` (default `internal`); null for inbox/synthesis. */
+  readonly audience: TeachingAudience | null;
+  /** Unit frontmatter `publish_state` (default `private`); null for inbox/synthesis. */
+  readonly publishState: TeachingPublishState | null;
+  /** Unit directory name (e.g. `03-migrations-and-staging`); null when not a unit. */
+  readonly unit: string | null;
+  /** Pending teaching nuggets counted in an inbox promote-log; null for unit/synthesis. */
+  readonly pendingNuggets: number | null;
+  /** Unit frontmatter `last_verified` (ISO date); null when absent/not a unit. */
+  readonly lastVerified: string | null;
+}
+
 /** A workspace artifact (spec / handoff / cannons / routine output / teaching / knowledge). */
 export interface ArtifactSignal extends SignalProvenance {
   readonly kind: "artifact";
@@ -131,6 +163,12 @@ export interface ArtifactSignal extends SignalProvenance {
   readonly title: string | null;
   /** Report author/agent from frontmatter `created_by`; null when absent. */
   readonly createdBy: string | null;
+  /**
+   * Teaching-corpus metadata — present ONLY on signals a `TeachingSignalSource`
+   * emits (`artifactType: "teaching"`), absent on every other artifact. See
+   * `TeachingArtifactMeta`.
+   */
+  readonly teaching?: TeachingArtifactMeta;
 }
 
 /** A report-routine contract (from an AGENTS.md fenced block) joined with its last-run, if known. */

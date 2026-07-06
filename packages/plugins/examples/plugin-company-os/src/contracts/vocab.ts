@@ -123,6 +123,45 @@ export type RoutineVerdict = (typeof ROUTINE_VERDICTS)[number];
 /** What kind of freshness promise a routine-like duty makes in the Agents cockpit. */
 export const FRESHNESS_KINDS = ["artifact", "proposal", "embedded"] as const;
 export type FreshnessKind = (typeof FRESHNESS_KINDS)[number];
+// ---------------------------------------------------------------------------
+// Teaching vocabularies (COS-2f) — the teaching-corpus lenses the cockpit's
+// Teaching tab facets by. Declared here (not in the teaching contract) so the
+// enum lives with every other closed vocabulary and the source, projection, and
+// UI all build from ONE tuple. Kept in lockstep with the COS-2b Python contract
+// (`scripts/paperclip/teaching_frontmatter.py`): a unit's frontmatter `audience`
+// + `publish_state` are these exact sets, defaulting to internal / private.
+// ---------------------------------------------------------------------------
+
+/** Who a teaching unit is written for (frontmatter `audience`; default `internal`). */
+export const TEACHING_AUDIENCES = ["internal", "external", "both"] as const;
+export type TeachingAudience = (typeof TEACHING_AUDIENCES)[number];
+
+/** A teaching unit's publish lifecycle (frontmatter `publish_state`; default `private`). */
+export const TEACHING_PUBLISH_STATES = ["private", "candidate", "ready", "published"] as const;
+export type TeachingPublishState = (typeof TEACHING_PUBLISH_STATES)[number];
+
+/**
+ * The corpus lens a unit file lives under: `internal` / `external` are the
+ * post-COS-2b-migration split (`internal/units/**`, `external/units/**`);
+ * `unspecified` is a pre-migration `units/**` file that has no lens yet. A source
+ * derives this from the PATH, not the frontmatter, so it is honest about the
+ * on-disk layout regardless of migration state.
+ */
+export const TEACHING_LENSES = ["internal", "external", "unspecified"] as const;
+export type TeachingLens = (typeof TEACHING_LENSES)[number];
+
+/** The kind of teaching artifact a `TeachingSignalSource` emitted (drives the fold). */
+export const TEACHING_ENTRY_KINDS = ["inbox", "unit", "synthesis"] as const;
+export type TeachingEntryKind = (typeof TEACHING_ENTRY_KINDS)[number];
+
+/**
+ * The Teaching tab's headline attention level — the one thing COS-2 exists to
+ * surface. `critical` = a non-empty backlog whose synthesis has gone stale/missing
+ * (the "silently broken loop" failure mode); `attention` = a softer nudge (backlog
+ * with fresh synthesis, or a stale source); `ok` = drained or freshly synthesized.
+ */
+export const TEACHING_ATTENTION_LEVELS = ["ok", "attention", "critical"] as const;
+export type TeachingAttentionLevel = (typeof TEACHING_ATTENTION_LEVELS)[number];
 
 /**
  * Outcome of a docs-viewer `report-content` read (spec §7 safety states). `ok` is
