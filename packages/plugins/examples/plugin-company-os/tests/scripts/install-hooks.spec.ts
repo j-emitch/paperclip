@@ -245,7 +245,10 @@ describe("cos-refresh-hook.sh dispatcher kill-switch", () => {
     return { home, marker };
   }
 
-  const waitFor = (pred: () => boolean, ms = 2000): boolean => {
+  // 10s ceiling: the dispatcher backgrounds the shim behind an mkdir-lock, and under
+  // full-suite parallel load the 2s budget flaked (seen at COS activation 2026-07-06).
+  // The poll returns as soon as the marker lands, so the ceiling costs nothing when healthy.
+  const waitFor = (pred: () => boolean, ms = 10_000): boolean => {
     const end = Date.now() + ms;
     // Busy-wait via execFileSync sleep so the backgrounded dispatch can land.
     while (Date.now() < end) {
