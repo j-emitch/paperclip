@@ -84,6 +84,20 @@ describe("deriveOrientation", () => {
     expect(o.alerts.some((a) => a.kind === "branch_at_risk")).toBe(true);
   });
 
+  it("gives every detached checkout of the same repo a UNIQUE alert id (live dup-key regression)", () => {
+    const o = deriveOrientation(
+      bundleOf([
+        branchSignal(null, { repo: "company", statuses: ["conflicting"], conflictsWithTrunk: true, headSha: "aaa1111" }),
+        branchSignal(null, { repo: "company", statuses: ["conflicting"], conflictsWithTrunk: true, headSha: "bbb2222" }),
+      ]),
+      NOW,
+      TAX,
+    );
+    const ids = o.alerts.filter((a) => a.kind === "branch_at_risk").map((a) => a.id);
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2);
+  });
+
   it("a stale routine yields a routine alert deep-linking to the rendered doc", () => {
     const o = deriveOrientation(
       bundleOf([

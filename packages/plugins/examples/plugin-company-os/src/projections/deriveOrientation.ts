@@ -170,9 +170,12 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
       deepLink: routineDeepLink(card),
     });
   }
-  for (const bh of branchHealth) {
+  branchHealth.forEach((bh, idx) => {
     alerts.push({
-      id: `branch:${bh.repo}:${bh.branch ?? "detached"}`,
+      // A repo can have SEVERAL detached checkouts (branch: null); the row index
+      // keeps their alert ids (and the React keys downstream) unique. Named
+      // branches are one-row-per-branch, so they never collide.
+      id: `branch:${bh.repo}:${bh.branch ?? `detached:${idx}`}`,
       projectKey: bh.projectKey,
       kind: "branch_at_risk",
       severity: bh.severity === "high" ? "high" : "medium",
@@ -180,7 +183,7 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
       detail: bh.statuses.join(", "),
       deepLink: bh.deepLink,
     });
-  }
+  });
   for (const w of workByTicket.values()) {
     if (w.state !== "in_progress") continue;
     const ageDays = w.mtime ? Math.floor((nowMs - Date.parse(w.mtime)) / 86_400_000) : 0;
