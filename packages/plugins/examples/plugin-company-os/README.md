@@ -1,15 +1,20 @@
 # Company OS (`lycaon.company-os`)
 
-The owner/developer **dev cockpit** for Lycaon: an auto-updating Kanban
-(system × spec-prefix family, self-moving chips) plus Home, Source, Docs, and
-Agents surfaces over the multi-repo workspace (juice-bar, arc-scraper, company,
-paperclip). Read-only over the product repos; the only writes are the
-plugin-owned `company_os` Postgres namespace (cache + diagnostics), plugin
-state, and an opt-in, reversible, disabled-by-default git hook.
+The owner/developer **dev cockpit** for Lycaon — Joe's primary daily-driver surface over the
+multi-repo workspace (juice-bar, arc-scraper, company, paperclip, viacava-arts). Read-only over
+the product repos; the only writes are the plugin-owned Postgres namespace (cache +
+diagnostics), plugin state, and an opt-in, reversible git hook.
 
-> Lives under `examples/` for the auto SDK-link + simplest local dev. The
-> `example` tag is cosmetic — discovery, install, and function are identical to
-> a first-party plugin. Graduation path: `packages/plugins/plugin-company-os`.
+> **📖 The canonical living doc is `company/docs/company-os/16-cockpit-plugin.md`** — live
+> deployment state, the machine-checked subsystem registry (`cos-registry` fenced block,
+> gated by `company/scripts/audit-cos-registry.sh`), operational runbook, and known-issue
+> ledger all live THERE, not here. This README is a code-local pointer + build notes only.
+> If you change `src/sources/index.ts`, `src/projections/`, `src/ui/tabs.ts`, `migrations/`,
+> or `src/manifest.ts`, update that doc's registry block in the same change.
+
+> Lives under `examples/` for the auto SDK-link + simplest local dev. The `example` tag is
+> cosmetic — discovery, install, and function are identical to a first-party plugin.
+> Graduation path: `packages/plugins/plugin-company-os`.
 
 ## Architecture (one signal layer)
 
@@ -18,28 +23,23 @@ sources/*  (WorkSignalSource: the only place that knows git/gh/fs/AGENTS)
    ↓ normalize
 signals    (typed)
    ↓ collectAndProject(input)   ← pure, no ctx
-projections: deriveBoardState · deriveArtifactIndex · deriveRoutineHealth
+projections (derive*.ts)
    ↓
 UI (consumes projections only — import-boundary enforced)
 ```
 
-The scheduled `derive-board` job (and the thin-trigger git hook in COS-0g) call
-the **pure** `collectAndProject` and write the result to the `company_os` cache
-under an atomic CAS lock. COS-1 (teaching) and COS-2 (knowledge) attach as new
-`WorkSignalSource`s + projections — no rewrite.
+The scheduled `derive-board` job (`*/5`) and the thin-trigger git hook (COS-0g,
+`scripts/README.md`) call the **pure** `collectAndProject` and write to the namespace cache
+under an atomic CAS lock. New capability = new source + new projection (+ tab/lane),
+additive `schemaVersion` bumps — never mutate existing sources.
 
-## Build phases
+## What shipped when
 
-| Phase | What |
-|-------|------|
-| COS-0a | Plugin scaffold (this commit): manifest, worker bridge, tabbed UI shell |
-| COS-0b | Contracts + prefix registry + agent fenced-blocks |
-| COS-0c | Source collectors (git / specs / PRs / reports / routines) |
-| COS-0d | Pure projections + `company_os` DB cache + atomic lock + worker data/action API |
-| COS-0e | Kanban UI |
-| COS-0f | Docs/Reports + Routines viewer |
-| COS-0g | Scheduled job + thin-trigger git hook + kill-switch |
-| COS-0h | Registry reconcile + agent-directive finalize + lifecycle |
+COS-0 spine + Home/Docs/Agents + hooks · COS-1/1R orientation + agent cohesion · COS-2
+Teaching/Knowledge/Hygiene + corpus pipeline · COS-5 Atlas + Branch·PR Health + GH_TOKEN
+passthrough. Current tabs: Home · Atlas · Branch·PR Health · Docs · Agents · Skills ·
+Teaching · Knowledge · Hygiene. Roadmap (COS-7/8/9/10, COS-6 last):
+`company/docs/audits/2026-07-06-workflow-audit.md` §11.
 
 ## DB namespace
 
@@ -58,4 +58,4 @@ pnpm --filter @paperclipai/plugin-company-os typecheck
 pnpm --filter @paperclipai/plugin-company-os test
 ```
 
-See the spec + plan in the `company` repo (`docs/COS-0`) for the full design.
+Specs + plans live in the `company` repo (`docs/superpowers/specs/2026-0*-COS-*.md`).
