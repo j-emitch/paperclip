@@ -127,6 +127,15 @@ export function buildPluginWorkerEnv(input: {
     PAPERCLIP_DEPLOYMENT_MODE: input.instanceInfo.deploymentMode ?? "",
     PAPERCLIP_DEPLOYMENT_EXPOSURE: input.instanceInfo.deploymentExposure ?? "",
   };
+  // Local-trusted hosts run first-party plugins for a single operator; pass the
+  // operator's GitHub CLI token through so a plugin worker's gh subprocesses
+  // are authenticated (the worker env is otherwise stripped, and gh cannot read
+  // the keyring without HOME). Never passed on non-local deployments (COS-5f).
+  // ASCII-only comment by convention.
+  if (input.instanceInfo.deploymentMode === "local_trusted") {
+    const ghToken = processEnv.GH_TOKEN;
+    if (ghToken && ghToken.trim().length > 0) env.GH_TOKEN = ghToken;
+  }
   const canRegisterEnvironmentDrivers = Array.isArray(input.manifest.capabilities)
     && input.manifest.capabilities.includes("environment.drivers.register");
   if (!canRegisterEnvironmentDrivers) return env;
