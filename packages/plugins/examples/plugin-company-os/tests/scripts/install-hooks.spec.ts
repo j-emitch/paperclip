@@ -268,7 +268,10 @@ describe("cos-refresh-hook.sh dispatcher kill-switch", () => {
     // Run the dispatcher from inside the repo so its git-scope resolution works;
     // it backgrounds the shim, so poll for the marker.
     execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], {
-      env: { ...process.env, HOME: home },
+      // TMPDIR must be per-test: the dispatcher's mkdir-lock lives under $TMPDIR keyed
+      // only by company id, so a shared TMPDIR lets a PRIOR run's still-held lock make
+      // this dispatch legitimately skip (mkdir || exit 0) — the flake seen 2026-07-06.
+      env: { ...process.env, HOME: home, TMPDIR: home },
     });
     expect(waitFor(() => existsSync(marker))).toBe(true);
   });
@@ -277,7 +280,7 @@ describe("cos-refresh-hook.sh dispatcher kill-switch", () => {
     const { home, marker } = dispatcherHome();
     const repo = initRepo();
     execFileSync("bash", ["-c", `cd "${repo}" && HOME="${home}" COS_HOOKS_DISABLED=1 bash "${DISPATCHER}" post-commit`], {
-      env: { ...process.env, HOME: home, COS_HOOKS_DISABLED: "1" },
+      env: { ...process.env, HOME: home, TMPDIR: home, COS_HOOKS_DISABLED: "1" },
     });
     // Give any (erroneous) background dispatch a chance, then assert it stayed off.
     execFileSync("sleep", ["0.3"]);
