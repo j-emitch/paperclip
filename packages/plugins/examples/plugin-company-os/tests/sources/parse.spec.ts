@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
+import { parseGhPrRollup,
   extractCompanyOsYaml,
   extractContextInProgress,
   extractShipped,
@@ -290,5 +290,42 @@ describe("glob matcher", () => {
       new Set(["specs", "reports", "CONTEXT.md"]),
     );
     expect(globRootDirs(["**/*.md"]).has("*")).toBe(true);
+  });
+});
+
+describe("parseGhPrRollup (COS-11.gh-fields)", () => {
+  it("CheckRun conclusions fold: any FAILURE → fail", () => {
+    const { rollup, ok } = parseGhPrRollup(
+      JSON.stringify({ statusCheckRollup: [{ conclusion: "SUCCESS" }, { conclusion: "FAILURE" }], mergeable: "MERGEABLE" }),
+    );
+    expect(ok).toBe(true);
+    expect(rollup).toEqual({ ciState: "fail", mergeableState: "mergeable" });
+  });
+
+  it("StatusContext states fold: SUCCESS-only → pass", () => {
+    const { rollup } = parseGhPrRollup(JSON.stringify({ statusCheckRollup: [{ state: "SUCCESS" }], mergeable: "CONFLICTING" }));
+    expect(rollup).toEqual({ ciState: "pass", mergeableState: "conflicting" });
+  });
+
+  it("in-progress check runs → pending (no conclusion yet)", () => {
+    const { rollup } = parseGhPrRollup(
+      JSON.stringify({ statusCheckRollup: [{ status: "IN_PROGRESS" }, { conclusion: "SUCCESS" }], mergeable: "UNKNOWN" }),
+    );
+    expect(rollup.ciState).toBe("pending");
+  });
+
+  it("EMPTY rollup → none (no checks configured ≠ unknown)", () => {
+    const { rollup } = parseGhPrRollup(JSON.stringify({ statusCheckRollup: [], mergeable: "MERGEABLE" }));
+    expect(rollup.ciState).toBe("none");
+  });
+
+  it("malformed JSON / non-object → ok:false + unknowns (degrade, never throw)", () => {
+    expect(parseGhPrRollup("nope")).toEqual({ rollup: { ciState: "unknown", mergeableState: "unknown" }, ok: false });
+    expect(parseGhPrRollup("[]").ok).toBe(false);
+  });
+
+  it("SKIPPED/NEUTRAL conclusions count as pass (not pending)", () => {
+    const { rollup } = parseGhPrRollup(JSON.stringify({ statusCheckRollup: [{ conclusion: "SKIPPED" }, { conclusion: "NEUTRAL" }], mergeable: "MERGEABLE" }));
+    expect(rollup.ciState).toBe("pass");
   });
 });

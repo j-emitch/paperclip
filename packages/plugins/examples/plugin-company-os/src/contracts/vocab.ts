@@ -285,6 +285,19 @@ export const WORKTREE_MERGE_STATUSES = ["direct", "squash", "none", "unknown"] a
 export type WorktreeMergeStatus = (typeof WORKTREE_MERGE_STATUSES)[number];
 
 /**
+ * PR CI state folded from `gh pr view --json statusCheckRollup` (COS-11.gh-fields
+ * pre-slice, consumed by COS-8a). `none` = the PR has NO checks configured --
+ * distinct from `unknown` (rollup never fetched / gh degraded), because "no CI"
+ * and "we can't see CI" must not share a chip.
+ */
+export const PR_CI_STATES = ["pass", "fail", "pending", "none", "unknown"] as const;
+export type PrCiState = (typeof PR_CI_STATES)[number];
+
+/** PR mergeability from `gh pr view --json mergeable` (MERGEABLE/CONFLICTING/UNKNOWN). */
+export const PR_MERGEABLE_STATES = ["mergeable", "conflicting", "unknown"] as const;
+export type PrMergeableState = (typeof PR_MERGEABLE_STATES)[number];
+
+/**
  * COS-8f doc-git reads: the 5-state freshness ladder for a doc copy, and the
  * shared result statuses of the `doc-git-freshness` / `doc-diff` handlers.
  * `checkout_gone` is §4.1 row 4 — a worktree pruned between index fetch and

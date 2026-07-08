@@ -11,10 +11,11 @@
  * last-good In-review chips (spec §6, COS-0c gh spec).
  */
 
-import { type CollectionContext, type RepoRoot } from "../contracts/collection-context.js";
+import { type CollectionContext, type PriorPrRollup, type RepoRoot } from "../contracts/collection-context.js";
 import type { WorkSignalSource, SignalBatch } from "../contracts/WorkSignalSource.js";
 import type { SignalError, WorkSignal } from "../contracts/signals.js";
-import { extractTicketIds, parseBranch, parseGhPrList, prefixOf, type GhPr } from "./parse.js";
+import type { PrCiState, PrMergeableState } from "../contracts/vocab.js";
+import { extractTicketIds, parseBranch, parseGhPrList, parseGhPrRollup, prefixOf, type GhPr } from "./parse.js";
 import { collectPerRepo, errorFromSubprocess, type RepoReadResult } from "./_shared.js";
 
 export const PULL_REQUEST_SOURCE_ID = "pull-request";
@@ -22,6 +23,83 @@ export const PULL_REQUEST_SOURCE_ID = "pull-request";
 /** Fields requested from gh — kept minimal + stable so the JSON contract is tight. */
 const PR_JSON_FIELDS = "number,title,headRefName,headRefOid,url,isDraft,updatedAt";
 const PR_LIST_LIMIT = 200;
+
+/**
+ * COS-11.gh-fields rate contract (spec §7 row 4): the LIST call stays untouched;
+ * CI/mergeability come from a SECOND, bounded, per-PR step — and only for PRs
+ * whose `(headSha, updatedAt)` changed vs the previous derive's persisted cache
+ * (`ctx.prior.prRollups`, threaded by the derive because this source is
+ * stateless). 288 derives/day x open-PR count would otherwise hammer the API.
+ */
+const MAX_ROLLUP_FETCHES = 20;
+const ROLLUP_JSON_FIELDS = "statusCheckRollup,mergeable";
+
+interface ResolvedRollup {
+  readonly ciState: PrCiState;
+  readonly mergeableState: PrMergeableState;
+}
+
+function isRateLimit(stderr: string): boolean {
+  return /rate limit|API rate limit|secondary rate/i.test(stderr);
+}
+
+/**
+ * Resolve each PR's rollup: cache hit (unchanged PR) → cached values, ZERO gh
+ * calls; changed/uncached → one bounded `gh pr view`; over-bound / rate-limited
+ * / failed → cached-stale if present, else unknown (+ a typed error). Mutates
+ * nothing; returns a map keyed by PR number.
+ */
+async function resolveRollups(
+  ctx: CollectionContext,
+  repoKey: string,
+  prs: readonly GhPr[],
+  errors: SignalError[],
+): Promise<Map<number, ResolvedRollup>> {
+  const cache: Readonly<Record<string, PriorPrRollup>> = ctx.prior?.prRollups ?? {};
+  const out = new Map<number, ResolvedRollup>();
+  let fetches = 0;
+  let rateLimited = false;
+
+  for (const pr of prs) {
+    const cached = cache[`${repoKey}#${pr.number}`];
+    const unchanged =
+      cached !== undefined && cached.headSha === (pr.headRefOid || null) && cached.updatedAt === (pr.updatedAt || null);
+    if (unchanged) {
+      out.set(pr.number, { ciState: cached.ciState, mergeableState: cached.mergeableState });
+      continue;
+    }
+    const stale: ResolvedRollup = cached
+      ? { ciState: cached.ciState, mergeableState: cached.mergeableState }
+      : { ciState: "unknown", mergeableState: "unknown" };
+
+    if (rateLimited || fetches >= MAX_ROLLUP_FETCHES) {
+      out.set(pr.number, stale);
+      continue;
+    }
+    fetches++;
+    const r = await ctx.gh.run(repoKey, ["pr", "view", String(pr.number), "--json", ROLLUP_JSON_FIELDS]);
+    if (r.code !== 0 || r.timedOut) {
+      if (isRateLimit(r.stderr)) {
+        // Stop fetching this tick; the 5-minute derive grid is the backoff and
+        // the cache means the NEXT tick only retries still-changed PRs.
+        rateLimited = true;
+        errors.push({ code: "gh_rate_limited", message: `gh rate-limited during rollup fetch for ${repoKey}`, degraded: true });
+      } else {
+        errors.push({ code: "subprocess_failed", message: `gh pr view ${pr.number} rollup failed in ${repoKey}`, degraded: true });
+      }
+      out.set(pr.number, stale);
+      continue;
+    }
+    const { rollup, ok } = parseGhPrRollup(r.stdout);
+    if (!ok) {
+      errors.push({ code: "parse_error", message: `gh pr view ${pr.number} rollup returned unparseable JSON`, degraded: true });
+      out.set(pr.number, stale);
+      continue;
+    }
+    out.set(pr.number, rollup);
+  }
+  return out;
+}
 
 export const pullRequestSource: WorkSignalSource = {
   id: PULL_REQUEST_SOURCE_ID,
@@ -47,7 +125,9 @@ export const pullRequestSource: WorkSignalSource = {
         ];
         return { signals: [], errors };
       }
-      return { signals: prs.flatMap((pr) => prSignals(repo, pr)) };
+      const errors: SignalError[] = [];
+      const rollups = await resolveRollups(c, repo.repo, prs, errors);
+      return { signals: prs.flatMap((pr) => prSignals(repo, pr, rollups.get(pr.number))), errors };
     });
   },
 };
@@ -60,7 +140,7 @@ function ticketsForPr(pr: GhPr): { ticketIds: string[]; viaBranch: boolean } {
   return { ticketIds: fromBranch, viaBranch: true };
 }
 
-function prSignals(repo: RepoRoot, pr: GhPr): WorkSignal[] {
+function prSignals(repo: RepoRoot, pr: GhPr, rollup?: ResolvedRollup): WorkSignal[] {
   const { ticketIds, viaBranch } = ticketsForPr(pr);
   const common = {
     kind: "work",
@@ -80,6 +160,8 @@ function prSignals(repo: RepoRoot, pr: GhPr): WorkSignal[] {
     headRef: pr.headRefName || undefined,
     isDraft: pr.isDraft,
     mtime: pr.updatedAt || undefined,
+    ciState: rollup?.ciState ?? "unknown",
+    prMergeable: rollup?.mergeableState ?? "unknown",
   } as const satisfies Partial<WorkSignal>;
 
   if (ticketIds.length === 0) {

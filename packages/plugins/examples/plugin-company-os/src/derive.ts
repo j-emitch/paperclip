@@ -24,6 +24,7 @@ import {
   replaceSourceVersions,
   loadSourceVersions,
   writeProjections,
+  readGitState,
   type DbClient,
 } from "./db/cache.js";
 import { bundleToSourceVersions, mergeScopedBundle } from "./db/scoped-merge.js";
@@ -77,7 +78,14 @@ export async function deriveForCompany(
   }
 
   try {
-    const ctx = await deps.makeContext(scopeRepo);
+    const baseCtx = await deps.makeContext(scopeRepo);
+    // Thread the PREVIOUS payload's rollup cache to the stateless sources
+    // (COS-11.gh-fields rate contract): read-only, absent on first derive.
+    const priorGitState = await readGitState(db, companyId).catch(() => null);
+    const ctx: CollectionContext =
+      priorGitState && Object.keys(priorGitState.prRollups).length > 0
+        ? { ...baseCtx, prior: { prRollups: priorGitState.prRollups } }
+        : baseCtx;
     const { bundle, failedSources } = await collect(ctx);
     if (failedSources.length > 0) logger.warn(`sources threw during collect`, { companyId, failedSources });
 

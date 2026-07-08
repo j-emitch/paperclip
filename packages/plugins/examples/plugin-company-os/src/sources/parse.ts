@@ -12,7 +12,7 @@
  */
 
 import type { CommitRef, CommitStat } from "../contracts/signals.js";
-import type { DocType, ReviewReportKind, ReviewVerdict, UnclassifiedReason } from "../contracts/vocab.js";
+import type { PrCiState, PrMergeableState, DocType, ReviewReportKind, ReviewVerdict, UnclassifiedReason } from "../contracts/vocab.js";
 import { extractTicketIds, prefixOf, ticketFromFilename } from "../contracts/ticket-id.js";
 
 // ---------------------------------------------------------------------------
@@ -413,6 +413,63 @@ export function parseGhPrList(stdout: string): { prs: GhPr[]; ok: boolean } {
     });
   }
   return { prs, ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// gh pr view rollup JSON (COS-11.gh-fields pre-slice)
+// ---------------------------------------------------------------------------
+
+export interface GhPrRollup {
+  readonly ciState: PrCiState;
+  readonly mergeableState: PrMergeableState;
+}
+
+/** Fold one statusCheckRollup item (CheckRun `conclusion`/`status` or StatusContext `state`). */
+function checkItemState(o: Record<string, unknown>): "pass" | "fail" | "pending" {
+  const conclusion = typeof o.conclusion === "string" ? o.conclusion.toUpperCase() : "";
+  const status = typeof o.status === "string" ? o.status.toUpperCase() : "";
+  const state = typeof o.state === "string" ? o.state.toUpperCase() : "";
+  if (["FAILURE", "ERROR", "TIMED_OUT", "STARTUP_FAILURE"].includes(conclusion) || ["FAILURE", "ERROR"].includes(state)) return "fail";
+  if (["SUCCESS", "NEUTRAL", "SKIPPED"].includes(conclusion) || state === "SUCCESS") return "pass";
+  if (conclusion === "" && (status === "" && state === "")) return "pending";
+  // In-progress check runs have status QUEUED/IN_PROGRESS and empty conclusion;
+  // StatusContext PENDING/EXPECTED land here too.
+  return "pending";
+}
+
+/**
+ * Parse `gh pr view <n> --json statusCheckRollup,mergeable`. `ok: false` on
+ * malformed JSON — the caller degrades to the cached/unknown value, never throws.
+ * CI fold: any fail → `fail`; else any pending → `pending`; else all pass →
+ * `pass`; an EMPTY rollup → `none` (no checks configured — distinct from
+ * `unknown`, which means "we couldn't look").
+ */
+export function parseGhPrRollup(stdout: string): { rollup: GhPrRollup; ok: boolean } {
+  const unknown: GhPrRollup = { ciState: "unknown", mergeableState: "unknown" };
+  let raw: unknown;
+  try {
+    raw = JSON.parse(stdout);
+  } catch {
+    return { rollup: unknown, ok: false };
+  }
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return { rollup: unknown, ok: false };
+  const o = raw as Record<string, unknown>;
+
+  const mergeableRaw = typeof o.mergeable === "string" ? o.mergeable.toUpperCase() : "";
+  const mergeableState: PrMergeableState =
+    mergeableRaw === "MERGEABLE" ? "mergeable" : mergeableRaw === "CONFLICTING" ? "conflicting" : "unknown";
+
+  const items = Array.isArray(o.statusCheckRollup) ? o.statusCheckRollup : [];
+  let ciState: PrCiState;
+  if (items.length === 0) {
+    ciState = "none";
+  } else {
+    const states = items
+      .filter((it): it is Record<string, unknown> => typeof it === "object" && it !== null)
+      .map(checkItemState);
+    ciState = states.includes("fail") ? "fail" : states.includes("pending") ? "pending" : "pass";
+  }
+  return { rollup: { ciState, mergeableState }, ok: true };
 }
 
 // ---------------------------------------------------------------------------

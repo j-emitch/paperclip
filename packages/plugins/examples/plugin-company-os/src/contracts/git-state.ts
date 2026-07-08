@@ -20,6 +20,8 @@ import { diagnosticSchema, sourceFreshnessSchema } from "./diagnostics.js";
 import { projectGroupV1Schema, projectTaxonomyV1Schema } from "./projects.js";
 import {
   BRANCH_COMPARISONS,
+  PR_CI_STATES,
+  PR_MERGEABLE_STATES,
   BRANCH_STATUSES,
   HEALTH_SEVERITIES,
   PROJECT_REPO_ROLES,
@@ -31,6 +33,8 @@ import {
   type BranchStatus,
   type Expect,
   type HealthSeverity,
+  type PrCiState,
+  type PrMergeableState,
   type RepoAvailability,
   type ReviewReportKind,
   type ReviewVerdict,
@@ -107,6 +111,9 @@ export type WorktreeGitV1 = z.infer<typeof worktreeGitV1Schema>;
  * now), false when only a stale/older report for that PR exists. An ABSENT review is
  * `null` (unknown — never "unreviewed"; reports are gitignored + machine-local).
  */
+export const prCiStateSchema = z.enum(PR_CI_STATES);
+export const prMergeableStateSchema = z.enum(PR_MERGEABLE_STATES);
+
 export const prReviewV1Schema = z.object({
   verdict: reviewVerdictSchema,
   reportKind: reviewReportKindSchema,
@@ -142,8 +149,39 @@ export const branchPrV1Schema = z.object({
   /** Tickets this PR resolves (title scope, else head branch) — cross-links to the Atlas. */
   ticketIds: z.array(z.string()),
   review: prReviewV1Schema.nullable(),
+  /**
+   * CI + mergeability from the COS-11.gh-fields rollup (bounded per-PR
+   * `gh pr view --json statusCheckRollup,mergeable`, cache-by-change). Defaults
+   * keep pre-slice cached payloads parseable: an old row reads as `unknown`.
+   */
+  ciState: prCiStateSchema.default("unknown"),
+  mergeableState: prMergeableStateSchema.default("unknown"),
 });
 export type BranchPrV1 = z.infer<typeof branchPrV1Schema>;
+
+/**
+ * One rollup-cache entry (COS-11.gh-fields rate contract): re-fetch a PR's
+ * rollup ONLY when its `(headSha, updatedAt)` changed. The map is persisted on
+ * the payload because `PullRequestSource` is STATELESS — the derive threads the
+ * PREVIOUS payload's map back in via `CollectionContext.prior` (codex P0 fold).
+ */
+export const prRollupCacheEntryV1Schema = z.object({
+  repoKey: z.string().min(1),
+  prNumber: z.number().int().positive(),
+  headSha: z.string().nullable(),
+  updatedAt: z.string().nullable(),
+  ciState: prCiStateSchema,
+  mergeableState: prMergeableStateSchema,
+});
+export type PrRollupCacheEntryV1 = z.infer<typeof prRollupCacheEntryV1Schema>;
+
+/** Cache-map key: one rollup per (repo, PR). */
+export function prRollupKey(repoKey: string, prNumber: number): string {
+  return `${repoKey}#${prNumber}`;
+}
+
+/** Per-tick bound on rollup fetches — the other half of the rate contract. */
+export const MAX_ROLLUP_FETCHES = 20;
 
 /** The persisted per-branch row — the `BranchSignal` git payload (no provenance envelope). */
 export const branchGitV1Schema = z.object({
@@ -202,6 +240,12 @@ export const gitStateV1Schema = z.object({
   groups: z.array(projectGitSectionV1Schema),
   sources: z.array(sourceFreshnessSchema),
   diagnostics: z.array(diagnosticSchema),
+  /**
+   * The persisted rollup cache (COS-11.gh-fields) — keyed `prRollupKey(repo, n)`.
+   * Defaulted so pre-slice payloads parse; rebuilt from CURRENT open PRs each
+   * derive (a closed PR's entry drops out with its signal).
+   */
+  prRollups: z.record(z.string(), prRollupCacheEntryV1Schema).default({}),
 });
 export type GitStateV1 = z.infer<typeof gitStateV1Schema>;
 
@@ -221,3 +265,5 @@ type _BranchStatusMatches = Expect<AssertEqual<z.infer<typeof branchStatusSchema
 type _ReviewVerdictMatches = Expect<AssertEqual<z.infer<typeof reviewVerdictSchema>, ReviewVerdict>>;
 type _ReviewReportKindMatches = Expect<AssertEqual<z.infer<typeof reviewReportKindSchema>, ReviewReportKind>>;
 type _HealthSeverityMatches = Expect<AssertEqual<z.infer<typeof healthSeveritySchema>, HealthSeverity>>;
+type _PrCiStateMatches = Expect<AssertEqual<z.infer<typeof prCiStateSchema>, PrCiState>>;
+type _PrMergeableMatches = Expect<AssertEqual<z.infer<typeof prMergeableStateSchema>, PrMergeableState>>;

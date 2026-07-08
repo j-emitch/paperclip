@@ -22,7 +22,7 @@ import {
 } from "../contracts/signals.js";
 import type { Diagnostic } from "../contracts/diagnostics.js";
 import type { ProjectTaxonomyV1 } from "../contracts/projects.js";
-import type { ReviewVerdict } from "../contracts/vocab.js";
+import type { PrCiState, PrMergeableState, ReviewVerdict } from "../contracts/vocab.js";
 import { branchStatusSeverity } from "../contracts/branch-health.js";
 import {
   GIT_STATE_SCHEMA_VERSION,
@@ -32,6 +32,8 @@ import {
   type PrReviewV1,
   type ProjectGitSectionV1,
   type RepoGitStateV1,
+  prRollupKey,
+  type PrRollupCacheEntryV1,
 } from "../contracts/git-state.js";
 import { aggregateSourceFreshness, diagnosticsFromFreshness, isoFrom } from "./_shared.js";
 
@@ -124,6 +126,24 @@ export function deriveGitState(bundle: SignalBundle, nowMs: number, taxonomy: Pr
   }
 
   const sources = aggregateSourceFreshness(bundle);
+
+  // The COS-11.gh-fields rollup cache: rebuilt from THIS derive's open PRs (a
+  // closed PR drops out with its signal), persisted so the next derive's
+  // PullRequestSource (via ctx.prior) re-fetches only changed PRs.
+  const prRollups: Record<string, PrRollupCacheEntryV1> = {};
+  for (const [repoKey, prs] of prsByRepo) {
+    for (const pr of prs) {
+      prRollups[prRollupKey(repoKey, pr.prNumber)] = {
+        repoKey,
+        prNumber: pr.prNumber,
+        headSha: pr.headSha,
+        updatedAt: pr.updatedAt,
+        ciState: pr.ciState,
+        mergeableState: pr.mergeableState,
+      };
+    }
+  }
+
   return {
     schemaVersion: GIT_STATE_SCHEMA_VERSION,
     derivedAt: isoFrom(nowMs),
@@ -131,6 +151,7 @@ export function deriveGitState(bundle: SignalBundle, nowMs: number, taxonomy: Pr
     groups,
     sources,
     diagnostics: [...diagnostics, ...diagnosticsFromFreshness(sources)],
+    prRollups,
   };
 }
 
@@ -189,6 +210,8 @@ function collectPullRequestsByRepo(
     headSha: string | null;
     updatedAt: string | null;
     ticketIds: string[];
+    ciState: PrCiState;
+    mergeableState: PrMergeableState;
   }
   const byKey = new Map<string, Acc>();
   for (const w of prSignals) {
@@ -206,6 +229,8 @@ function collectPullRequestsByRepo(
         headSha: w.sha ?? null,
         updatedAt: w.mtime ?? null,
         ticketIds: w.ticketId ? [w.ticketId] : [],
+        ciState: w.ciState ?? "unknown",
+        mergeableState: w.prMergeable ?? "unknown",
       });
       continue;
     }
@@ -216,6 +241,9 @@ function collectPullRequestsByRepo(
     existing.headRef ??= w.headRef ?? null;
     existing.headSha ??= w.sha ?? null;
     existing.updatedAt ??= w.mtime ?? null;
+    // Fan-out siblings carry the SAME rollup; prefer any non-unknown value.
+    if (existing.ciState === "unknown" && w.ciState) existing.ciState = w.ciState;
+    if (existing.mergeableState === "unknown" && w.prMergeable) existing.mergeableState = w.prMergeable;
   }
 
   const byRepo = new Map<string, BranchPrV1[]>();
@@ -230,6 +258,8 @@ function collectPullRequestsByRepo(
       updatedAt: acc.updatedAt,
       ticketIds: acc.ticketIds,
       review: reviewForPr(acc.repo, acc.prNumber, acc.headSha, reviews),
+      ciState: acc.ciState,
+      mergeableState: acc.mergeableState,
     };
     const list = byRepo.get(acc.repo) ?? [];
     list.push(pr);

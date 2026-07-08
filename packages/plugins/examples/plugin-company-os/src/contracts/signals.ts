@@ -36,6 +36,8 @@ import type {
   WorkState,
   WorktreeOrigin,
   WorktreeMergeStatus,
+  PrCiState,
+  PrMergeableState,
 } from "./vocab.js";
 import type { Diagnostic } from "./diagnostics.js";
 // Type-only (erased at compile time) — no runtime dependency, so no cycle even
@@ -107,6 +109,15 @@ export interface WorkSignal extends SignalProvenance {
   readonly headRef?: string;
   /** True when the PR is a draft (`gh pr list --json isDraft`) — PR sources only. */
   readonly isDraft?: boolean;
+  /**
+   * CI state folded from the PR's `statusCheckRollup` (COS-11.gh-fields pre-slice)
+   * -- PR sources only. `unknown` when the rollup was never fetched this derive
+   * AND no cached value existed; the git-state projection persists fetched values
+   * in `GitStateV1.prRollups` so unchanged PRs never re-fetch.
+   */
+  readonly ciState?: PrCiState;
+  /** PR mergeability (`gh pr view --json mergeable`) -- PR sources only. */
+  readonly prMergeable?: PrMergeableState;
   /** Set when `ticketId` is null — why this work couldn't be classified. */
   readonly unclassifiedReason?: UnclassifiedReason;
   /**

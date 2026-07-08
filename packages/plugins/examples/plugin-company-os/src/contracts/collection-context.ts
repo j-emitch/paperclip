@@ -18,7 +18,7 @@
 import type { RegistryLoader } from "./registry.js";
 import type { LineageLoader } from "./lineage.js";
 import type { SignalError } from "./signals.js";
-import type { SignalFreshness } from "./vocab.js";
+import type { PrCiState, PrMergeableState, SignalFreshness } from "./vocab.js";
 import type { SkillRootRef } from "./skills-catalog.js";
 
 /**
@@ -186,6 +186,34 @@ export interface CollectionContext {
   readonly hash: ContentHasher;
   /** Hard-timeout cancellation (spec §6: 60s hard timeout on the full derive). */
   readonly signal?: AbortSignal;
+  /**
+   * Slices of the PREVIOUS derive's persisted payloads that a STATELESS source
+   * needs for cache-by-change decisions (COS-11.gh-fields: the PR rollup cache
+   * lives in `GitStateV1.prRollups`; the derive threads it back in here so
+   * `PullRequestSource` re-fetches a rollup only when the PR changed). Absent
+   * in fixtures / first derive — sources treat that as an empty cache.
+   */
+  readonly prior?: PriorDeriveSlices;
+}
+
+/** See `CollectionContext.prior`. Keys match the owning payload's field names. */
+export interface PriorDeriveSlices {
+  /** `GitStateV1.prRollups` from the previous derive, keyed `prRollupKey(repo, n)`. */
+  readonly prRollups?: Readonly<Record<string, PriorPrRollup>>;
+}
+
+/**
+ * Structural (not zod-imported) mirror of `PrRollupCacheEntryV1` — contracts/
+ * collection-context is a plain-TS in-process contract and must not import the
+ * persisted zod module (keeps the source layer zod-free).
+ */
+export interface PriorPrRollup {
+  readonly repoKey: string;
+  readonly prNumber: number;
+  readonly headSha: string | null;
+  readonly updatedAt: string | null;
+  readonly ciState: PrCiState;
+  readonly mergeableState: PrMergeableState;
 }
 
 // ---------------------------------------------------------------------------
