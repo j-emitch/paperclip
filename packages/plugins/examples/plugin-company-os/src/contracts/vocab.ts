@@ -259,8 +259,13 @@ export type OrientationAlertKind = (typeof ORIENTATION_ALERT_KINDS)[number];
 export const RECENT_WORK_KINDS = ["spec", "plan", "pr", "ticket"] as const;
 export type RecentWorkKind = (typeof RECENT_WORK_KINDS)[number];
 
-/** The typed deep-link target tabs (no string-URL guessing — spec §5.3). */
-export const DEEP_LINK_TABS = ["source", "docs", "board"] as const;
+/**
+ * The typed deep-link target tabs (no string-URL guessing — spec §5.3).
+ * `doc-copy` + `worktree` are the COS-8f URL-scheme variants (B14): a specific
+ * checkout copy of a doc / a specific worktree card, addressed by key-only
+ * params — the legacy three variants are untouched.
+ */
+export const DEEP_LINK_TABS = ["source", "docs", "board", "doc-copy", "worktree"] as const;
 export type DeepLinkTab = (typeof DEEP_LINK_TABS)[number];
 
 /** The doc kinds `DocsSource` emits (spec §5.4). The doc INDEX widens this with `"review"`. */

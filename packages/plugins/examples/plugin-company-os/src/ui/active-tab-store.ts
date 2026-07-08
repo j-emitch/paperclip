@@ -55,6 +55,17 @@ export function setActiveTab(key: CompanyOsTabKey): void {
 }
 
 /**
+ * URL-route preemption (COS-8f): when the page adopts a tab from URL params,
+ * the persisted tab must NOT be restored over it — an explicit `?tab=` link
+ * outranks "where I left off", even when the linked tab IS the default (the
+ * `activeTab !== DEFAULT_TAB_KEY` guard below can't see that case). Marking
+ * hydration done makes the later `hydratePersistedTab` a no-op.
+ */
+export function markTabHydrationPreempted(): void {
+  hydrated = true;
+}
+
+/**
  * Adopt the persisted tab ONCE, client-side. Idempotent + safe to call from more
  * than one mount point; the tests drive it directly. The app shell calls it via
  * `usePersistedTabHydration`.

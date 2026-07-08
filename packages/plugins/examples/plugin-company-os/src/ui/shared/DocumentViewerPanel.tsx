@@ -35,6 +35,8 @@ export interface DocumentViewerPanelProps {
   onRetry?: () => void;
   /** Mobile: a back control to return to the list. */
   onClose?: () => void;
+  /** Extra header-row actions (e.g. the COS-8f copy-link button), rendered before the close button. */
+  headerActions?: ReactNode;
   /**
    * Override the type pill label. The Docs tab passes the INDEX-derived doc type
    * (`DocEntryV1.type`) because `ReportContentV1.artifactType` is null for
@@ -62,6 +64,7 @@ export function DocumentViewerPanel({
   renderMarkdown,
   onRetry,
   onClose,
+  headerActions,
   typeLabel,
   loadingLabel = "Opening the document…",
   errorTitle = "Couldn’t load the document",
@@ -133,6 +136,7 @@ export function DocumentViewerPanel({
           >
             {title}
           </h2>
+          {headerActions}
           {onClose ? (
             <button type="button" onClick={onClose} aria-label={backLabel} style={iconButtonStyle}>
               <CloseIcon size={14} />

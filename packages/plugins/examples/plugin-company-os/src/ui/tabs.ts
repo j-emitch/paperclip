@@ -121,6 +121,16 @@ const LEGACY_TAB_KEYS: Readonly<Record<string, CompanyOsTabKey>> = {
  * session never lands on a dead tab.
  */
 export function normalizeTabKey(value: string): CompanyOsTabKey {
+  return resolveTabKey(value) ?? DEFAULT_TAB_KEY;
+}
+
+/**
+ * Strict variant for URL routing (COS-8f): a current key maps to itself, a known
+ * legacy key maps forward, and anything unrecognized returns `null` — a shared
+ * URL with a bogus `tab=` must surface as a MISS, never silently land on the
+ * default tab (that would make a broken link look like a working one).
+ */
+export function resolveTabKey(value: string): CompanyOsTabKey | null {
   if (isCompanyOsTabKey(value)) return value;
-  return LEGACY_TAB_KEYS[value] ?? DEFAULT_TAB_KEY;
+  return LEGACY_TAB_KEYS[value] ?? null;
 }

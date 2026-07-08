@@ -17,7 +17,7 @@ import { MarkdownBlock } from "@paperclipai/plugin-sdk/ui";
 import type { BriefingCardV1, DeepLink } from "../../contracts/index.js";
 import { HomeIcon } from "../icons.js";
 import { type CompanyOsTabKey } from "../tabs.js";
-import { useActiveTab } from "../active-tab-store.js";
+import { useSelectTab } from "../routing-sync.js";
 import { setPendingTarget } from "../pending-target-store.js";
 import { SurfaceEmpty, SurfaceError, SurfaceLoading } from "../shared/surface-state.js";
 import { useOrientation } from "../hooks/useOrientation.js";
@@ -49,6 +49,10 @@ function deepLinkTabKey(link: DeepLink): CompanyOsTabKey {
       return "atlas";
     case "docs":
       return "docs";
+    case "doc-copy":
+      return "docs";
+    case "worktree":
+      return "branch-pr";
   }
 }
 
@@ -56,7 +60,7 @@ export function Home({ companyId }: { companyId: string | null }) {
   const isMobile = useIsMobile();
   const now = useNow();
   const { orientation, loading, error, refresh } = useOrientation(companyId);
-  const [, setTab] = useActiveTab();
+  const setTab = useSelectTab();
   const [openBriefing, setOpenBriefing] = useState<BriefingCardV1 | null>(null);
 
   // Reset the open briefing when the active company changes.

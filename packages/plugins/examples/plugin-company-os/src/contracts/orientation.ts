@@ -71,6 +71,23 @@ export const deepLinkSchema = z.discriminatedUnion("tab", [
   z.object({ tab: z.literal("source"), repoKey: z.string().min(1), branch: z.string().nullable() }),
   z.object({ tab: z.literal("docs"), docId: z.string().min(1) }),
   z.object({ tab: z.literal("board"), workId: z.string().min(1) }),
+  // COS-8f (B14, additive): a doc COPY addressed by key-only URL params —
+  // (repoKey, checkout basename|"main", relPath[, ck hash12]) — resolved
+  // index-gated at render, so the link survives re-derives (AC-8f#2).
+  z.object({
+    tab: z.literal("doc-copy"),
+    repoKey: z.string().min(1),
+    checkout: z.string().min(1),
+    relPath: z.string().min(1),
+    ck: z.string().nullable(),
+  }),
+  // COS-8f/8c (B14, additive): one worktree card on the Branch·PR board.
+  z.object({
+    tab: z.literal("worktree"),
+    repoKey: z.string().min(1),
+    wt: z.string().min(1),
+    ck: z.string().nullable(),
+  }),
 ]);
 export type DeepLink = z.infer<typeof deepLinkSchema>;
 

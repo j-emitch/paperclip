@@ -10,6 +10,7 @@ import { tokens, springTransition } from "./tokens.js";
 import { COMPANY_OS_TABS, type CompanyOsTab, type CompanyOsTabKey } from "./tabs.js";
 import { TAB_ICONS, CompanyOsGlyph } from "./icons.js";
 import { useActiveTab, usePersistedTabHydration } from "./active-tab-store.js";
+import { useSelectTab, useUrlRouteAdoption } from "./routing-sync.js";
 import { useIsMobile } from "./hooks/useMediaQuery.js";
 import { WorkSurface } from "./work-surface.js";
 import { Home } from "./home/Home.js";
@@ -82,7 +83,8 @@ export function SidebarLink(_props: PluginSidebarProps) {
 // ---------------------------------------------------------------------------
 
 export function CompanyOsRouteSidebar(_props: PluginRouteSidebarProps) {
-  const [activeTab, setTab] = useActiveTab();
+  const [activeTab] = useActiveTab();
+  const setTab = useSelectTab();
   usePersistedTabHydration();
   return (
     <nav
@@ -147,7 +149,11 @@ export function CompanyOsRouteSidebar(_props: PluginRouteSidebarProps) {
 
 export function CompanyOsPage({ context }: PluginPageProps) {
   const isMobile = useIsMobile();
-  const [activeTab, setTab] = useActiveTab();
+  const [activeTab] = useActiveTab();
+  const setTab = useSelectTab();
+  // URL adoption FIRST (single adopter): ?tab/?repo/?path in the address bar
+  // outranks the persisted tab and seeds the one-shot pending target (COS-8f).
+  useUrlRouteAdoption();
   usePersistedTabHydration();
   const current = COMPANY_OS_TABS.find((tab) => tab.key === activeTab) ?? COMPANY_OS_TABS[0];
   // The live surfaces own their own panel chrome; placeholders sit inside a card.
