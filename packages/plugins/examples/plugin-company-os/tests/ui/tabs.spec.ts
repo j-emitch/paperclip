@@ -72,7 +72,7 @@ describe("tab taxonomy", () => {
     expect(keys).not.toContain("source" as CompanyOsTabKey);
     expect(keys).toContain("branch-pr");
     const branchPr = COMPANY_OS_TABS.find((t) => t.key === "branch-pr");
-    expect(branchPr?.label).toBe("Branch · PR Health");
+    expect(branchPr?.label).toBe("Branches · Worktrees"); // relabeled by COS-8c (two lenses)
     expect(branchPr?.liveIn).toBe("COS-5e");
     expect(isCompanyOsTabKey("source")).toBe(false);
   });

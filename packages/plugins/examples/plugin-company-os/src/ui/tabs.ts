@@ -42,7 +42,7 @@ export const COMPANY_OS_TABS: readonly CompanyOsTab[] = [
   },
   {
     key: "branch-pr",
-    label: "Branch · PR Health",
+    label: "Branches · Worktrees",
     description: "Every branch + worktree vs trunk — ahead/behind, dirty, stale, conflicts — with each open PR's lifecycle + review verdict, and what needs attention.",
     liveIn: "COS-5e",
   },

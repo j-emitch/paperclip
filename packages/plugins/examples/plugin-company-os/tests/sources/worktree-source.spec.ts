@@ -204,6 +204,43 @@ body ignored
   });
 });
 
+describe("row 5: worktree removed mid-scan (spec §4.1)", () => {
+  it("a tree whose git reads fail after enumeration DEGRADES (row present, fields null, errors recorded)", async () => {
+    const gone = wt("removed-mid-scan", "claude/R-1/gone");
+    const alive = wt("still-here", "claude/R-2/ok");
+    const { signals, errors } = await collectSignals(
+      [gone, alive],
+      gitFor({
+        [gone.key]: {
+          // Every per-tree read fails — the dir vanished between `git worktree
+          // list` (enumeration) and the scan.
+          "rev-parse HEAD": proc.fail(128, "fatal: not a git repository"),
+          "--no-optional-locks status --porcelain": proc.fail(128),
+          "log -1 --format=%cI": proc.fail(128),
+          "rev-list --left-right --count": proc.fail(128),
+          "merge-base --is-ancestor": proc.fail(128),
+          "rev-parse claude/R-1/gone^{tree}": proc.fail(128),
+        },
+      }),
+    );
+    // DEGRADED row — present, nulled, honest; never a silent drop.
+    const degraded = signals.find((s) => s.worktreeName === "removed-mid-scan")!;
+    expect(degraded).toBeDefined();
+    expect(degraded.headSha).toBeNull();
+    expect(degraded.dirtyFileCount).toBeNull();
+    expect(degraded.mergeStatus).toBe("unknown");
+    expect(errors.some((e) => e.code === "git_read_failed" && e.message.includes("removed-mid-scan"))).toBe(true);
+    // The healthy sibling is unaffected.
+    expect(signals.find((s) => s.worktreeName === "still-here")?.headSha).toBe("abc123");
+  });
+
+  it("a tree pruned BEFORE enumeration is a DROPPED row (absent from ctx.worktrees → no signal)", async () => {
+    const { signals } = await collectSignals([wt("only-tree", "claude/R-3/solo")], gitFor());
+    expect(signals).toHaveLength(1); // nothing invented for trees git no longer lists
+    expect(signals.some((s) => s.worktreeName === "pruned-earlier")).toBe(false);
+  });
+});
+
 describe("activity gate (spec §5.2)", () => {
   it("a stale CLEAN tree is not evaluated; a stale DIRTY tree is", async () => {
     const staleClean = wt("stale-clean", "claude/A-1/x");
