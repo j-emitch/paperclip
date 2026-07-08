@@ -22,8 +22,8 @@ import {
 } from "../contracts/signals.js";
 import type { Diagnostic } from "../contracts/diagnostics.js";
 import type { ProjectTaxonomyV1 } from "../contracts/projects.js";
-import type { PrCiState, PrMergeableState, ReviewVerdict } from "../contracts/vocab.js";
-import { branchStatusSeverity } from "../contracts/branch-health.js";
+import type { PrCiState, PrMergeableState, PrReviewDecision, ReviewVerdict } from "../contracts/vocab.js";
+import { branchStatusSeverity, prActionStatuses } from "../contracts/branch-health.js";
 import {
   GIT_STATE_SCHEMA_VERSION,
   type BranchGitV1,
@@ -157,6 +157,11 @@ export function deriveGitState(bundle: SignalBundle, nowMs: number, taxonomy: Pr
 
 /** Map a BranchSignal's git payload → the persisted BranchGitV1 row (drop provenance). */
 function toBranchGitV1(b: BranchSignal, repoPrs: readonly BranchPrV1[]): BranchGitV1 {
+  // Open PRs whose head ref is this branch (COS-5e). A detached HEAD (branch===null)
+  // can't match a head ref, so it carries no PRs.
+  const pullRequests = b.branch === null ? [] : repoPrs.filter((pr) => pr.headRef === b.branch);
+  // COS-8a: the branch accrues its PRs' action statuses (the one shared fold).
+  const statuses = [...b.statuses, ...prActionStatuses(pullRequests)];
   return {
     branch: b.branch,
     headSha: b.headSha,
@@ -180,13 +185,12 @@ function toBranchGitV1(b: BranchSignal, repoPrs: readonly BranchPrV1[]): BranchG
       committedAt: c.committedAt,
       ...(c.stat ? { stat: { ...c.stat } } : {}),
     })),
-    statuses: [...b.statuses],
-    // Worst-of-statuses severity, computed once here via the SAME shared function
-    // deriveOrientation uses for Home — persisted so the browser never recomputes it.
-    attentionSeverity: branchStatusSeverity(b.statuses),
-    // Open PRs whose head ref is this branch (COS-5e). A detached HEAD (branch===null)
-    // can't match a head ref, so it carries no PRs.
-    pullRequests: b.branch === null ? [] : repoPrs.filter((pr) => pr.headRef === b.branch),
+    statuses,
+    // Worst-of-statuses severity via the SAME shared function deriveOrientation
+    // uses for Home — computed over the COMBINED list (git + PR-action statuses)
+    // so the tab rail and Home read one ladder (COS-8a).
+    attentionSeverity: branchStatusSeverity(statuses),
+    pullRequests,
   };
 }
 
@@ -212,6 +216,7 @@ function collectPullRequestsByRepo(
     ticketIds: string[];
     ciState: PrCiState;
     mergeableState: PrMergeableState;
+    reviewDecision: PrReviewDecision;
   }
   const byKey = new Map<string, Acc>();
   for (const w of prSignals) {
@@ -231,6 +236,7 @@ function collectPullRequestsByRepo(
         ticketIds: w.ticketId ? [w.ticketId] : [],
         ciState: w.ciState ?? "unknown",
         mergeableState: w.prMergeable ?? "unknown",
+        reviewDecision: w.prReviewDecision ?? "unknown",
       });
       continue;
     }
@@ -244,6 +250,7 @@ function collectPullRequestsByRepo(
     // Fan-out siblings carry the SAME rollup; prefer any non-unknown value.
     if (existing.ciState === "unknown" && w.ciState) existing.ciState = w.ciState;
     if (existing.mergeableState === "unknown" && w.prMergeable) existing.mergeableState = w.prMergeable;
+    if (existing.reviewDecision === "unknown" && w.prReviewDecision) existing.reviewDecision = w.prReviewDecision;
   }
 
   const byRepo = new Map<string, BranchPrV1[]>();
@@ -260,6 +267,7 @@ function collectPullRequestsByRepo(
       review: reviewForPr(acc.repo, acc.prNumber, acc.headSha, reviews),
       ciState: acc.ciState,
       mergeableState: acc.mergeableState,
+      reviewDecision: acc.reviewDecision,
     };
     const list = byRepo.get(acc.repo) ?? [];
     list.push(pr);

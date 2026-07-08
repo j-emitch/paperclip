@@ -140,3 +140,63 @@ describe("buildBranchPrView", () => {
     expect(isBranchPrEmpty(goldenGitState())).toBe(false);
   });
 });
+
+describe("COS-8a — PR action chips (SSR)", () => {
+  const basePr = {
+    prNumber: 500,
+    title: "feat(COS-8a): action surface",
+    url: "https://github.com/j-emitch/x/pull/500",
+    isDraft: false,
+    headRef: "claude/COS-8a/x",
+    headSha: "abc",
+    updatedAt: "2026-07-08T00:00:00Z",
+    ticketIds: ["COS-8a"],
+    review: null,
+    ciState: "unknown" as const,
+    mergeableState: "unknown" as const,
+    reviewDecision: "unknown" as const,
+  };
+
+  it("changes-requested + CI-red + merge-blocked all render as TEXT chips with the PR deep-link", async () => {
+    const { PrDetailRow } = await import("../../src/ui/branch-pr/PrChip.js");
+    const html = renderToStaticMarkup(
+      <PrDetailRow
+        pr={{ ...basePr, ciState: "fail", mergeableState: "conflicting", reviewDecision: "changes_requested" }}
+        now={BRANCH_PR_NOW}
+      />,
+    );
+    expect(html).toContain("changes requested");
+    expect(html).toContain("CI failing");
+    expect(html).toContain("merge blocked");
+    expect(html).toContain("https://github.com/j-emitch/x/pull/500"); // AC-8a deep-link
+  });
+
+  it("compact PrChip stays calm: pass/none/approved add NO chips; fail does", async () => {
+    const { PrChip } = await import("../../src/ui/branch-pr/PrChip.js");
+    const calm = renderToStaticMarkup(
+      <PrChip pr={{ ...basePr, ciState: "pass", reviewDecision: "approved" }} />,
+    );
+    expect(calm).not.toContain("CI pass");
+    expect(calm).not.toContain("approved");
+    const loud = renderToStaticMarkup(<PrChip pr={{ ...basePr, ciState: "fail" }} />);
+    expect(loud).toContain("CI failing");
+  });
+
+  it("detail row: 'no checks' renders honestly for none; unknown renders NOTHING", async () => {
+    const { PrDetailRow } = await import("../../src/ui/branch-pr/PrChip.js");
+    const none = renderToStaticMarkup(<PrDetailRow pr={{ ...basePr, ciState: "none" }} now={BRANCH_PR_NOW} />);
+    expect(none).toContain("no checks");
+    const unk = renderToStaticMarkup(<PrDetailRow pr={basePr} now={BRANCH_PR_NOW} />);
+    expect(unk).not.toContain("no checks");
+    expect(unk).not.toContain("CI");
+  });
+
+  it("a draft PR suppresses review-decision chips but keeps CI", async () => {
+    const { PrDetailRow } = await import("../../src/ui/branch-pr/PrChip.js");
+    const html = renderToStaticMarkup(
+      <PrDetailRow pr={{ ...basePr, isDraft: true, ciState: "fail", reviewDecision: "changes_requested" }} now={BRANCH_PR_NOW} />,
+    );
+    expect(html).toContain("CI failing");
+    expect(html).not.toContain("changes requested");
+  });
+});

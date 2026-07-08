@@ -39,6 +39,7 @@ import {
 import type { HealthSeverity, RecentWorkKind } from "../contracts/vocab.js";
 import {
   branchStatusSeverity,
+  prActionStatuses,
   compareSeverityWorstFirst,
   isAttentionSeverity,
 } from "../contracts/branch-health.js";
@@ -93,16 +94,36 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
   }
 
   // --- Branch health (alert-worthy only) ---
+  // COS-8a: fold each branch's open-PR action statuses in via the SAME shared
+  // fold `deriveGitState` uses — Home's count stays ≡ the Branch·PR band.
+  const prActionsByBranch = new Map<string, ReturnType<typeof prActionStatuses>>();
+  {
+    const prsByBranch = new Map<string, { isDraft: boolean; ciState: string; mergeableState: string; reviewDecision: string }[]>();
+    for (const w of work) {
+      if (typeof w.prNumber !== "number" || !w.headRef) continue;
+      const key = `${w.repo}#${w.headRef}`;
+      const list = prsByBranch.get(key) ?? [];
+      list.push({
+        isDraft: w.isDraft ?? false,
+        ciState: w.ciState ?? "unknown",
+        mergeableState: w.prMergeable ?? "unknown",
+        reviewDecision: w.prReviewDecision ?? "unknown",
+      });
+      prsByBranch.set(key, list);
+    }
+    for (const [key, prs] of prsByBranch) prActionsByBranch.set(key, prActionStatuses(prs));
+  }
   const branchHealth: BranchHealthEntryV1[] = branches
     .map((b): { entry: BranchHealthEntryV1; severity: HealthSeverity } => {
-      const severity = branchStatusSeverity(b.statuses);
+      const statuses = [...b.statuses, ...(b.branch !== null ? (prActionsByBranch.get(`${b.repo}#${b.branch}`) ?? []) : [])];
+      const severity = branchStatusSeverity(statuses);
       return {
         severity,
         entry: {
           projectKey: proj(b.repo),
           repo: b.repo,
           branch: b.branch,
-          statuses: [...b.statuses],
+          statuses,
           severity,
           behind: b.behind,
           staleDays: b.staleDays,

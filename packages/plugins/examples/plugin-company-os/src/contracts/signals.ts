@@ -38,6 +38,7 @@ import type {
   WorktreeMergeStatus,
   PrCiState,
   PrMergeableState,
+  PrReviewDecision,
 } from "./vocab.js";
 import type { Diagnostic } from "./diagnostics.js";
 // Type-only (erased at compile time) — no runtime dependency, so no cycle even
@@ -118,6 +119,8 @@ export interface WorkSignal extends SignalProvenance {
   readonly ciState?: PrCiState;
   /** PR mergeability (`gh pr view --json mergeable`) -- PR sources only. */
   readonly prMergeable?: PrMergeableState;
+  /** PR review decision (`gh pr list --json reviewDecision`, COS-8a) -- PR sources only. */
+  readonly prReviewDecision?: PrReviewDecision;
   /** Set when `ticketId` is null — why this work couldn't be classified. */
   readonly unclassifiedReason?: UnclassifiedReason;
   /**

@@ -237,6 +237,12 @@ export const BRANCH_STATUSES = [
   "comparison_unavailable",
   "conflict_not_evaluated",
   "ahead_clean",
+  // COS-8a PR-action statuses — appended at PROJECTION time from the branch's
+  // open PRs (the git source can't know them), same severity ladder as the rest.
+  "pr_changes_requested",
+  "pr_ci_failing",
+  "pr_mergeable_blocked",
+  "pr_review_required",
 ] as const;
 export type BranchStatus = (typeof BRANCH_STATUSES)[number];
 
@@ -296,6 +302,13 @@ export type PrCiState = (typeof PR_CI_STATES)[number];
 /** PR mergeability from `gh pr view --json mergeable` (MERGEABLE/CONFLICTING/UNKNOWN). */
 export const PR_MERGEABLE_STATES = ["mergeable", "conflicting", "unknown"] as const;
 export type PrMergeableState = (typeof PR_MERGEABLE_STATES)[number];
+
+/**
+ * PR review decision from `gh pr list --json reviewDecision` (a LIST field —
+ * zero extra API cost, unlike the rollup). `unknown` = gh omitted it.
+ */
+export const PR_REVIEW_DECISIONS = ["approved", "changes_requested", "review_required", "unknown"] as const;
+export type PrReviewDecision = (typeof PR_REVIEW_DECISIONS)[number];
 
 /**
  * COS-8f doc-git reads: the 5-state freshness ladder for a doc copy, and the

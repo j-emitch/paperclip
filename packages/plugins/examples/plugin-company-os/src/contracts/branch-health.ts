@@ -32,6 +32,13 @@ export const BRANCH_STATUS_SEVERITY: Record<BranchStatus, HealthSeverity> = {
   comparison_unavailable: "low",
   conflict_not_evaluated: "low",
   ahead_clean: "info",
+  // COS-8a PR-action statuses: warn-class (medium) for the three that block a
+  // merge or demand a fix; awaiting-review is informational (low) — Home's
+  // attention band must not fill with every PR that simply hasn't been read yet.
+  pr_changes_requested: "medium",
+  pr_ci_failing: "medium",
+  pr_mergeable_blocked: "medium",
+  pr_review_required: "low",
 };
 
 /** Canonical severity magnitude — higher is worse. The single ordering both surfaces rank by. */
@@ -65,4 +72,31 @@ export function isAttentionSeverity(severity: HealthSeverity): boolean {
 /** Worst-severity-first comparator (a before b when a is more severe). */
 export function compareSeverityWorstFirst(a: HealthSeverity, b: HealthSeverity): number {
   return HEALTH_SEVERITY_ORDER[b] - HEALTH_SEVERITY_ORDER[a];
+}
+
+/** The PR fields the action fold reads — structural, so BOTH projections (git-state
+ * rows, orientation signals) can pass their own shapes. */
+export interface PrActionInput {
+  readonly isDraft: boolean;
+  readonly ciState: string;
+  readonly mergeableState: string;
+  readonly reviewDecision: string;
+}
+
+/**
+ * COS-8a: the PR-action statuses one branch accrues from its open PRs — the ONE
+ * fold both `deriveGitState` (Branch·PR rows) and `deriveOrientation` (Home
+ * alerts) call, so the tab rail and Home cannot disagree. Draft PRs keep the
+ * CI/merge signals (the author is actively pushing) but suppress the review
+ * states (nobody is asked to review a draft).
+ */
+export function prActionStatuses(prs: readonly PrActionInput[]): BranchStatus[] {
+  const out = new Set<BranchStatus>();
+  for (const pr of prs) {
+    if (pr.ciState === "fail") out.add("pr_ci_failing");
+    if (pr.mergeableState === "conflicting") out.add("pr_mergeable_blocked");
+    if (!pr.isDraft && pr.reviewDecision === "changes_requested") out.add("pr_changes_requested");
+    if (!pr.isDraft && pr.reviewDecision === "review_required") out.add("pr_review_required");
+  }
+  return [...out];
 }

@@ -22,6 +22,7 @@ import {
   BRANCH_COMPARISONS,
   PR_CI_STATES,
   PR_MERGEABLE_STATES,
+  PR_REVIEW_DECISIONS,
   BRANCH_STATUSES,
   HEALTH_SEVERITIES,
   PROJECT_REPO_ROLES,
@@ -35,6 +36,7 @@ import {
   type HealthSeverity,
   type PrCiState,
   type PrMergeableState,
+  type PrReviewDecision,
   type RepoAvailability,
   type ReviewReportKind,
   type ReviewVerdict,
@@ -113,6 +115,7 @@ export type WorktreeGitV1 = z.infer<typeof worktreeGitV1Schema>;
  */
 export const prCiStateSchema = z.enum(PR_CI_STATES);
 export const prMergeableStateSchema = z.enum(PR_MERGEABLE_STATES);
+export const prReviewDecisionSchema = z.enum(PR_REVIEW_DECISIONS);
 
 export const prReviewV1Schema = z.object({
   verdict: reviewVerdictSchema,
@@ -156,6 +159,8 @@ export const branchPrV1Schema = z.object({
    */
   ciState: prCiStateSchema.default("unknown"),
   mergeableState: prMergeableStateSchema.default("unknown"),
+  /** `gh pr list --json reviewDecision` (COS-8a) — a free list field, no rate cost. */
+  reviewDecision: prReviewDecisionSchema.default("unknown"),
 });
 export type BranchPrV1 = z.infer<typeof branchPrV1Schema>;
 
@@ -267,3 +272,4 @@ type _ReviewReportKindMatches = Expect<AssertEqual<z.infer<typeof reviewReportKi
 type _HealthSeverityMatches = Expect<AssertEqual<z.infer<typeof healthSeveritySchema>, HealthSeverity>>;
 type _PrCiStateMatches = Expect<AssertEqual<z.infer<typeof prCiStateSchema>, PrCiState>>;
 type _PrMergeableMatches = Expect<AssertEqual<z.infer<typeof prMergeableStateSchema>, PrMergeableState>>;
+type _PrReviewDecisionMatches = Expect<AssertEqual<z.infer<typeof prReviewDecisionSchema>, PrReviewDecision>>;

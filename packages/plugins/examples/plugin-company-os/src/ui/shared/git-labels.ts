@@ -21,6 +21,11 @@ export const BRANCH_STATUS_LABELS: Record<BranchStatus, string> = {
   comparison_unavailable: "compare unavailable",
   conflict_not_evaluated: "conflict not checked",
   ahead_clean: "ahead",
+  // COS-8a PR-action flags — the branch's open PRs demand something.
+  pr_changes_requested: "changes requested",
+  pr_ci_failing: "CI failing",
+  pr_mergeable_blocked: "merge blocked",
+  pr_review_required: "awaiting review",
 };
 
 /**
@@ -39,6 +44,10 @@ export const BRANCH_STATUS_TONES: Record<BranchStatus, string> = {
   comparison_unavailable: tokens.muted,
   conflict_not_evaluated: tokens.muted,
   ahead_clean: statusColors.ship,
+  pr_changes_requested: statusColors.stale,
+  pr_ci_failing: statusColors.danger,
+  pr_mergeable_blocked: statusColors.danger,
+  pr_review_required: tokens.muted,
 };
 
 /** Whether ahead/behind/conflict could be computed vs trunk (spec §5.1). */

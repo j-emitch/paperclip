@@ -193,3 +193,60 @@ describe("deriveGitState — PR + review join (COS-5e)", () => {
     expect(repo.orphanPullRequests).toHaveLength(1);
   });
 });
+
+describe("COS-8a — PR-action statuses fold (one ladder: git + PR states)", () => {
+  const jb = (gs: ReturnType<typeof deriveGitState>) =>
+    gs.groups.find((g) => g.group.key === "juice-bar")!.repos.find((r) => r.repoKey === "juice-bar")!;
+
+  it("changes-requested PR → pr_changes_requested status, warn (medium) severity, deep-link URL intact (AC-8a)", () => {
+    const gs = deriveGitState(
+      bundleOf([
+        repoGitSignal("juice-bar"),
+        branchSignal("claude/COS-1/x", { repo: "juice-bar", statuses: [] }),
+        prWork(21, "claude/COS-1/x", "s21", { prReviewDecision: "changes_requested" }),
+      ]),
+      NOW,
+      TAX,
+    );
+    const b = jb(gs).branches.find((x) => x.branch === "claude/COS-1/x")!;
+    expect(b.statuses).toContain("pr_changes_requested");
+    expect(b.attentionSeverity).toBe("medium"); // warn on the tab rail
+    expect(b.pullRequests[0]!.url).toBe("https://x/pull/21"); // the GitHub deep-link
+    expect(b.pullRequests[0]!.reviewDecision).toBe("changes_requested");
+  });
+
+  it("CI-red + mergeable-blocked PRs fold their statuses; review_required stays LOW (no attention spam)", () => {
+    const gs = deriveGitState(
+      bundleOf([
+        repoGitSignal("juice-bar"),
+        branchSignal("claude/A-1/ci", { repo: "juice-bar", statuses: [] }),
+        branchSignal("claude/A-2/rev", { repo: "juice-bar", statuses: [] }),
+        prWork(22, "claude/A-1/ci", "s22", { ciState: "fail", prMergeable: "conflicting" }),
+        prWork(23, "claude/A-2/rev", "s23", { prReviewDecision: "review_required" }),
+      ]),
+      NOW,
+      TAX,
+    );
+    const ci = jb(gs).branches.find((x) => x.branch === "claude/A-1/ci")!;
+    expect(ci.statuses).toEqual(expect.arrayContaining(["pr_ci_failing", "pr_mergeable_blocked"]));
+    expect(ci.attentionSeverity).toBe("medium");
+    const rev = jb(gs).branches.find((x) => x.branch === "claude/A-2/rev")!;
+    expect(rev.statuses).toContain("pr_review_required");
+    expect(rev.attentionSeverity).toBe("low"); // informational, not the attention band
+  });
+
+  it("draft PRs keep CI signals but suppress review-state statuses", () => {
+    const gs = deriveGitState(
+      bundleOf([
+        repoGitSignal("juice-bar"),
+        branchSignal("claude/D-1/x", { repo: "juice-bar", statuses: [] }),
+        prWork(24, "claude/D-1/x", "s24", { isDraft: true, ciState: "fail", prReviewDecision: "changes_requested" }),
+      ]),
+      NOW,
+      TAX,
+    );
+    const b = jb(gs).branches.find((x) => x.branch === "claude/D-1/x")!;
+    expect(b.statuses).toContain("pr_ci_failing");
+    expect(b.statuses).not.toContain("pr_changes_requested");
+  });
+});

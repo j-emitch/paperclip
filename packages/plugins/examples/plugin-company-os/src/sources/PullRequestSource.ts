@@ -21,7 +21,7 @@ import { collectPerRepo, errorFromSubprocess, type RepoReadResult } from "./_sha
 export const PULL_REQUEST_SOURCE_ID = "pull-request";
 
 /** Fields requested from gh — kept minimal + stable so the JSON contract is tight. */
-const PR_JSON_FIELDS = "number,title,headRefName,headRefOid,url,isDraft,updatedAt";
+const PR_JSON_FIELDS = "number,title,headRefName,headRefOid,url,isDraft,updatedAt,reviewDecision";
 const PR_LIST_LIMIT = 200;
 
 /**
@@ -162,6 +162,7 @@ function prSignals(repo: RepoRoot, pr: GhPr, rollup?: ResolvedRollup): WorkSigna
     mtime: pr.updatedAt || undefined,
     ciState: rollup?.ciState ?? "unknown",
     prMergeable: rollup?.mergeableState ?? "unknown",
+    prReviewDecision: pr.reviewDecision,
   } as const satisfies Partial<WorkSignal>;
 
   if (ticketIds.length === 0) {

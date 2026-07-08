@@ -12,7 +12,7 @@
  */
 
 import type { CommitRef, CommitStat } from "../contracts/signals.js";
-import type { PrCiState, PrMergeableState, DocType, ReviewReportKind, ReviewVerdict, UnclassifiedReason } from "../contracts/vocab.js";
+import type { PrCiState, PrMergeableState, PrReviewDecision, DocType, ReviewReportKind, ReviewVerdict, UnclassifiedReason } from "../contracts/vocab.js";
 import { extractTicketIds, prefixOf, ticketFromFilename } from "../contracts/ticket-id.js";
 
 // ---------------------------------------------------------------------------
@@ -381,6 +381,17 @@ export interface GhPr {
   readonly url: string;
   readonly isDraft: boolean;
   readonly updatedAt: string;
+  /** Normalized `reviewDecision` (COS-8a): approved/changes_requested/review_required/unknown. */
+  readonly reviewDecision: PrReviewDecision;
+}
+
+/** Map gh's reviewDecision (APPROVED/CHANGES_REQUESTED/REVIEW_REQUIRED/"") to the vocab. */
+function normalizeReviewDecision(raw: unknown): PrReviewDecision {
+  const v = typeof raw === "string" ? raw.toUpperCase() : "";
+  if (v === "APPROVED") return "approved";
+  if (v === "CHANGES_REQUESTED") return "changes_requested";
+  if (v === "REVIEW_REQUIRED") return "review_required";
+  return "unknown";
 }
 
 /**
@@ -410,6 +421,7 @@ export function parseGhPrList(stdout: string): { prs: GhPr[]; ok: boolean } {
       url: typeof o.url === "string" ? o.url : "",
       isDraft: o.isDraft === true,
       updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : "",
+      reviewDecision: normalizeReviewDecision(o.reviewDecision),
     });
   }
   return { prs, ok: true };

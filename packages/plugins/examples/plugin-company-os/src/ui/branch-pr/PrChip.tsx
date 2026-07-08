@@ -13,6 +13,7 @@
  */
 
 import type { BranchPrV1 } from "../../contracts/index.js";
+import type { PrCiState, PrMergeableState, PrReviewDecision } from "../../contracts/vocab.js";
 import { statusColors, tokens } from "../tokens.js";
 import { Pill } from "../shared/badges.js";
 import { ExternalLinkIcon } from "../icons.js";
@@ -37,6 +38,73 @@ function ReviewPill({ pr, soft = true }: { pr: BranchPrV1; soft?: boolean }) {
   );
 }
 
+/**
+ * COS-8a action chips — CI, mergeability, review decision. UI-local label/tone
+ * maps (the import boundary forbids VALUE imports from contracts; the Record
+ * keys keep them compile-drift-guarded against the vocab). `unknown` renders
+ * NOTHING on either surface: "we couldn't look" earns a quiet absence, while
+ * `none` ("no checks configured") earns an honest muted chip on the detail row.
+ */
+const CI_LABELS: Record<PrCiState, string | null> = {
+  pass: "CI pass",
+  fail: "CI failing",
+  pending: "CI running",
+  none: "no checks",
+  unknown: null,
+};
+const CI_TONES: Record<PrCiState, string> = {
+  pass: statusColors.ship,
+  fail: statusColors.danger,
+  pending: statusColors.cached,
+  none: tokens.muted,
+  unknown: tokens.muted,
+};
+/** Compact surfaces show CI only when it DEMANDS something (fail/pending). */
+const CI_COMPACT: Record<PrCiState, boolean> = { pass: false, fail: true, pending: true, none: false, unknown: false };
+
+const REVIEW_DECISION_LABELS: Record<PrReviewDecision, string | null> = {
+  approved: "approved",
+  changes_requested: "changes requested",
+  review_required: "awaiting review",
+  unknown: null,
+};
+const REVIEW_DECISION_TONES: Record<PrReviewDecision, string> = {
+  approved: statusColors.ship,
+  changes_requested: statusColors.stale,
+  review_required: tokens.muted,
+  unknown: tokens.muted,
+};
+/** Compact surfaces show the decision only for changes-requested (the action). */
+const DECISION_COMPACT: Record<PrReviewDecision, boolean> = {
+  approved: false,
+  changes_requested: true,
+  review_required: false,
+  unknown: false,
+};
+
+function ActionChips({ pr, compact }: { pr: BranchPrV1; compact: boolean }) {
+  const ciLabel = CI_LABELS[pr.ciState];
+  const showCi = ciLabel !== null && (!compact || CI_COMPACT[pr.ciState]);
+  const showBlocked: boolean = pr.mergeableState === ("conflicting" satisfies PrMergeableState);
+  const decisionLabel = REVIEW_DECISION_LABELS[pr.reviewDecision];
+  const showDecision = decisionLabel !== null && !pr.isDraft && (!compact || DECISION_COMPACT[pr.reviewDecision]);
+  if (!showCi && !showBlocked && !showDecision) return null;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+      {showCi ? <Pill label={ciLabel!} tone={CI_TONES[pr.ciState]} soft={pr.ciState !== "fail"} withDot={pr.ciState === "fail"} title="CI status of the PR head (statusCheckRollup)" /> : null}
+      {showBlocked ? <Pill label="merge blocked" tone={statusColors.danger} withDot title="GitHub reports this PR as CONFLICTING with its base" /> : null}
+      {showDecision ? (
+        <Pill
+          label={decisionLabel!}
+          tone={REVIEW_DECISION_TONES[pr.reviewDecision]}
+          soft={pr.reviewDecision !== "changes_requested"}
+          title={`GitHub review decision: ${decisionLabel!}`}
+        />
+      ) : null}
+    </span>
+  );
+}
+
 /** The draft/open lifecycle marker (text, never color-only). */
 function StateMark({ isDraft }: { isDraft: boolean }) {
   return isDraft ? (
@@ -53,6 +121,7 @@ export function PrChip({ pr }: { pr: BranchPrV1 }) {
       <span style={{ fontFamily: tokens.mono, fontSize: 11, fontWeight: 600, color: tokens.fg }}>#{pr.prNumber}</span>
       <StateMark isDraft={pr.isDraft} />
       <ReviewPill pr={pr} />
+      <ActionChips pr={pr} compact />
     </span>
   );
 }
@@ -159,6 +228,7 @@ export function PrDetailRow({
         <span style={{ flex: 1 }} />
         <StateMark isDraft={pr.isDraft} />
         <ReviewPill pr={pr} soft />
+        <ActionChips pr={pr} compact={false} />
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0, paddingLeft: 2 }}>

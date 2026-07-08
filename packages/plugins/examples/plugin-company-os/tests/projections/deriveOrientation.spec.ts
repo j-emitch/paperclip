@@ -127,3 +127,44 @@ describe("deriveOrientation", () => {
     expect(o.diagnostics.some((d) => d.code === "git_budget_exceeded")).toBe(true);
   });
 });
+
+describe("COS-8a — Home's branch health folds PR-action statuses (one-ladder rule)", () => {
+  it("a clean branch with a changes-requested PR enters Home's attention band as medium", () => {
+    const o = deriveOrientation(
+      bundleOf([
+        branchSignal("claude/COS-1/x", { repo: "juice-bar", statuses: [] }),
+        work("COS-1", "in_review", "pr_scope", {
+          source: "pull-request",
+          repo: "juice-bar",
+          prNumber: 31,
+          headRef: "claude/COS-1/x",
+          prReviewDecision: "changes_requested",
+        }),
+      ]),
+      NOW,
+      taxonomyFixture(),
+    );
+    const entry = o.branchHealth.find((b) => b.branch === "claude/COS-1/x");
+    expect(entry).toBeDefined();
+    expect(entry!.statuses).toContain("pr_changes_requested");
+    expect(entry!.severity).toBe("medium");
+  });
+
+  it("review_required alone does NOT reach the attention band (low)", () => {
+    const o = deriveOrientation(
+      bundleOf([
+        branchSignal("claude/COS-2/y", { repo: "juice-bar", statuses: [] }),
+        work("COS-2", "in_review", "pr_scope", {
+          source: "pull-request",
+          repo: "juice-bar",
+          prNumber: 32,
+          headRef: "claude/COS-2/y",
+          prReviewDecision: "review_required",
+        }),
+      ]),
+      NOW,
+      taxonomyFixture(),
+    );
+    expect(o.branchHealth.find((b) => b.branch === "claude/COS-2/y")).toBeUndefined();
+  });
+});
