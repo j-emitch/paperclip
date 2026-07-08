@@ -28,16 +28,22 @@ export interface DocsViewProps {
   viewer: ReactNode;
   /** Optional facet row (the COS-8f checkout filter), rendered under the header. */
   facetBar?: ReactNode;
+  /**
+   * A URL route issue (miss/ambiguity panel) is occupying the viewer pane —
+   * the mobile layout must show it even though nothing is SELECTED, or a
+   * broken deep-link silently renders the plain tree (found live 2026-07-08).
+   */
+  hasRouteIssue?: boolean;
 }
 
 function totalDocs(docIndex: DocIndexV1): number {
   return docIndex.groups.reduce((sum, s) => sum + s.types.reduce((t, b) => t + b.docs.length, 0), 0);
 }
 
-export function DocsView({ docIndex, selectedDocId, onSelect, now, isMobile = false, viewer, facetBar }: DocsViewProps) {
+export function DocsView({ docIndex, selectedDocId, onSelect, now, isMobile = false, viewer, facetBar, hasRouteIssue = false }: DocsViewProps) {
   const total = totalDocs(docIndex);
   const derivedAge = relativeTime(docIndex.derivedAt, now);
-  const showViewerOnly = isMobile && selectedDocId !== null;
+  const showViewerOnly = isMobile && (selectedDocId !== null || hasRouteIssue);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>

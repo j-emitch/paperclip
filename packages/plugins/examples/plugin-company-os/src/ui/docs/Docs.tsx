@@ -254,6 +254,7 @@ export function Docs({ companyId }: { companyId: string | null }) {
       isMobile={isMobile}
       viewer={viewer}
       facetBar={facets.length > 2 ? <CheckoutFacetBar facets={facets} active={facet} onPick={setFacet} /> : undefined}
+      hasRouteIssue={routeIssue !== null}
     />
   );
 }

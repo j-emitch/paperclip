@@ -231,3 +231,23 @@ describe("AC-8f#5: a miss URL is an offer panel — no raw read, no absolute pat
     expect(url).not.toContain("%2FUsers%2F");
   });
 });
+
+describe("mobile layout: a route issue forces the viewer pane (live fold 2026-07-08)", () => {
+  it("hasRouteIssue shows the viewer slot on mobile even with nothing selected", async () => {
+    const { DocsView } = await import("../../src/ui/docs/DocsView.js");
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { deriveDocIndex } = await import("../../src/projections/deriveDocIndex.js");
+    const { bundleOf, docSignal, NOW } = await import("../fixtures/signals.js");
+    const { taxonomyFixture } = await import("../fixtures/taxonomy.js");
+    const index = deriveDocIndex(bundleOf([docSignal("specs/x.md", { repo: "company", checkoutId: "main", checkoutKey: "company" })]), NOW, taxonomyFixture());
+    const missPanel = <div>MISS-PANEL-SENTINEL</div>;
+    const withIssue = renderToStaticMarkup(
+      <DocsView docIndex={index} selectedDocId={null} onSelect={() => {}} now={NOW} isMobile viewer={missPanel} hasRouteIssue />,
+    );
+    expect(withIssue).toContain("MISS-PANEL-SENTINEL");
+    const without = renderToStaticMarkup(
+      <DocsView docIndex={index} selectedDocId={null} onSelect={() => {}} now={NOW} isMobile viewer={missPanel} />,
+    );
+    expect(without).not.toContain("MISS-PANEL-SENTINEL"); // tree-first stays the default
+  });
+});
