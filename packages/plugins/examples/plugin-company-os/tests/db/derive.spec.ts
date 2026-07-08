@@ -45,6 +45,41 @@ describe("deriveForCompany", () => {
     expect(db.runs.at(-1)).toMatchObject({ trigger: "schedule", ok: true });
   });
 
+  // --- COS-8f T5: §4.1 rows 1-2 pinned as contract tests -------------------
+
+  it("row 1: a second derive while the lock is held no-ops WITH the documented log line", async () => {
+    const db = new FakeDb();
+    await ensureBoardRow(db, CO);
+    await acquireDeriveLock(db, CO, "other-owner", 120_000, Date.parse("2026-06-23T12:00:00Z"));
+    const infoLines: string[] = [];
+    const deps = depsFor(db);
+    const result = await deriveForCompany(
+      { ...deps, logger: { debug() {}, info(msg: string) { infoLines.push(msg); }, warn() {}, error() {} } },
+      CO,
+      "manual",
+      null,
+      "owner-2",
+    );
+    expect(result).toMatchObject({ ok: true, skipped: true });
+    expect(infoLines.some((l) => l.includes("derive skipped") && l.includes("lock held"))).toBe(true);
+  });
+
+  it("row 2 (DECIDED): a scoped refresh racing the cron derive YIELDS — no second concurrent derive, no queue", async () => {
+    // Decision (spec §4.1 row 2): the loser of the lock race yields with
+    // skipped:true rather than queueing — the winning derive persists fresh
+    // data for every repo, so a queued re-run would only duplicate work. The
+    // UI's miss-retry (row 3) covers the "my repo wasn't in that sweep" case.
+    const db = new FakeDb();
+    await ensureBoardRow(db, CO);
+    // The cron ("schedule") derive holds the lock…
+    await acquireDeriveLock(db, CO, "cron-owner", 120_000, Date.parse("2026-06-23T12:00:00Z"));
+    // …and a scoped refresh-board ("hook", scopeRepo) races it.
+    const scoped = await deriveForCompany(depsFor(db), CO, "hook", "juice-bar", "refresh-owner");
+    expect(scoped).toMatchObject({ ok: true, skipped: true, error: null });
+    // The scoped loser wrote NOTHING (no run recorded, no projections).
+    expect(db.runs.filter((r) => r.trigger === "hook")).toHaveLength(0);
+  });
+
   it("no-ops when the lock is already held (concurrent derive)", async () => {
     const db = new FakeDb();
     await ensureBoardRow(db, CO);
