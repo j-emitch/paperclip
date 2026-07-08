@@ -18,8 +18,8 @@
  * while a doc is selected, so no `doc-content` fetch fires for an empty selection.
  */
 
-import { useCallback, useEffect, useState } from "react";
-import { MarkdownBlock, useHostLocation, usePluginToast } from "@paperclipai/plugin-sdk/ui";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { MarkdownBlock, useHostLocation, usePluginAction, usePluginToast } from "@paperclipai/plugin-sdk/ui";
 import type { DocEntryV1, DocIndexV1 } from "../../contracts/index.js";
 import { DocIcon } from "../icons.js";
 import { tokens, springTransition } from "../tokens.js";
@@ -41,7 +41,21 @@ import {
 import { useWriteRouteToUrl } from "../routing-sync.js";
 import { DocsView } from "./DocsView.js";
 import { type DocSelection } from "./DocTree.js";
-import { DOC_TYPE_LABEL_SINGULAR, docTitle } from "./docs-view-model.js";
+import {
+  DOC_TYPE_LABEL_SINGULAR,
+  FACET_ALL,
+  MISS_RETRY_BACKOFF_MS,
+  MISS_RETRY_INITIAL,
+  beginMissRefresh,
+  checkoutFacetsOf,
+  completeMissRefresh,
+  docTitle,
+  filterDocIndexByCheckout,
+  type MissRetryState,
+} from "./docs-view-model.js";
+import { useDocDiff, useDocFreshness } from "../hooks/useDocGit.js";
+import { FreshnessBadge } from "./FreshnessBadge.js";
+import { DocDiffPane } from "./DocDiffPane.js";
 
 /** Production markdown slot — host renderer, wikilinks on, raw HTML inert (react-markdown). */
 function renderHostMarkdown(markdown: string) {
@@ -72,12 +86,30 @@ export function Docs({ companyId }: { companyId: string | null }) {
   const writeRoute = useWriteRouteToUrl();
   const [selected, setSelected] = useState<DocSelection | null>(null);
   const [routeIssue, setRouteIssue] = useState<RouteIssue | null>(null);
+  const [facet, setFacet] = useState<string>(FACET_ALL);
 
   // Reset the selection when the active company changes.
   useEffect(() => {
     setSelected(null);
     setRouteIssue(null);
+    setFacet(FACET_ALL);
   }, [companyId]);
+
+  // A missed route re-resolves whenever the index updates (a scoped refresh
+  // may have just indexed it) — resolution success clears the miss panel.
+  useEffect(() => {
+    if (!docIndex || !routeIssue || routeIssue.kind !== "miss") return;
+    const res = resolveDocsRoute(routeIssue.route, docIndex);
+    if (res.kind === "resolved") {
+      const sel = findSelection(docIndex, res.entry.docId);
+      if (sel) {
+        setSelected(sel);
+        setRouteIssue(null);
+      }
+    } else if (res.kind === "ambiguous") {
+      setRouteIssue({ kind: "ambiguous", route: routeIssue.route, candidates: res.candidates });
+    }
+  }, [docIndex, routeIssue]);
 
   // Consume a pending deep-link: legacy `docs` selects by docId; the COS-8f
   // `doc-copy` resolves URL params against the index (exact match / ambiguity
@@ -156,7 +188,7 @@ export function Docs({ companyId }: { companyId: string | null }) {
         }}
       />
     ) : (
-      <RouteMissPanel route={routeIssue.route} onRefresh={companyId ? refresh : undefined} />
+      <ConnectedRouteMissPanel route={routeIssue.route} companyId={companyId} refreshIndex={refresh} />
     )
   ) : selected ? (
     <ConnectedDocViewer
@@ -180,15 +212,52 @@ export function Docs({ companyId }: { companyId: string | null }) {
     />
   );
 
+  const facets = checkoutFacetsOf(docIndex);
+  const filteredIndex = filterDocIndexByCheckout(docIndex, facet);
+
   return (
     <DocsView
-      docIndex={docIndex}
+      docIndex={filteredIndex}
       selectedDocId={selected ? selected.entry.docId : null}
       onSelect={onSelect}
       now={now}
       isMobile={isMobile}
       viewer={viewer}
+      facetBar={facets.length > 2 ? <CheckoutFacetBar facets={facets} active={facet} onPick={setFacet} /> : undefined}
     />
+  );
+}
+
+/** The COS-8f checkout facet: All · main · one pill per worktree basename. */
+function CheckoutFacetBar({ facets, active, onPick }: { facets: string[]; active: string; onPick: (facet: string) => void }) {
+  return (
+    <div role="group" aria-label="Filter documents by checkout" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      {facets.map((value) => {
+        const selectedPill = value === active;
+        return (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={selectedPill}
+            onClick={() => onPick(value)}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 999,
+              border: `1px solid ${selectedPill ? tokens.accentBorder : tokens.border}`,
+              background: selectedPill ? tokens.accentSoft : "transparent",
+              color: selectedPill ? tokens.accent : tokens.muted,
+              font: "inherit",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+              transition: springTransition,
+            }}
+          >
+            {value === FACET_ALL ? "All checkouts" : value}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -206,20 +275,68 @@ function ConnectedDocViewer({
   onClose?: () => void;
 }) {
   const { content, loading, error, refresh } = useDocContent(companyId, selection.entry.docId);
+  const { freshness, loading: freshnessLoading } = useDocFreshness(companyId, selection.entry.docId);
+  const [diffOpen, setDiffOpen] = useState(false);
   return (
-    <DocumentViewerPanel
-      content={content}
-      loading={loading}
-      error={error ? error.message : null}
-      now={now}
-      isMobile={isMobile}
-      renderMarkdown={renderHostMarkdown}
-      onRetry={refresh}
-      onClose={onClose}
-      headerActions={<CopyLinkButton entry={selection.entry} />}
-      typeLabel={DOC_TYPE_LABEL_SINGULAR[selection.type]}
-      backLabel="Back to the docs list"
-    />
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+      <DocumentViewerPanel
+        content={content}
+        loading={loading}
+        error={error ? error.message : null}
+        now={now}
+        isMobile={isMobile}
+        renderMarkdown={renderHostMarkdown}
+        onRetry={refresh}
+        onClose={onClose}
+        headerActions={
+          <>
+            <FreshnessBadge freshness={freshness} loading={freshnessLoading} />
+            <DiffToggleButton open={diffOpen} onToggle={() => setDiffOpen((v) => !v)} />
+            <CopyLinkButton entry={selection.entry} />
+          </>
+        }
+        typeLabel={DOC_TYPE_LABEL_SINGULAR[selection.type]}
+        backLabel="Back to the docs list"
+      />
+      {diffOpen ? <ConnectedDiffPane companyId={companyId} docId={selection.entry.docId} /> : null}
+    </div>
+  );
+}
+
+/** Mounts (and therefore fetches) ONLY while the diff pane is open. */
+function ConnectedDiffPane({ companyId, docId }: { companyId: string | null; docId: string }) {
+  const { diff, loading, error } = useDocDiff(companyId, docId);
+  return <DocDiffPane diff={diff} loading={loading} error={error ? error.message : null} />;
+}
+
+function DiffToggleButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={open}
+      aria-label={open ? "Hide the diff vs trunk" : "Show the diff vs trunk"}
+      title="Diff vs trunk"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "5px 10px",
+        flex: "0 0 auto",
+        borderRadius: tokens.radiusSm,
+        background: open ? tokens.accentSoft : tokens.secondary,
+        border: `1px solid ${open ? tokens.accentBorder : tokens.border}`,
+        color: open ? tokens.accent : tokens.muted,
+        font: "inherit",
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+        transition: springTransition,
+      }}
+    >
+      {open ? "Hide diff" : "Diff"}
+    </button>
   );
 }
 
@@ -344,17 +461,70 @@ function DisambiguationPanel({
 }
 
 /**
- * A structurally valid URL that resolves to nothing in the index. COS-8f T4
- * grows this into the scoped-refresh + bounded-auto-retry offer panel; the
- * contract already holds here: NO raw read, NO absolute path shown.
+ * A structurally valid URL that resolves to nothing in the index (§4.1 row 3).
+ * On mount it fires ONE scoped `refresh-board` for the route's repo, then
+ * auto-retries with backoff up to the attempt budget; the pure
+ * `beginMissRefresh`/`completeMissRefresh` machine COALESCES dispatches, so
+ * repeated clicks (or overlapping timers) never stack refreshes. Contract:
+ * NO raw read, NO absolute path shown — only route keys.
  */
-function RouteMissPanel({ route, onRefresh }: { route: DocsRoute; onRefresh?: () => void }) {
+function ConnectedRouteMissPanel({
+  route,
+  companyId,
+  refreshIndex,
+}: {
+  route: DocsRoute;
+  companyId: string | null;
+  refreshIndex: () => void;
+}) {
+  const refreshAction = usePluginAction("refresh-board");
+  const stateRef = useRef<MissRetryState>(MISS_RETRY_INITIAL);
+  const [, force] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const dispatchScoped = useCallback(() => {
+    if (!companyId) return;
+    const { next, dispatch } = beginMissRefresh(stateRef.current);
+    stateRef.current = next;
+    if (!dispatch) return; // coalesced: in flight or exhausted
+    force((n) => n + 1);
+    void refreshAction({ companyId, scopeRepo: route.repoKey })
+      .catch(() => {})
+      .finally(() => {
+        // Still missing until the index effect re-resolves us away; schedule
+        // the next bounded retry with backoff.
+        stateRef.current = completeMissRefresh(stateRef.current, true);
+        force((n) => n + 1);
+        refreshIndex();
+        const backoff = MISS_RETRY_BACKOFF_MS[stateRef.current.attempts - 1];
+        if (!stateRef.current.exhausted && backoff !== undefined) {
+          timerRef.current = setTimeout(dispatchScoped, backoff);
+        }
+      });
+  }, [companyId, refreshAction, refreshIndex, route.repoKey]);
+
+  useEffect(() => {
+    dispatchScoped();
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+    // One auto-cycle per mounted miss route.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.repoKey, route.relPath, route.checkout, route.ck]);
+
+  const st = stateRef.current;
+  const body = st.exhausted
+    ? `${route.repoKey} · ${route.checkout} · ${route.relPath} is still not indexed after ${st.attempts} refresh attempts — the checkout may be gone, or the doc may live outside the indexed buckets.`
+    : st.inFlight
+      ? `${route.repoKey} · ${route.checkout} · ${route.relPath} isn’t indexed yet — refreshing the index for ${route.repoKey}…`
+      : `${route.repoKey} · ${route.checkout} · ${route.relPath} isn’t indexed right now — the index may be a derive behind.`;
+
   return (
     <SurfaceEmpty
       icon={<DocIcon size={24} />}
-      title="This link isn’t in the index"
-      body={`${route.repoKey} · ${route.checkout} · ${route.relPath} isn’t indexed right now — the checkout may be gone, or the index may be a derive behind.`}
-      onRefresh={onRefresh}
+      title={st.exhausted ? "Still not indexed" : "This link isn’t in the index"}
+      body={body}
+      onRefresh={companyId && !st.exhausted ? dispatchScoped : undefined}
     />
   );
 }

@@ -26,13 +26,15 @@ export interface DocsViewProps {
   isMobile?: boolean;
   /** The detail pane — connected viewer (live) or a pure one (harness). */
   viewer: ReactNode;
+  /** Optional facet row (the COS-8f checkout filter), rendered under the header. */
+  facetBar?: ReactNode;
 }
 
 function totalDocs(docIndex: DocIndexV1): number {
   return docIndex.groups.reduce((sum, s) => sum + s.types.reduce((t, b) => t + b.docs.length, 0), 0);
 }
 
-export function DocsView({ docIndex, selectedDocId, onSelect, now, isMobile = false, viewer }: DocsViewProps) {
+export function DocsView({ docIndex, selectedDocId, onSelect, now, isMobile = false, viewer, facetBar }: DocsViewProps) {
   const total = totalDocs(docIndex);
   const derivedAge = relativeTime(docIndex.derivedAt, now);
   const showViewerOnly = isMobile && selectedDocId !== null;
@@ -58,6 +60,8 @@ export function DocsView({ docIndex, selectedDocId, onSelect, now, isMobile = fa
           ) : null}
         </header>
       ) : null}
+
+      {!showViewerOnly && facetBar ? <div style={{ minWidth: 0 }}>{facetBar}</div> : null}
 
       {isMobile ? (
         showViewerOnly ? (
