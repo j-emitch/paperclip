@@ -19,6 +19,7 @@ import { docsSource } from "./DocsSource.js";
 import { skillsSource } from "./SkillsSource.js";
 import { lineageSource } from "./LineageSource.js";
 import { paperclipTicketSource } from "./PaperclipTicketSource.js";
+import { worktreeSource } from "./WorktreeSource.js";
 
 export const DEFAULT_SOURCES: readonly WorkSignalSource[] = [
   gitWorkSource,
@@ -38,9 +39,12 @@ export const DEFAULT_SOURCES: readonly WorkSignalSource[] = [
   lineageSource,
   // COS-5c Paperclip LYC ticket bridge (additive — appended last).
   paperclipTicketSource,
+  // COS-8c worktree lifecycle (additive — appended last).
+  worktreeSource,
 ];
 
 export * from "./GitWorkSource.js";
+export * from "./WorktreeSource.js";
 export * from "./SpecBacklogSource.js";
 export * from "./PullRequestSource.js";
 export * from "./ReviewReportSource.js";

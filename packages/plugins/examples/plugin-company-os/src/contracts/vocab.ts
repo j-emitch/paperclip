@@ -39,6 +39,8 @@ export const SIGNAL_ERROR_CODES = [
   "oversize", // a file exceeded the docs-viewer size cap
   "not_found", // an expected file/ref was absent
   "truncated", // an index was capped (e.g. MAX_DOCS_PER_REPO) — partial, NOT a failed read (non-degraded)
+  "git_read_failed", // a per-tree git read failed/degraded (COS-8c — the row stays, fields null)
+  "worktree_diff_capped", // the activity-gated diff budget skipped eligible trees (non-degraded; names skipped-dirty)
 ] as const;
 export type SignalErrorCode = (typeof SIGNAL_ERROR_CODES)[number];
 
@@ -267,6 +269,20 @@ export type RecentWorkKind = (typeof RECENT_WORK_KINDS)[number];
  */
 export const DEEP_LINK_TABS = ["source", "docs", "board", "doc-copy", "worktree"] as const;
 export type DeepLinkTab = (typeof DEEP_LINK_TABS)[number];
+
+/**
+ * COS-8c worktree board: worktree origins (who spawned the tree — classified by
+ * branch prefix, else external), the board lanes, and the COH merge status
+ * (ported verbatim from coh-worktree.sh: direct = ancestor of trunk; squash =
+ * branch tree-hash matches a trunk commit tree; none = neither; unknown = the
+ * git reads needed to decide were degraded/budget-capped).
+ */
+export const WORKTREE_ORIGINS = ["claude", "codex", "external"] as const;
+export type WorktreeOrigin = (typeof WORKTREE_ORIGINS)[number];
+export const WORKTREE_LANES = ["in_flight", "needs_attention", "stale", "merged_cleanup"] as const;
+export type WorktreeLane = (typeof WORKTREE_LANES)[number];
+export const WORKTREE_MERGE_STATUSES = ["direct", "squash", "none", "unknown"] as const;
+export type WorktreeMergeStatus = (typeof WORKTREE_MERGE_STATUSES)[number];
 
 /**
  * COS-8f doc-git reads: the 5-state freshness ladder for a doc copy, and the

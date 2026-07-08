@@ -34,6 +34,8 @@ import type {
   UnclassifiedReason,
   WorkSignalPrecedence,
   WorkState,
+  WorktreeOrigin,
+  WorktreeMergeStatus,
 } from "./vocab.js";
 import type { Diagnostic } from "./diagnostics.js";
 // Type-only (erased at compile time) — no runtime dependency, so no cycle even
@@ -342,6 +344,69 @@ export interface BranchSignal extends SignalProvenance {
 }
 
 /**
+ * One COH-0 Work Record checkpoint, parsed from `_purpose` frontmatter's
+ * append-only `checkpoints:` list (COS-8c / spec §8.6). Only the lane-relevant
+ * fields are lifted; `consumable_artifacts` stays in the file.
+ */
+export interface WorktreeCheckpoint {
+  readonly headSha: string | null;
+  readonly wip: boolean | null;
+  readonly pushed: boolean | null;
+  readonly at: string | null;
+}
+
+/**
+ * The parsed `_purpose` metadata of a worktree (COH-0 Work Record). `null`
+ * fields = key absent. `checkpoints` are ALL parsed entries (newest resolvable
+ * via `at`); the LATEST checkpoint's wip/pushed is the declared status source
+ * for lane semantics (spec §8.6 item 3).
+ */
+export interface WorktreePurpose {
+  readonly ticketIds: readonly string[];
+  readonly slug: string | null;
+  readonly phase: string | null;
+  readonly lifespan: string | null;
+  readonly startedAt: string | null;
+  readonly activeHandoff: string | null;
+  readonly integrationTarget: string | null;
+  readonly checkpoints: readonly WorktreeCheckpoint[];
+}
+
+/**
+ * Per-worktree lifecycle state for the Branch·PR Worktrees lens (COS-8c /
+ * spec §5.2). JOIN KEY = `checkoutKey` (the absByKey pseudo-key — same key the
+ * doc index + read handlers use); the worktree's identity in UI is
+ * `worktreeName` (basename ONLY — the abs path never leaks). One signal per
+ * non-primary worktree of each configured repo.
+ */
+export interface WorktreeSignal extends SignalProvenance {
+  readonly kind: "worktree";
+  readonly checkoutKey: string;
+  readonly checkoutId: string;
+  /** Worktree dir basename (never an abs path). */
+  readonly worktreeName: string;
+  readonly branch: string | null;
+  readonly origin: WorktreeOrigin;
+  readonly headSha: string | null;
+  /** `--no-optional-locks status --porcelain` count; null = read degraded. */
+  readonly dirtyFileCount: number | null;
+  readonly ahead: number | null;
+  readonly behind: number | null;
+  readonly lastCommitAt: string | null;
+  /**
+   * Names changed vs the trunk merge-base (working-tree-inclusive), capped at
+   * `MAX_WORKTREE_CHANGED_FILES`; null = NOT evaluated (activity gate or the
+   * per-repo diff budget skipped this tree — see `worktree_diff_capped`).
+   */
+  readonly changedFiles: readonly string[] | null;
+  readonly changedFilesTruncated: boolean;
+  /** Parsed `_purpose` Work Record; null = no `_purpose` file for this tree. */
+  readonly purpose: WorktreePurpose | null;
+  /** COH squash-detector verdict (ported verbatim — see vocab). */
+  readonly mergeStatus: WorktreeMergeStatus;
+}
+
+/**
  * Per-configured-repo git header (spec §5.1/§5.2). Emitted ALWAYS — even for a
  * missing/non-git root — so `deriveGitState` can render a configured-but-absent
  * repo honestly (a pure projection can't tell "ok repo, 0 branches" from
@@ -519,6 +584,7 @@ export type Signal =
   | AgentSignal
   | BranchSignal
   | RepoGitSignal
+  | WorktreeSignal
   | DocSignal
   | SkillSignal
   | LineageSignal
