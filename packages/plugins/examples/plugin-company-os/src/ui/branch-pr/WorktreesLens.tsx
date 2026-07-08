@@ -10,7 +10,7 @@
  * changed doc to the 8f URL machinery (the connected parent wires `onOpenDoc`).
  */
 
-import type { WorktreeBoardV1, WorktreeCardV1, WorktreeRepoSectionV1 } from "../../contracts/worktree-board.js";
+import type { OverlapPairV1, WorktreeBoardV1, WorktreeCardV1, WorktreeRepoSectionV1 } from "../../contracts/worktree-board.js";
 import type { WorktreeLane, WorktreeOrigin } from "../../contracts/vocab.js";
 
 // UI-local lane display order (the UI import boundary forbids VALUE imports
@@ -99,6 +99,7 @@ function RepoSection({
           {section.skippedDirty.join(", ")} — refresh to re-evaluate.
         </CalmNote>
       ) : null}
+      <ConflictRadar pairs={section.overlapPairs} />
       {LANE_DISPLAY_ORDER.map((lane) => {
         const cards = section.cards.filter((c) => c.lane === lane);
         if (cards.length === 0) return null;
@@ -123,6 +124,61 @@ function RepoSection({
         );
       })}
     </section>
+  );
+}
+
+/**
+ * COS-8g conflict radar: overlapping in-flight changes, count-ranked; a pair
+ * where BOTH sides are dirty is HOT (danger tone). Explicit empty state — a
+ * silent absence would read as "not computed".
+ */
+function ConflictRadar({ pairs }: { pairs: readonly OverlapPairV1[] }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <h3 style={{ margin: 0, fontSize: 12, fontWeight: 650, letterSpacing: 0.4, textTransform: "uppercase", color: tokens.muted }}>
+        Conflict radar
+      </h3>
+      {pairs.length === 0 ? (
+        <span style={{ fontSize: 12, color: tokens.muted }}>No overlapping in-flight changes.</span>
+      ) : (
+        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+          {pairs.map((pair) => {
+            const tone = pair.bothDirty ? statusColors.danger : tokens.muted;
+            const shown = pair.sharedFiles.slice(0, 3);
+            const more = pair.count - shown.length;
+            return (
+              <li
+                key={`${pair.branchA}|${pair.branchB}`}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  padding: "6px 10px",
+                  borderRadius: tokens.radiusSm,
+                  border: `1px solid ${pair.bothDirty ? tone : tokens.border}`,
+                  background: pair.bothDirty ? "color-mix(in srgb, currentColor 4%, transparent)" : tokens.card,
+                  color: tone,
+                  fontSize: 12,
+                }}
+              >
+                {pair.bothDirty ? <Pill label="HOT · both dirty" tone={statusColors.danger} withDot /> : null}
+                <code style={{ fontFamily: tokens.mono, fontSize: 11.5, color: tokens.fg }}>
+                  {pair.branchA} ↔ {pair.branchB}
+                </code>
+                <span style={{ color: tokens.muted }}>
+                  {pair.count} shared file{pair.count === 1 ? "" : "s"}
+                </span>
+                <code style={{ fontFamily: tokens.mono, fontSize: 11, color: tokens.muted, overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {shown.join(", ")}
+                  {more > 0 ? ` +${more} more` : ""}
+                </code>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 

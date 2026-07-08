@@ -27,9 +27,11 @@ import type { BranchSignal, Signal, WorktreeSignal } from "../contracts/signals.
 import type { Diagnostic } from "../contracts/diagnostics.js";
 import { BEHIND_WARN } from "../contracts/git-state.js";
 import {
+  MAX_OVERLAP_SHARED_FILES,
   WORKTREE_ACTIVE_DAYS,
   WORKTREE_BOARD_SCHEMA_VERSION,
   parseWorktreeBoardV1,
+  type OverlapPairV1,
   type WorktreeBoardV1,
   type WorktreeCardV1,
   type WorktreeRepoSectionV1,
@@ -173,6 +175,35 @@ function cardOfBranch(s: BranchSignal, nowMs: number): WorktreeCardV1 | null {
 
 const LANE_ORDER: Record<WorktreeLane, number> = { needs_attention: 0, in_flight: 1, merged_cleanup: 2, stale: 3 };
 
+/**
+ * COS-8g conflict radar: pairwise `changedFiles` intersection across the
+ * repo's EVALUATED lines of work (changedFiles !== null; merged-cleanup cards
+ * excluded — their work already landed). Generalizes the COH file-overlap
+ * guard from "remote branches vs MY files" to all-pairs on the same
+ * diff-vs-merge-base basis. O(n²) with n ≤ MAX_WORKTREE_DIFFS (32/repo).
+ */
+export function overlapPairsOf(cards: readonly WorktreeCardV1[]): OverlapPairV1[] {
+  const evaluated = cards.filter((c) => c.changedFiles !== null && c.changedFiles.length > 0 && c.lane !== "merged_cleanup");
+  const pairs: OverlapPairV1[] = [];
+  for (let i = 0; i < evaluated.length; i++) {
+    const a = evaluated[i];
+    const aFiles = new Set(a.changedFiles!);
+    for (let j = i + 1; j < evaluated.length; j++) {
+      const b = evaluated[j];
+      const shared = b.changedFiles!.filter((f) => aFiles.has(f));
+      if (shared.length === 0) continue;
+      pairs.push({
+        branchA: a.branch ?? a.worktreeName ?? a.cardKey,
+        branchB: b.branch ?? b.worktreeName ?? b.cardKey,
+        sharedFiles: shared.slice(0, MAX_OVERLAP_SHARED_FILES).sort(),
+        count: shared.length,
+        bothDirty: (a.dirtyFileCount ?? 0) > 0 && (b.dirtyFileCount ?? 0) > 0,
+      });
+    }
+  }
+  return pairs.sort((x, y) => y.count - x.count || x.branchA.localeCompare(y.branchA));
+}
+
 export function deriveWorktreeBoard(bundle: SignalBundle, nowMs: number): WorktreeBoardV1 {
   const signals = allSignals(bundle);
   const worktrees = signals.filter((s): s is WorktreeSignal => s.kind === "worktree");
@@ -208,7 +239,7 @@ export function deriveWorktreeBoard(bundle: SignalBundle, nowMs: number): Worktr
       const sorted = [...cards].sort(
         (a, b) => LANE_ORDER[a.lane] - LANE_ORDER[b.lane] || (b.dirtyFileCount ?? 0) - (a.dirtyFileCount ?? 0) || a.cardKey.localeCompare(b.cardKey),
       );
-      return { repoKey, evaluated, total: wtCards.length, skippedDirty, cards: sorted };
+      return { repoKey, evaluated, total: wtCards.length, skippedDirty, overlapPairs: overlapPairsOf(cards), cards: sorted };
     });
 
   return parseWorktreeBoardV1({

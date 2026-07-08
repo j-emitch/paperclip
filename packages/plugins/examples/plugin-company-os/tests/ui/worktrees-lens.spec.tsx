@@ -61,6 +61,7 @@ function board(cards: WorktreeCardV1[], over: { evaluated?: number; total?: numb
         evaluated: over.evaluated ?? cards.length,
         total: over.total ?? cards.length,
         skippedDirty: over.skippedDirty ?? [],
+        overlapPairs: [],
         cards,
       },
     ],
@@ -173,6 +174,35 @@ describe("WorktreesLens SSR", () => {
     expect(html).toContain("no worktree");
     expect(html).toContain("claude/B-2/solo");
     expect(html).toContain("tip-recent");
+  });
+
+  it("COS-8g: renders the conflict radar — HOT pair styling + shared files + empty state", () => {
+    const withPairs = parseWorktreeBoardV1({
+      schemaVersion: WORKTREE_BOARD_SCHEMA_VERSION,
+      derivedAt: new Date(NOW).toISOString(),
+      repos: [
+        {
+          repoKey: "company",
+          evaluated: 2,
+          total: 2,
+          skippedDirty: [],
+          overlapPairs: [
+            { branchA: "claude/H-1/a", branchB: "claude/H-2/b", sharedFiles: ["src/x.ts", "src/y.ts", "src/z.ts", "src/w.ts"], count: 4, bothDirty: true },
+          ],
+          cards: [card({ worktreeName: "a", cardKey: "ka" })],
+        },
+      ],
+      diagnostics: [],
+    });
+    const hot = renderToStaticMarkup(<WorktreesLens board={withPairs} now={NOW} />);
+    expect(hot).toContain("Conflict radar");
+    expect(hot).toContain("HOT · both dirty");
+    expect(hot).toContain("claude/H-1/a ↔ claude/H-2/b");
+    expect(hot).toContain("4 shared files");
+    expect(hot).toContain("+1 more"); // 3 shown of 4
+
+    const none = renderToStaticMarkup(<WorktreesLens board={board([card({})])} now={NOW} />);
+    expect(none).toContain("No overlapping in-flight changes.");
   });
 
   it("renders the calm empty state for a boardless workspace", () => {

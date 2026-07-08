@@ -87,6 +87,23 @@ export const worktreeCardV1Schema = z.object({
 });
 export type WorktreeCardV1 = z.infer<typeof worktreeCardV1Schema>;
 
+/** Cap on the shared-file names carried per radar pair (COS-8g). */
+export const MAX_OVERLAP_SHARED_FILES = 10 as const;
+
+/**
+ * One conflict-radar pair (COS-8g): two in-flight lines of work whose
+ * changedFiles (diff-vs-merge-base basis) intersect. `bothDirty` = HOT.
+ */
+export const overlapPairV1Schema = z.object({
+  branchA: z.string().min(1),
+  branchB: z.string().min(1),
+  /** ≤ MAX_OVERLAP_SHARED_FILES names; `count` is the FULL intersection size. */
+  sharedFiles: z.array(z.string()),
+  count: z.number().int().positive(),
+  bothDirty: z.boolean(),
+});
+export type OverlapPairV1 = z.infer<typeof overlapPairV1Schema>;
+
 export const worktreeRepoSectionV1Schema = z.object({
   repoKey: z.string().min(1),
   /** Activity-gate denominator: changedFiles-evaluated worktrees / total worktrees. */
@@ -94,6 +111,8 @@ export const worktreeRepoSectionV1Schema = z.object({
   total: z.number().int(),
   /** Dirty trees the diff budget skipped — NEVER silent (spec AC-8c#3). */
   skippedDirty: z.array(z.string()),
+  /** COS-8g conflict radar: overlapping in-flight changes, count desc. */
+  overlapPairs: z.array(overlapPairV1Schema),
   cards: z.array(worktreeCardV1Schema),
 });
 export type WorktreeRepoSectionV1 = z.infer<typeof worktreeRepoSectionV1Schema>;

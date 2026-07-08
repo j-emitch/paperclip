@@ -149,6 +149,52 @@ describe("activity-gate header data", () => {
   });
 });
 
+describe("COS-8g: overlapPairs conflict radar", () => {
+  it("two dirty overlapping trees produce a HOT pair, count-ranked", () => {
+    const board = deriveWorktreeBoard(
+      bundleOf([
+        worktreeSignal("hot-a", { branch: "claude/H-1/a", dirtyFileCount: 2, changedFiles: ["src/x.ts", "src/y.ts", "src/z.ts"] }),
+        worktreeSignal("hot-b", { branch: "claude/H-2/b", dirtyFileCount: 1, changedFiles: ["src/x.ts", "src/y.ts"] }),
+        worktreeSignal("cool-c", { branch: "claude/H-3/c", dirtyFileCount: 0, changedFiles: ["src/x.ts"] }),
+      ]),
+      NOW,
+    );
+    const pairs = board.repos[0].overlapPairs;
+    expect(pairs[0]).toMatchObject({ branchA: "claude/H-1/a", branchB: "claude/H-2/b", count: 2, bothDirty: true });
+    expect(pairs[0].sharedFiles).toEqual(["src/x.ts", "src/y.ts"]);
+    // clean overlaps still appear, not hot, ranked below
+    expect(pairs.some((p) => p.bothDirty === false)).toBe(true);
+    expect(pairs.every((p, i) => i === 0 || pairs[i - 1].count >= p.count)).toBe(true);
+  });
+
+  it("zero overlap → empty; unevaluated + merged trees never radar", () => {
+    const board = deriveWorktreeBoard(
+      bundleOf([
+        worktreeSignal("solo-1", { branch: "claude/Z-1/a", changedFiles: ["a.ts"] }),
+        worktreeSignal("solo-2", { branch: "claude/Z-2/b", changedFiles: ["b.ts"] }),
+        worktreeSignal("null-diff", { branch: "claude/Z-3/c", changedFiles: null }),
+        worktreeSignal("merged", { branch: "claude/Z-4/d", changedFiles: ["a.ts"], mergeStatus: "squash", dirtyFileCount: 0 }),
+      ]),
+      NOW,
+    );
+    expect(board.repos[0].overlapPairs).toEqual([]);
+  });
+
+  it("sharedFiles caps at 10 names while count keeps the full size", () => {
+    const many = Array.from({ length: 14 }, (_, i) => `src/f${String(i).padStart(2, "0")}.ts`);
+    const board = deriveWorktreeBoard(
+      bundleOf([
+        worktreeSignal("big-a", { branch: "claude/B-1/a", changedFiles: many }),
+        worktreeSignal("big-b", { branch: "claude/B-2/b", changedFiles: many }),
+      ]),
+      NOW,
+    );
+    const pair = board.repos[0].overlapPairs[0];
+    expect(pair.count).toBe(14);
+    expect(pair.sharedFiles).toHaveLength(10);
+  });
+});
+
 describe("perf: 85-worktree fixture completes within WORKTREE_BUDGET_MS (AC-8c#5)", () => {
   it("derives an 85-tree repo (the audit-time JB count) under the per-repo budget", () => {
     const signals = Array.from({ length: 85 }, (_, i) =>
