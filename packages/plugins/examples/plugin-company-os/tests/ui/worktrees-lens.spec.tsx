@@ -254,3 +254,26 @@ describe("QUAD folds: wt deep-link focus (AC-8f symmetry)", () => {
     expect(html).toContain("may have been merged and cleaned up");
   });
 });
+
+describe("radar display cap (live-data fold: JB emitted 411 pairs)", () => {
+  it("shows the top pairs and summarizes the remainder, never silently drops", () => {
+    const pairs = Array.from({ length: 15 }, (_, i) => ({
+      branchA: `claude/A-${i}/x`,
+      branchB: `claude/B-${i}/y`,
+      sharedFiles: ["src/x.ts"],
+      count: 15 - i,
+      bothDirty: false,
+    }));
+    const withMany = parseWorktreeBoardV1({
+      schemaVersion: WORKTREE_BOARD_SCHEMA_VERSION,
+      derivedAt: new Date(NOW).toISOString(),
+      repos: [{ repoKey: "company", evaluated: 2, total: 2, skippedDirty: [], overlapPairs: pairs, cards: [card({})] }],
+      diagnostics: [],
+    });
+    const html = renderToStaticMarkup(<WorktreesLens board={withMany} now={NOW} />);
+    expect(html).toContain("claude/A-0/x");
+    expect(html).toContain("claude/A-11/x"); // 12th shown
+    expect(html).not.toContain("claude/A-12/x"); // 13th capped
+    expect(html).toContain("+3 more overlapping pairs");
+  });
+});

@@ -179,7 +179,16 @@ function RepoSection({
  * where BOTH sides are dirty is HOT (danger tone). Explicit empty state — a
  * silent absence would read as "not computed".
  */
+/**
+ * Display cap: live JB emitted 411 pairs on first activation (2026-07-08) — a
+ * full listing buries the HOT ones. Pairs arrive count-ranked, so the top slice
+ * IS the risk surface; the remainder is summarized, never silently dropped.
+ */
+const RADAR_DISPLAY_MAX = 12;
+
 function ConflictRadar({ pairs }: { pairs: readonly OverlapPairV1[] }) {
+  const shownPairs = pairs.slice(0, RADAR_DISPLAY_MAX);
+  const hidden = pairs.length - shownPairs.length;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <h3 style={{ margin: 0, fontSize: 12, fontWeight: 650, letterSpacing: 0.4, textTransform: "uppercase", color: tokens.muted }}>
@@ -189,7 +198,7 @@ function ConflictRadar({ pairs }: { pairs: readonly OverlapPairV1[] }) {
         <span style={{ fontSize: 12, color: tokens.muted }}>No overlapping in-flight changes.</span>
       ) : (
         <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-          {pairs.map((pair, i) => {
+          {shownPairs.map((pair, i) => {
             const tone = pair.bothDirty ? statusColors.danger : tokens.muted;
             const shown = pair.sharedFiles.slice(0, 3);
             const more = pair.count - shown.length;
@@ -225,6 +234,11 @@ function ConflictRadar({ pairs }: { pairs: readonly OverlapPairV1[] }) {
               </li>
             );
           })}
+          {hidden > 0 ? (
+            <li style={{ fontSize: 11.5, color: tokens.muted, padding: "2px 10px" }}>
+              +{hidden} more overlapping pair{hidden === 1 ? "" : "s"} (count-ranked; shown are the hottest)
+            </li>
+          ) : null}
         </ul>
       )}
     </div>
