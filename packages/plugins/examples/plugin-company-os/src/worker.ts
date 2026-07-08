@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { DERIVE_BOARD_JOB_KEY, PLUGIN_ID } from "./manifest.js";
 import { makeCollectionContext, type SkillRootInput } from "./runtime/makeCollectionContext.js";
 import { absByKeyFromRoots, readContainedText } from "./runtime/workspace-fs.js";
-import { buildCheckoutKeyMap } from "./runtime/checkout-keys.js";
+import { buildCheckoutKeyMap, defaultGitRun } from "./runtime/checkout-keys.js";
 import { deriveForCompany, type DeriveDeps } from "./derive.js";
 import { runDeriveBoardJob } from "./derive-job.js";
 import {
@@ -22,6 +22,8 @@ import {
 } from "./db/cache.js";
 import { DOCS_VIEWER_MAX_BYTES, readReportContent } from "./report-content-read.js";
 import { readDocContent } from "./doc-content-read.js";
+import { readDocFreshness, type DocGitDeps } from "./doc-freshness-read.js";
+import { readDocDiff } from "./doc-diff-read.js";
 import { readSkillContent } from "./skill-content-read.js";
 import { projectGroupV1Schema, resolveTaxonomy, type ProjectGroupV1 } from "./contracts/projects.js";
 import { readTeachingOverview } from "./teaching-overview-read.js";
@@ -213,6 +215,28 @@ const plugin = definePlugin({
         str(params.companyId),
         str(params.docId),
       );
+    });
+
+    // --- COS-8f doc git-truth reads: freshness ladder + diff-vs-trunk. Same
+    //     index-gate + checkoutKey funnel as doc-content; the abs root resolves
+    //     ONLY here (key-only invariant), git runs bounded fixed-argv. ---
+    const docGitDeps = async (): Promise<DocGitDeps> => {
+      const ckm = await buildCheckoutKeyMap(await readRepoRoots());
+      return {
+        readIndex: (companyId) => readDocIndex(ctx.db, companyId),
+        checkoutResolvable: (checkoutKey) => ckm.absByKey.has(checkoutKey),
+        gitRun: async (checkoutKey, args) => {
+          const root = ckm.absByKey.get(checkoutKey);
+          if (!root) throw new Error(`unknown checkout ${checkoutKey}`);
+          return defaultGitRun(root, args);
+        },
+      };
+    };
+    ctx.data.register("doc-git-freshness", async (params) => {
+      return readDocFreshness(await docGitDeps(), str(params.companyId), str(params.docId));
+    });
+    ctx.data.register("doc-diff", async (params) => {
+      return readDocDiff(await docGitDeps(), str(params.companyId), str(params.docId));
     });
 
     // --- skills viewer: index-gated by skillId → checkoutKey read (company repo or

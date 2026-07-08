@@ -268,6 +268,17 @@ export type RecentWorkKind = (typeof RECENT_WORK_KINDS)[number];
 export const DEEP_LINK_TABS = ["source", "docs", "board", "doc-copy", "worktree"] as const;
 export type DeepLinkTab = (typeof DEEP_LINK_TABS)[number];
 
+/**
+ * COS-8f doc-git reads: the 5-state freshness ladder for a doc copy, and the
+ * shared result statuses of the `doc-git-freshness` / `doc-diff` handlers.
+ * `checkout_gone` is §4.1 row 4 — a worktree pruned between index fetch and
+ * git call resolves to a TYPED result, never a throw.
+ */
+export const DOC_GIT_FRESHNESS_STATES = ["uncommitted", "committed", "pushed", "merged", "main"] as const;
+export type DocGitFreshnessState = (typeof DOC_GIT_FRESHNESS_STATES)[number];
+export const DOC_GIT_READ_STATUSES = ["ok", "not_indexed", "checkout_gone", "git_error"] as const;
+export type DocGitReadStatus = (typeof DOC_GIT_READ_STATUSES)[number];
+
 /** The doc kinds `DocsSource` emits (spec §5.4). The doc INDEX widens this with `"review"`. */
 export const DOC_TYPES = ["spec", "plan", "handoff", "backlog"] as const;
 export type DocType = (typeof DOC_TYPES)[number];

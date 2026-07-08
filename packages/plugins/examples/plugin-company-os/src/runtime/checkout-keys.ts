@@ -47,7 +47,7 @@ const WT_HASH_LEN = 12;
 const GIT_TIMEOUT_MS = 15_000;
 
 /** The default execFile-based git runner (no shell, fixed argv, hard timeout). */
-const defaultGitRun: CheckoutGitRun = (cwd, args) =>
+export const defaultGitRun: CheckoutGitRun = (cwd, args) =>
   new Promise((resolve) => {
     execFile(
       "git",

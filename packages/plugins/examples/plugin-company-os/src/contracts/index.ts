@@ -40,6 +40,7 @@ export * from "./git-state.js";
 export * from "./branch-health.js";
 export * from "./orientation.js";
 export * from "./doc-index.js";
+export * from "./doc-git.js";
 // Layer 2 — COS-1h skills catalog projection contract
 export * from "./skills-catalog.js";
 

@@ -208,7 +208,7 @@ describe("resolveDocsRoute", () => {
         }),
         docSignal("specs/x.md", { repo: "company", checkoutId: "main", checkoutKey: "company" }),
       ]),
-      "2026-07-07T12:00:00.000Z",
+      NOW + 60_000, // a later derive tick
       taxonomyFixture(),
     );
 
