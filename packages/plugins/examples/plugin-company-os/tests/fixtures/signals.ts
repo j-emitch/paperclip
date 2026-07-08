@@ -18,6 +18,7 @@ import type {
   TaxonomySignal,
   TicketSignal,
   WorkSignal,
+  WorktreeSignal,
 } from "../../src/contracts/signals.js";
 import type { WorkSignalPrecedence, WorkState } from "../../src/contracts/vocab.js";
 import { makeDocId } from "../../src/contracts/doc-index.js";
@@ -196,6 +197,33 @@ export function ticketSignal(identifier: string, over: Partial<TicketSignal> = {
 }
 
 /** Assemble a one-batch bundle from a flat signal list. */
+/** A `WorktreeSignal` (COS-8c) — a healthy in-flight claude tree by default. */
+export function worktreeSignal(name: string, over: Partial<WorktreeSignal> = {}): WorktreeSignal {
+  return {
+    kind: "worktree",
+    source: over.source ?? "worktree",
+    repo: over.repo ?? "company",
+    confidence: over.confidence ?? "high",
+    freshness: over.freshness ?? "live",
+    errors: over.errors ?? [],
+    checkoutKey: over.checkoutKey ?? `${over.repo ?? "company"}::wt::${name.padEnd(12, "0").slice(0, 12)}`,
+    checkoutId: over.checkoutId ?? `worktree:${name}`,
+    worktreeName: name,
+    branch: over.branch ?? `claude/X-1/${name}`,
+    origin: over.origin ?? "claude",
+    headSha: over.headSha ?? "abc123",
+    dirtyFileCount: over.dirtyFileCount ?? 0,
+    ahead: over.ahead ?? 1,
+    behind: over.behind ?? 0,
+    lastCommitAt: over.lastCommitAt ?? new Date(NOW - 86_400_000).toISOString(),
+    changedFiles: over.changedFiles === undefined ? ["src/a.ts"] : over.changedFiles,
+    changedFilesTruncated: over.changedFilesTruncated ?? false,
+    purpose: over.purpose ?? null,
+    mergeStatus: over.mergeStatus ?? "none",
+    ...over,
+  };
+}
+
 export function bundleOf(signals: Signal[], repoFreshness: RepoFreshness[] = []): SignalBundle {
   const batch: SignalBatch = { source: "test", collectedAt: NOW, signals, repoFreshness };
   return { collectedAt: NOW, batches: [batch] };

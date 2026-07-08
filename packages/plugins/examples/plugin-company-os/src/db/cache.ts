@@ -65,6 +65,12 @@ import {
   parseBuildAtlasV1,
   type BuildAtlasV1,
 } from "../contracts/build-atlas.js";
+import {
+  WORKTREE_BOARD_SCHEMA_VERSION,
+  parseWorktreeBoardV1,
+  safeParseWorktreeBoardV1,
+  type WorktreeBoardV1,
+} from "../contracts/worktree-board.js";
 import type { Diagnostic } from "../contracts/diagnostics.js";
 import { COS_DB_NAMESPACE } from "./namespace.js";
 import type { SourceVersion } from "./scoped-merge.js";
@@ -152,6 +158,10 @@ const BUILD_ATLAS_SPEC = defineSpec({
   key: "buildAtlas", table: "cos_build_atlas", version: BUILD_ATLAS_SCHEMA_VERSION, secondary: true,
   select: (s) => s.buildAtlas, parse: parseBuildAtlasV1, safeParse: safeParseBuildAtlasV1,
 });
+const WORKTREE_BOARD_SPEC = defineSpec({
+  key: "worktreeBoard", table: "cos_worktree_board", version: WORKTREE_BOARD_SCHEMA_VERSION, secondary: true,
+  select: (s) => s.worktreeBoard, parse: parseWorktreeBoardV1, safeParse: safeParseWorktreeBoardV1,
+});
 
 /**
  * The projection registry — board first (the fence), then the eight lockless
@@ -162,7 +172,7 @@ const BUILD_ATLAS_SPEC = defineSpec({
  */
 export const PROJECTION_SPECS: readonly ProjectionSpec<HasDerivedAt>[] = [
   BOARD_SPEC, ARTIFACT_INDEX_SPEC, ROUTINE_HEALTH_SPEC, ORIENTATION_SPEC, GIT_STATE_SPEC,
-  DOC_INDEX_SPEC, SKILLS_CATALOG_SPEC, AGENT_SYSTEM_SPEC, BUILD_ATLAS_SPEC,
+  DOC_INDEX_SPEC, SKILLS_CATALOG_SPEC, AGENT_SYSTEM_SPEC, BUILD_ATLAS_SPEC, WORKTREE_BOARD_SPEC,
 ];
 
 /**
@@ -335,6 +345,8 @@ export const readAgentSystem = (db: DbClient, companyId: string): Promise<AgentS
   readProjection(db, companyId, AGENT_SYSTEM_SPEC);
 export const readBuildAtlas = (db: DbClient, companyId: string): Promise<BuildAtlasV1 | null> =>
   readProjection(db, companyId, BUILD_ATLAS_SPEC);
+export const readWorktreeBoard = (db: DbClient, companyId: string): Promise<WorktreeBoardV1 | null> =>
+  readProjection(db, companyId, WORKTREE_BOARD_SPEC);
 
 function readSnapshot<T>(
   rows: readonly SnapshotRow[],

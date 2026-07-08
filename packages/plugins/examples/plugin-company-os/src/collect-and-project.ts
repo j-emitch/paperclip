@@ -18,6 +18,7 @@ import type { DocIndexV1 } from "./contracts/doc-index.js";
 import type { SkillsCatalogV1 } from "./contracts/skills-catalog.js";
 import type { AgentSystemV1 } from "./contracts/agent-system.js";
 import type { BuildAtlasV1 } from "./contracts/build-atlas.js";
+import type { WorktreeBoardV1 } from "./contracts/worktree-board.js";
 import { deriveBoardState } from "./projections/deriveBoardState.js";
 import { deriveArtifactIndex } from "./projections/deriveArtifactIndex.js";
 import { deriveRoutineHealth } from "./projections/deriveRoutineHealth.js";
@@ -27,6 +28,7 @@ import { deriveDocIndex } from "./projections/deriveDocIndex.js";
 import { deriveSkillsCatalog } from "./projections/deriveSkillsCatalog.js";
 import { deriveAgentSystem } from "./projections/deriveAgentSystem.js";
 import { deriveBuildAtlas } from "./projections/deriveBuildAtlas.js";
+import { deriveWorktreeBoard } from "./projections/deriveWorktreeBoard.js";
 
 /** The full set of projections one derive produces — what the worker persists per company. */
 export interface ProjectionSet {
@@ -39,6 +41,7 @@ export interface ProjectionSet {
   readonly skillsCatalog: SkillsCatalogV1;
   readonly agentSystem: AgentSystemV1;
   readonly buildAtlas: BuildAtlasV1;
+  readonly worktreeBoard: WorktreeBoardV1;
 }
 
 /**
@@ -65,5 +68,6 @@ export function collectAndProject(bundle: SignalBundle, nowMs: number, taxonomy:
     // COS-5g) rather than taking the repo-project taxonomy lens — the family axis is
     // the ticket-prefix registry, not the repo→project map.
     buildAtlas: deriveBuildAtlas(bundle, nowMs),
+    worktreeBoard: deriveWorktreeBoard(bundle, nowMs),
   };
 }

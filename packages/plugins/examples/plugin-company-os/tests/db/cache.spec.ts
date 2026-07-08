@@ -13,6 +13,7 @@ import {
   releaseDeriveLock,
   replaceSourceVersions,
   writeProjections,
+  readWorktreeBoard,
 } from "../../src/db/cache.js";
 import { BUILD_ATLAS_SCHEMA_VERSION } from "../../src/contracts/build-atlas.js";
 import { COS_DB_NAMESPACE } from "../../src/db/namespace.js";
@@ -177,6 +178,22 @@ describe("cache — COS-1R + COS-5 sibling snapshots (§8.1 both-append merge co
     NOW,
     taxonomyFixture(),
   );
+
+  it("row 6 (COS-8c): a crash/lease-loss mid-write keeps the PREVIOUS complete worktree board for readers", async () => {
+    // First derive lands a complete board (after-fence swap wrote it whole).
+    const db = new FakeDb();
+    await ensureBoardRow(db, CO);
+    await acquireDeriveLock(db, CO, "A", 120_000, NOW);
+    await writeProjections(db, CO, projections, "A");
+    const before = await readWorktreeBoard(db, CO);
+    expect(before).not.toBeNull();
+
+    // A second derive loses its lease at the FENCE (owner mismatch) — the write
+    // throws before any secondary upsert, so readers keep the previous board.
+    await expect(writeProjections(db, CO, projections, "NOT-THE-OWNER")).rejects.toThrow(/lease lost/);
+    const after = await readWorktreeBoard(db, CO);
+    expect(after).toEqual(before); // previous complete snapshot, not a torn write
+  });
 
   it("round-trips both agent-system and build-atlas through one writeProjections", async () => {
     const db = new FakeDb();

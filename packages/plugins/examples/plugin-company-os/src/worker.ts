@@ -14,6 +14,7 @@ import {
   readAgentSystem,
   readBoardState,
   readBuildAtlas,
+  readWorktreeBoard,
   readDocIndex,
   readGitState,
   readOrientation,
@@ -174,6 +175,8 @@ const plugin = definePlugin({
     ctx.data.register("agent-system", async (params) => readAgentSystem(ctx.db, str(params.companyId)));
     // COS-5 build-atlas read handler (the Build Atlas tab — families/lifecycle/lineage).
     ctx.data.register("build-atlas", async (params) => readBuildAtlas(ctx.db, str(params.companyId)));
+    // COS-8c worktrees-lens read handler (the Branch·PR Worktrees toggle).
+    ctx.data.register("worktree-board", async (params) => readWorktreeBoard(ctx.db, str(params.companyId)));
 
     // --- docs viewer: a LIVE, index-gated, containment-checked single-file read ---
     ctx.data.register("report-content", async (params) => {
