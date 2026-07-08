@@ -61,7 +61,7 @@ function flowBool(entry: string, key: string): boolean | null {
 function checkpoints(block: string): WorktreeCheckpoint[] {
   const start = block.match(/^checkpoints:\s*$/m);
   if (!start) return [];
-  const after = block.slice(block.indexOf(start[0]) + start[0].length);
+  const after = block.slice((start.index ?? 0) + start[0].length);
   const out: WorktreeCheckpoint[] = [];
   for (const line of after.split("\n")) {
     const trimmed = line.trim();
