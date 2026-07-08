@@ -109,7 +109,7 @@ export async function readDocFreshness(deps: DocGitDeps, companyId: string, docI
 
   try {
     // 1. Dirty (modified OR untracked) → uncommitted.
-    const status = await deps.gitRun(entry.checkoutKey, ["status", "--porcelain", "--", entry.relPath]);
+    const status = await deps.gitRun(entry.checkoutKey, ["--no-optional-locks", "status", "--porcelain", "--", entry.relPath]);
     if (status.code !== 0) {
       return parseDocFreshnessV1({ ...base(entry, docId), status: "git_error", state: null, message: "git status failed for this checkout." });
     }

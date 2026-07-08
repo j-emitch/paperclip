@@ -73,7 +73,7 @@ describe("readDocFreshness", () => {
   });
 
   it("dirty worktree copy → uncommitted", async () => {
-    const r = await readDocFreshness(deps(scriptedGit({ "status --porcelain": { stdout: " M specs/y.md\n", code: 0 } })), "co", WT);
+    const r = await readDocFreshness(deps(scriptedGit({ "--no-optional-locks status --porcelain": { stdout: " M specs/y.md\n", code: 0 } })), "co", WT);
     expect(r.status).toBe("ok");
     expect(r.state).toBe("uncommitted");
     expect(r.branch).toBe("cos/COS-8");
@@ -83,7 +83,7 @@ describe("readDocFreshness", () => {
     const r = await readDocFreshness(
       deps(
         scriptedGit({
-          "status --porcelain": CLEAN,
+          "--no-optional-locks status --porcelain": CLEAN,
           "rev-parse --abbrev-ref": { stdout: "", code: 128 },
         }),
       ),
@@ -98,7 +98,7 @@ describe("readDocFreshness", () => {
     const r = await readDocFreshness(
       deps(
         scriptedGit({
-          "status --porcelain": CLEAN,
+          "--no-optional-locks status --porcelain": CLEAN,
           "rev-parse --abbrev-ref": { stdout: "origin/cos/COS-8\n", code: 0 },
           "log --oneline": { stdout: "abc123 edit doc\n", code: 0 },
         }),
@@ -113,7 +113,7 @@ describe("readDocFreshness", () => {
     const r = await readDocFreshness(
       deps(
         scriptedGit({
-          "status --porcelain": CLEAN,
+          "--no-optional-locks status --porcelain": CLEAN,
           "rev-parse --abbrev-ref": { stdout: "origin/cos/COS-8\n", code: 0 },
           "log --oneline": CLEAN,
           "rev-parse --verify --quiet origin/main^{commit}": { stdout: "deadbeef\n", code: 0 },
@@ -130,7 +130,7 @@ describe("readDocFreshness", () => {
     const r = await readDocFreshness(
       deps(
         scriptedGit({
-          "status --porcelain": CLEAN,
+          "--no-optional-locks status --porcelain": CLEAN,
           "rev-parse --abbrev-ref": { stdout: "origin/cos/COS-8\n", code: 0 },
           "log --oneline": CLEAN,
           "rev-parse --verify --quiet origin/main^{commit}": { stdout: "deadbeef\n", code: 0 },
@@ -164,7 +164,7 @@ describe("readDocFreshness", () => {
   });
 
   it("git status failure → typed git_error, never a throw", async () => {
-    const r = await readDocFreshness(deps(scriptedGit({ "status --porcelain": { stdout: "", code: 128 } })), "co", WT);
+    const r = await readDocFreshness(deps(scriptedGit({ "--no-optional-locks status --porcelain": { stdout: "", code: 128 } })), "co", WT);
     expect(r.status).toBe("git_error");
     expect(r.state).toBeNull();
   });
