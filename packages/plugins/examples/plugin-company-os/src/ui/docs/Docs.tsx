@@ -34,6 +34,7 @@ import {
   checkoutNameOfEntry,
   ckOfEntry,
   docsRouteForEntry,
+  parseCockpitSearch,
   printCockpitSearch,
   resolveDocsRoute,
   type DocsRoute,
@@ -95,6 +96,23 @@ export function Docs({ companyId }: { companyId: string | null }) {
     setFacet(FACET_ALL);
   }, [companyId]);
 
+  // History traversal: when Back/Forward walks the URL from a docs route to a
+  // non-docs (tab-only) search, the viewer must follow — otherwise the address
+  // bar shows `?tab=docs` while a doc stays open and the URL stops being
+  // copyable. Only a docs→other TRANSITION clears; the pre-write-back moment
+  // of a fresh selection (other→other) never does.
+  const location = useHostLocation();
+  const prevSearchKindRef = useRef<"docs" | "other">("other");
+  useEffect(() => {
+    const route = parseCockpitSearch(location.search);
+    const kind = route?.kind === "docs" ? "docs" : "other";
+    if (prevSearchKindRef.current === "docs" && kind === "other") {
+      setSelected(null);
+      setRouteIssue(null);
+    }
+    prevSearchKindRef.current = kind;
+  }, [location.search]);
+
   // A missed route re-resolves whenever the index updates (a scoped refresh
   // may have just indexed it) — resolution success clears the miss panel.
   useEffect(() => {
@@ -140,6 +158,10 @@ export function Docs({ companyId }: { companyId: string | null }) {
         if (sel) {
           setSelected(sel);
           setRouteIssue(null);
+          // In-app arrivals (docs-updated chip, Home) land with a tab-only URL —
+          // write the resolved copy's canonical params so the address bar is
+          // copyable from THIS path too, not just from a list click.
+          writeRoute(docsRouteForEntry(res.entry));
         }
       } else if (res.kind === "ambiguous") {
         setRouteIssue({ kind: "ambiguous", route, candidates: res.candidates });
@@ -150,7 +172,7 @@ export function Docs({ companyId }: { companyId: string | null }) {
       }
       clearPendingTarget(pending);
     }
-  }, [docIndex, pending]);
+  }, [docIndex, pending, writeRoute]);
 
   // Every in-app selection writes the CANONICAL params (incl. ck=) back to the
   // URL — replace, so selection churn never spams history (COS-8f T1).
@@ -188,7 +210,15 @@ export function Docs({ companyId }: { companyId: string | null }) {
         }}
       />
     ) : (
-      <ConnectedRouteMissPanel route={routeIssue.route} companyId={companyId} refreshIndex={refresh} />
+      <ConnectedRouteMissPanel
+        // Remount per route identity: the retry machine (stateRef/timerRef) must
+        // start FRESH for a different missed URL — an exhausted miss for A must
+        // not swallow the auto-refresh cycle for B.
+        key={printCockpitSearch(routeIssue.route)}
+        route={routeIssue.route}
+        companyId={companyId}
+        refreshIndex={refresh}
+      />
     )
   ) : selected ? (
     <ConnectedDocViewer
@@ -509,7 +539,7 @@ function ConnectedRouteMissPanel({
       if (timerRef.current) clearTimeout(timerRef.current);
     };
     // One auto-cycle per mounted miss route.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dispatchScoped is deliberately excluded: re-creating the callback must not restart the bounded retry cycle; only a route identity change may.
   }, [route.repoKey, route.relPath, route.checkout, route.ck]);
 
   const st = stateRef.current;

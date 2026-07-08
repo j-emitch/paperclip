@@ -20,6 +20,15 @@ import { setPendingTarget } from "./pending-target-store.js";
 import { parseCockpitSearch, printCockpitSearch, type CockpitRoute } from "./routing.js";
 import type { CompanyOsTabKey } from "./tabs.js";
 
+/**
+ * The last search string THIS module wrote (select-tab push or canonical
+ * write-back). Adoption skips exactly that value once — our own writes already
+ * updated the stores, so re-adopting them would only echo a redundant
+ * pending-target set (and one wasted resolve+render) per selection. A
+ * back/forward gesture always carries a DIFFERENT search, so it still adopts.
+ */
+let selfWrittenSearch: string | null = null;
+
 /** The one-shot deep-link target a route carries (null for tab-only routes). */
 export function routeToPendingTarget(route: CockpitRoute): DeepLink | null {
   if (route.kind === "docs") {
@@ -39,6 +48,10 @@ export function routeToPendingTarget(route: CockpitRoute): DeepLink | null {
 export function useUrlRouteAdoption(): void {
   const location = useHostLocation();
   useEffect(() => {
+    if (selfWrittenSearch !== null && location.search === selfWrittenSearch) {
+      selfWrittenSearch = null;
+      return;
+    }
     const route = parseCockpitSearch(location.search);
     if (!route) return;
     // An explicit URL wins over "where I left off" — even when it names the
@@ -60,8 +73,15 @@ export function useSelectTab(): (key: CompanyOsTabKey) => void {
   return useCallback(
     (key: CompanyOsTabKey) => {
       setActiveTab(key);
+      // Re-clicking the CURRENT tab must not clobber its deep-link params
+      // (?tab=docs&repo=…&path=… would collapse to ?tab=docs).
+      const current = parseCockpitSearch(location.search);
+      if (current && current.tab === key) return;
       const search = printCockpitSearch({ kind: "tab", tab: key });
-      if (location.search !== search) navigate(`${location.pathname}${search}`);
+      if (location.search !== search) {
+        selfWrittenSearch = search;
+        navigate(`${location.pathname}${search}`);
+      }
     },
     [location.pathname, location.search, navigate],
   );
@@ -78,7 +98,10 @@ export function useWriteRouteToUrl(): (route: CockpitRoute) => void {
   return useCallback(
     (route: CockpitRoute) => {
       const search = printCockpitSearch(route);
-      if (location.search !== search) navigate(`${location.pathname}${search}`, { replace: true });
+      if (location.search !== search) {
+        selfWrittenSearch = search;
+        navigate(`${location.pathname}${search}`, { replace: true });
+      }
     },
     [location.pathname, location.search, navigate],
   );

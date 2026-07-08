@@ -74,7 +74,10 @@ export function ckOfEntry(entry: Pick<DocEntryV1, "checkoutKey">): string | null
   const at = entry.checkoutKey.indexOf("::wt::");
   if (at === -1) return null;
   const hash = entry.checkoutKey.slice(at + "::wt::".length);
-  return CK_RE.test(hash) ? hash : hash || null;
+  // A malformed suffix must NOT leak into a URL: `parseCockpitSearch` rejects
+  // any `ck=` failing CK_RE, so printing it would break the round-trip anchor
+  // (and could carry cache garbage). Degrade to a ck-less link instead.
+  return CK_RE.test(hash) ? hash : null;
 }
 
 /** The `checkout=` value for an entry: worktree basename, or `main`. */
@@ -83,11 +86,13 @@ export function checkoutNameOfEntry(entry: Pick<DocEntryV1, "worktreeName">): st
 }
 
 /**
- * Parse the host search string into a cockpit route. Returns `null` when the
- * params don't form a complete, well-typed route (missing/unknown `tab=`,
- * docs params without `path=`, a malformed `ck=`, …) — the caller treats that
- * as "no route in the URL", and a docs/worktree miss is only computed AFTER a
- * structurally valid route resolves against the index.
+ * Parse the host search string into a cockpit route. Returns `null` only when
+ * the route is structurally INVALID (missing/unknown `tab=`, a malformed
+ * `ck=`, an absolute or `..` path) — the caller treats that as "no route in
+ * the URL". Docs/worktree params that are merely INCOMPLETE (e.g. `repo=`
+ * without `path=`) degrade to the tab-only route: the tab is still a valid
+ * destination even when the deep-link half is unusable. A docs/worktree miss
+ * is only computed AFTER a structurally valid route resolves against the index.
  */
 export function parseCockpitSearch(search: string): CockpitRoute | null {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
@@ -128,7 +133,7 @@ export function parseCockpitSearch(search: string): CockpitRoute | null {
  */
 export function printCockpitSearch(route: CockpitRoute): string {
   const params = new URLSearchParams();
-  params.set("tab", route.kind === "tab" ? route.tab : route.tab);
+  params.set("tab", route.tab);
   if (route.kind === "docs") {
     params.set("repo", route.repoKey);
     params.set("checkout", route.checkout);

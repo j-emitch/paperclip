@@ -3,10 +3,14 @@
  * (COS-8f T3). Places one indexed doc copy on the 5-state ladder:
  *
  *   main        — the main-checkout copy (trunk-side by definition).
- *   uncommitted — dirty (or untracked) in its worktree.
+ *   uncommitted — dirty, untracked, OR ignored in its worktree (the index walks
+ *                 the filesystem, so an ignored doc is still an indexed copy).
  *   committed   — committed on the branch, not on its upstream.
  *   pushed      — on the upstream, still differs from trunk.
- *   merged      — no diff vs the trunk merge-base (content reached trunk).
+ *   merged      — content identical to the trunk TIP (catches squash-merges), or
+ *                 no branch-side changes vs the merge-base. Checked BEFORE the
+ *                 upstream rungs so a detached checkout at a merged commit lands
+ *                 here instead of short-circuiting to `committed`.
  *
  * Defense ladder mirrors `readDocContent`: (1) INDEX GATE — only an indexed
  * `docId` is readable; (2) CHECKOUT RESOLVABLE — a pruned worktree is a typed
@@ -108,8 +112,11 @@ export async function readDocFreshness(deps: DocGitDeps, companyId: string, docI
   }
 
   try {
-    // 1. Dirty (modified OR untracked) → uncommitted.
-    const status = await deps.gitRun(entry.checkoutKey, ["--no-optional-locks", "status", "--porcelain", "--", entry.relPath]);
+    // 1. Dirty (modified, untracked, OR ignored) → uncommitted. `--ignored`
+    // matters because DocsSource indexes the filesystem regardless of
+    // .gitignore — an ignored doc must not read as clean and fall through
+    // to a trunk state it was never committed to.
+    const status = await deps.gitRun(entry.checkoutKey, ["--no-optional-locks", "status", "--porcelain", "--ignored", "--", entry.relPath]);
     if (status.code !== 0) {
       return parseDocFreshnessV1({ ...base(entry, docId), status: "git_error", state: null, message: "git status failed for this checkout." });
     }
@@ -117,7 +124,32 @@ export async function readDocFreshness(deps: DocGitDeps, companyId: string, docI
       return parseDocFreshnessV1({ ...base(entry, docId), status: "ok", state: "uncommitted", message: null });
     }
 
-    // 2. Ahead of upstream (or no upstream at all) → committed.
+    // 2. Merged — the strongest state, checked FIRST so detached/no-upstream
+    // checkouts still reach it. Two independent proofs:
+    //   (a) content at HEAD == content at the trunk TIP (two-dot) — catches
+    //       squash-merges, where trunk carries the content with new ancestry;
+    //   (b) no branch-side changes vs the merge-base (three-dot) — the copy
+    //       has nothing trunk lacks.
+    const trunk = await resolveTrunkRef(deps.gitRun, entry.checkoutKey);
+    if (trunk) {
+      const vsTip = await deps.gitRun(entry.checkoutKey, ["diff", "--name-only", trunk, "HEAD", "--", entry.relPath]);
+      if (vsTip.code !== 0) {
+        return parseDocFreshnessV1({ ...base(entry, docId), status: "git_error", state: null, message: "git diff vs trunk failed." });
+      }
+      if (vsTip.stdout.trim().length === 0) {
+        return parseDocFreshnessV1({ ...base(entry, docId), status: "ok", state: "merged", message: null });
+      }
+      const vsMergeBase = await deps.gitRun(entry.checkoutKey, ["diff", "--name-only", `${trunk}...HEAD`, "--", entry.relPath]);
+      if (vsMergeBase.code !== 0) {
+        return parseDocFreshnessV1({ ...base(entry, docId), status: "git_error", state: null, message: "git diff vs trunk failed." });
+      }
+      if (vsMergeBase.stdout.trim().length === 0) {
+        return parseDocFreshnessV1({ ...base(entry, docId), status: "ok", state: "merged", message: null });
+      }
+    }
+
+    // 3. Not merged: committed (ahead of upstream, or no upstream at all)
+    // vs pushed (on the upstream).
     const upstream = await deps.gitRun(entry.checkoutKey, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]);
     if (upstream.code !== 0) {
       return parseDocFreshnessV1({
@@ -131,23 +163,12 @@ export async function readDocFreshness(deps: DocGitDeps, companyId: string, docI
     if (ahead.code === 0 && ahead.stdout.trim().length > 0) {
       return parseDocFreshnessV1({ ...base(entry, docId), status: "ok", state: "committed", message: null });
     }
-
-    // 3. Differs from trunk merge-base → pushed; else merged.
-    const trunk = await resolveTrunkRef(deps.gitRun, entry.checkoutKey);
-    if (!trunk) {
-      return parseDocFreshnessV1({
-        ...base(entry, docId),
-        status: "ok",
-        state: "pushed",
-        message: "No trunk ref found in this checkout — cannot confirm merge.",
-      });
-    }
-    const vsTrunk = await deps.gitRun(entry.checkoutKey, ["diff", "--name-only", `${trunk}...HEAD`, "--", entry.relPath]);
-    if (vsTrunk.code !== 0) {
-      return parseDocFreshnessV1({ ...base(entry, docId), status: "git_error", state: null, message: "git diff vs trunk failed." });
-    }
-    const state = vsTrunk.stdout.trim().length > 0 ? "pushed" : "merged";
-    return parseDocFreshnessV1({ ...base(entry, docId), status: "ok", state, message: null });
+    return parseDocFreshnessV1({
+      ...base(entry, docId),
+      status: "ok",
+      state: "pushed",
+      message: trunk ? null : "No trunk ref found in this checkout — cannot confirm merge.",
+    });
   } catch (err) {
     return parseDocFreshnessV1({
       ...base(entry, docId),
