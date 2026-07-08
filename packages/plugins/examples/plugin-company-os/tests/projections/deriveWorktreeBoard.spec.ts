@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { deriveWorktreeBoard } from "../../src/projections/deriveWorktreeBoard.js";
 import { WORKTREE_BUDGET_MS } from "../../src/contracts/worktree-board.js";
 import type { WorktreePurpose } from "../../src/contracts/signals.js";
-import { NOW, branchSignal, bundleOf, worktreeSignal } from "../fixtures/signals.js";
+import { NOW, branchSignal, bundleOf, bundleOfBatches, worktreeSignal } from "../fixtures/signals.js";
 
 const DAY = 86_400_000;
 const OLD_TIP = new Date(NOW - 40 * DAY).toISOString();
@@ -212,5 +212,62 @@ describe("perf: 85-worktree fixture completes within WORKTREE_BUDGET_MS (AC-8c#5
     expect(section.total).toBe(85);
     expect(section.evaluated).toBe(32);
     expect(section.cards).toHaveLength(85);
+  });
+});
+
+describe("QUAD folds: degraded scans, provenance, diagnostics threading", () => {
+  it("all-null git reads -> needs_attention with the scan-degraded rung, never a quiet stale", () => {
+    const board = deriveWorktreeBoard(
+      bundleOf([
+        worktreeSignal("ghost-tree", { headSha: null, dirtyFileCount: null, lastCommitAt: null, ahead: null, behind: null, changedFiles: null }),
+      ]),
+      NOW,
+    );
+    const card = board.repos[0].cards[0];
+    expect(card.lane).toBe("needs_attention");
+    expect(card.rung).toBe("scan-degraded");
+  });
+
+  it("attention OVERLAY on a work-record tree carries laneSource heuristic (provenance not conflated)", () => {
+    const purpose: WorktreePurpose = {
+      ticketIds: ["X-1"],
+      slug: "x",
+      phase: null,
+      lifespan: null,
+      startedAt: null,
+      activeHandoff: null,
+      integrationTarget: null,
+      checkpoints: [{ headSha: "abc", wip: true, pushed: false, at: new Date(NOW - 3_600_000).toISOString() }],
+    };
+    const board = deriveWorktreeBoard(
+      bundleOf([worktreeSignal("wr-behind", { purpose, behind: 40, dirtyFileCount: 0 })]),
+      NOW,
+    );
+    const card = board.repos[0].cards[0];
+    expect(card.lane).toBe("needs_attention");
+    expect(card.rung).toBe("behind-heavy");
+    expect(card.laneSource).toBe("heuristic"); // the overlay decided, not the Work Record
+  });
+
+  it("worktree-source repo errors thread into board diagnostics (degradation is carried, not dropped)", () => {
+    const board = deriveWorktreeBoard(
+      bundleOfBatches([
+        {
+          source: "worktree",
+          collectedAt: NOW,
+          signals: [worktreeSignal("capped-tree")],
+          repoFreshness: [
+            {
+              repo: "company",
+              freshness: "live",
+              lastOkAt: new Date(NOW).toISOString(),
+              errors: [{ code: "worktree_diff_capped", message: "capped for company", degraded: true }],
+            },
+          ],
+        },
+      ]),
+      NOW,
+    );
+    expect(board.diagnostics.some((d) => d.code === "worktree_diff_capped" && d.repo === "company")).toBe(true);
   });
 });

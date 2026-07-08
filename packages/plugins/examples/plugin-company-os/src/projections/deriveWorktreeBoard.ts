@@ -38,15 +38,14 @@ import {
 } from "../contracts/worktree-board.js";
 import type { WorktreeLane } from "../contracts/vocab.js";
 import { latestCheckpoint } from "../sources/purpose.js";
-import { classifyOrigin } from "../sources/WorktreeSource.js";
+import { classifyOrigin, WORKTREE_SOURCE_ID } from "../sources/WorktreeSource.js";
 import { TRUNK_CANDIDATES } from "../sources/git-helpers.js";
+import { DOC_FILE_RE } from "../shared/doc-files.js";
 
 const MS_PER_DAY = 86_400_000;
 
 /** Bare trunk names — branch-only cards are never minted for the trunk itself. */
 const TRUNK_NAMES = new Set(TRUNK_CANDIDATES.map((t) => t.replace(/^origin\//, "")));
-
-const DOC_RE = /\.(md|markdown)$/i;
 
 function allSignals(bundle: SignalBundle): Signal[] {
   return bundle.batches.flatMap((b) => b.signals);
@@ -67,6 +66,13 @@ function laneOfWorktree(s: WorktreeSignal, nowMs: number): LaneDecision {
   const active = tipActive(s.lastCommitAt, nowMs);
   const behindHeavy = (s.behind ?? 0) > BEHIND_WARN;
 
+  // 0. Degraded scan — every git read failed (budget exhausted before this
+  // tree, or a corrupt/vanishing worktree). A tree the scan could not SEE must
+  // not masquerade as an ordinarily-quiet `stale` card; surface it.
+  if (s.headSha === null && s.dirtyFileCount === null && s.lastCommitAt === null) {
+    return { lane: "needs_attention", laneSource: "heuristic", rung: "scan-degraded" };
+  }
+
   // 1. Merged (clean) — the COH detector owns this lane.
   if (!dirty && (s.mergeStatus === "direct" || s.mergeStatus === "squash")) {
     return { lane: "merged_cleanup", laneSource: "heuristic", rung: `merged:${s.mergeStatus}` };
@@ -76,7 +82,9 @@ function laneOfWorktree(s: WorktreeSignal, nowMs: number): LaneDecision {
   const latest = s.purpose ? latestCheckpoint(s.purpose) : null;
   if (latest && (latest.wip !== null || latest.pushed !== null)) {
     if (behindHeavy || (dirty && !active)) {
-      return { lane: "needs_attention", laneSource: "work_record", rung: behindHeavy ? "behind-heavy" : "dirty-stale" };
+      // The OVERLAY decided this lane, not the Work Record — provenance must
+      // say so or the card pill tints a git heuristic as work-record-sourced.
+      return { lane: "needs_attention", laneSource: "heuristic", rung: behindHeavy ? "behind-heavy" : "dirty-stale" };
     }
     if (latest.wip === true) return { lane: "in_flight", laneSource: "work_record", rung: "work-record:wip" };
     if (latest.pushed === true) return { lane: "in_flight", laneSource: "work_record", rung: "work-record:pushed" };
@@ -113,7 +121,7 @@ function cardOfWorktree(s: WorktreeSignal, nowMs: number): WorktreeCardV1 {
     changedFiles: s.changedFiles === null ? null : [...s.changedFiles],
     changedFilesTruncated: s.changedFilesTruncated,
     mergeStatus: s.mergeStatus,
-    docChangedCount: (s.changedFiles ?? []).filter((f) => DOC_RE.test(f)).length,
+    docChangedCount: (s.changedFiles ?? []).filter((f) => DOC_FILE_RE.test(f)).length,
     ticketIds: s.purpose ? [...s.purpose.ticketIds] : [],
     slug: s.purpose?.slug ?? null,
     checkpointCount: s.purpose?.checkpoints.length ?? 0,
@@ -226,7 +234,18 @@ export function deriveWorktreeBoard(bundle: SignalBundle, nowMs: number): Worktr
     if (card) push(card);
   }
 
+  // Thread the source's per-repo errors (budget exhaustion, capped diffs,
+  // failed reads) into the payload — a degraded repo must CARRY its named
+  // degradation, not silently render as clean/stale (lane B P1).
   const diagnostics: Diagnostic[] = [];
+  for (const batch of bundle.batches) {
+    if (batch.source !== WORKTREE_SOURCE_ID) continue;
+    for (const rf of batch.repoFreshness) {
+      for (const e of rf.errors) {
+        diagnostics.push({ level: "warn", code: e.code, message: e.message, repo: rf.repo, source: batch.source });
+      }
+    }
+  }
   const repos: WorktreeRepoSectionV1[] = [...byRepo.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([repoKey, cards]) => {

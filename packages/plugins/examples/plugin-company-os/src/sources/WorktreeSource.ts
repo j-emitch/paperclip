@@ -112,6 +112,16 @@ async function collectRepoWorktrees(
 
   // Pass 2 — the activity-gated expensive diff. Eligible: dirty OR tip-active.
   // ALL DIRTY FIRST, then clean-actives by tip recency (newest first).
+  // No trunk ⇒ no merge-base basis exists for ANY tree: skip the pass with a
+  // truthful degradation instead of burning the queue on no-op evaluations and
+  // emitting a misleading "capped" error for trees nothing could evaluate.
+  if (!trunk) {
+    const signals: Signal[] = scans.map((s) => toSignal(repoKey, s));
+    errors.push(
+      signalError("git_read_failed", `no trunk ref resolved for ${repoKey} — changed-files evaluation skipped`, true),
+    );
+    return { signals, errors };
+  }
   const nowMs = ctx.clock.now();
   const isActive = (s: TreeScan) =>
     s.lastCommitAt !== null && nowMs - Date.parse(s.lastCommitAt) < WORKTREE_ACTIVE_DAYS * MS_PER_DAY;
@@ -183,11 +193,16 @@ async function mergeStatusOf(
 ): Promise<WorktreeMergeStatus> {
   if (!trunk) return "unknown";
   const compareRef = wt.branch ?? "HEAD";
-  const ancestor = await ctx.git.run(wt.key, ["merge-base", "--is-ancestor", compareRef, trunk]);
+  // `--end-of-options` hardens the argv boundary: a corrupt/low-level ref name
+  // can never be parsed as an option (git refuses `-`-leading branch names, but
+  // `worktree list` output is not the only writer of `.git` state).
+  const ancestor = await ctx.git.run(wt.key, ["merge-base", "--is-ancestor", "--end-of-options", compareRef, trunk]);
   if (ancestor.code === 0) return "direct";
-  if (ancestor.code === null) return "unknown"; // timeout/degraded — not a real "no"
+  // rc 1 is the legitimate "not an ancestor"; anything else (128 bad ref,
+  // timeout null, corrupt tree) is a DEGRADED read — unknown, never a false "no".
+  if (ancestor.code !== 1) return "unknown";
   if (!trunkTrees) return "unknown";
-  const btree = await ctx.git.run(wt.key, ["rev-parse", `${compareRef}^{tree}`]);
+  const btree = await ctx.git.run(wt.key, ["rev-parse", "--end-of-options", `${compareRef}^{tree}`]);
   if (btree.code !== 0 || btree.stdout.trim() === "") return "unknown";
   return trunkTrees.has(btree.stdout.trim()) ? "squash" : "none";
 }
@@ -219,6 +234,14 @@ async function scanCheap(
   // status source).
   base.purpose = await readPurpose(ctx, repoKey, wt.name);
 
+  // Budget re-checked between VERBS, not just between trees — a single slow or
+  // corrupt worktree must not run its full verb ladder (each verb can burn the
+  // runner's whole per-call timeout) after the repo budget is spent.
+  const budgetSpent = () => {
+    if (!overBudget()) return false;
+    errors.push(signalError("git_read_failed", `worktree budget exhausted mid-scan of ${wt.name}`, true));
+    return true;
+  };
   if (overBudget()) {
     errors.push(signalError("git_read_failed", `worktree budget exhausted before scanning ${wt.name}`, true));
     return base;
@@ -227,13 +250,16 @@ async function scanCheap(
   const head = await ctx.git.run(wt.key, ["rev-parse", "HEAD"]);
   if (head.code === 0) base.headSha = head.stdout.trim() || null;
   else errors.push(signalError("git_read_failed", `rev-parse HEAD failed in ${wt.name}`, true));
+  if (budgetSpent()) return base;
 
   const status = await ctx.git.run(wt.key, ["--no-optional-locks", "status", "--porcelain"]);
   if (status.code === 0) base.dirtyFileCount = status.stdout.split("\n").filter((l) => l.trim() !== "").length;
   else errors.push(signalError("git_read_failed", `status failed in ${wt.name}`, true));
+  if (budgetSpent()) return base;
 
   const log = await ctx.git.run(wt.key, ["log", "-1", "--format=%cI"]);
   if (log.code === 0) base.lastCommitAt = log.stdout.trim() || null;
+  if (budgetSpent()) return base;
 
   if (trunk) {
     const counts = await ctx.git.run(wt.key, ["rev-list", "--left-right", "--count", `${trunk}...HEAD`]);
@@ -244,6 +270,7 @@ async function scanCheap(
         base.ahead = Number(m[2]);
       }
     }
+    if (budgetSpent()) return base;
   }
 
   base.mergeStatus = await mergeStatusOf(ctx, repoKey, wt, trunk, trunkTrees);
@@ -269,6 +296,25 @@ async function evaluateChangedFiles(
     return { files: null, truncated: false };
   }
   const names = diff.stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+
+  // UNTRACKED files are part of a tree's footprint too — a brand-new spec or
+  // handoff draft is exactly the doc the docs-updated chip exists for, and two
+  // trees both adding the same new file is a real conflict-radar overlap. The
+  // tracked diff can never show them (not in any commit), so union them in.
+  const untracked = await ctx.git.run(wt.key, ["ls-files", "--others", "--exclude-standard"]);
+  if (untracked.code === 0) {
+    const seen = new Set(names);
+    for (const raw of untracked.stdout.split("\n")) {
+      const name = raw.trim();
+      if (name && !seen.has(name)) {
+        seen.add(name);
+        names.push(name);
+      }
+    }
+  } else {
+    errors.push(signalError("git_read_failed", `ls-files --others failed in ${wt.name}`, true));
+  }
+
   if (names.length > MAX_WORKTREE_CHANGED_FILES) {
     return { files: names.slice(0, MAX_WORKTREE_CHANGED_FILES), truncated: true };
   }

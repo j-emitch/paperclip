@@ -6,6 +6,9 @@
  *   - type-only from the contract surface (`src/contracts/**`) — NEVER a value import
  *     (a value import would drag zod + the SDK main entry into the browser bundle)
  *   - other `src/ui/**` modules
+ *   - `src/shared/**` — the explicitly browser-safe shared zone (zod-free LEAF
+ *     modules both planes value-import, e.g. the doc-file predicate); a
+ *     companion test pins the leaf-ness so the zone can't grow imports
  * Anything else — the SDK main entry, node builtins, arbitrary packages, the
  * worker-side pipeline (sources/projections/db/derive/runtime/worker/collect),
  * or a value/dynamic import of contracts — is a violation.
@@ -22,6 +25,7 @@ const pkgRoot = resolve(here, "../..");
 const srcRoot = join(pkgRoot, "src");
 const uiRoot = join(srcRoot, "ui");
 const contractsRoot = join(srcRoot, "contracts");
+const sharedRoot = join(srcRoot, "shared");
 // The plugin manifest module holds browser-safe route/id constants the page links to
 // (COMPANY_OS_ROUTE). It pulls no worker/node code (proven by the UI bundle build).
 const manifestFile = join(srcRoot, "manifest");
@@ -69,6 +73,7 @@ function violationsIn(file: string): Violation[] {
       const abs = resolveRel(file, spec);
       if (underDir(abs, uiRoot)) return; // sibling UI module — fine
       if (abs === manifestFile) return; // browser-safe route/id constants
+      if (underDir(abs, sharedRoot)) return; // browser-safe shared zone (leaf-ness pinned below)
       if (underDir(abs, contractsRoot)) {
         if (!typeOnly) out.push({ file: rel, spec, why: "value import from the contract surface (must be `import type`)" });
         return;
@@ -134,5 +139,19 @@ describe("UI import boundary (AST)", () => {
     // Spot-prove the rule has teeth: useBoard imports BoardStateV1 as a type.
     const useBoard = readFileSync(join(uiRoot, "hooks", "useBoard.ts"), "utf8");
     expect(useBoard).toMatch(/import type\b[^;]*BoardStateV1[^;]*from\s*["'][^"']*contracts/);
+  });
+
+  it("src/shared/** stays a LEAF zone — zero imports, so it can never smuggle zod/node into the browser", () => {
+    const sharedFiles = walk(sharedRoot);
+    expect(sharedFiles.length).toBeGreaterThan(0);
+    for (const f of sharedFiles) {
+      const sf = ts.createSourceFile(f, readFileSync(f, "utf8"), ts.ScriptTarget.Latest, true);
+      const imports: string[] = [];
+      sf.forEachChild((node) => {
+        if (ts.isImportDeclaration(node) || ts.isImportEqualsDeclaration(node)) imports.push(node.getText(sf));
+        if (ts.isExportDeclaration(node) && node.moduleSpecifier) imports.push(node.getText(sf));
+      });
+      expect(imports, `${relative(pkgRoot, f)} must import nothing:\n${imports.join("\n")}`).toEqual([]);
+    }
   });
 });

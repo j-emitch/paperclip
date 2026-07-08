@@ -10,6 +10,7 @@
  * changed doc to the 8f URL machinery (the connected parent wires `onOpenDoc`).
  */
 
+import { useEffect, useRef } from "react";
 import type { OverlapPairV1, WorktreeBoardV1, WorktreeCardV1, WorktreeRepoSectionV1 } from "../../contracts/worktree-board.js";
 import type { WorktreeLane, WorktreeOrigin } from "../../contracts/vocab.js";
 
@@ -22,6 +23,21 @@ import { Pill, RepoBadge } from "../shared/badges.js";
 import { CalmNote } from "../shared/feedback.js";
 import { ClockIcon } from "../icons.js";
 import { relativeTime } from "../shared/time.js";
+import { DOC_FILE_RE } from "../../shared/doc-files.js";
+
+/** The `?tab=branch-pr&wt=…` deep-link target: which card to focus. */
+export interface WorktreeFocus {
+  repoKey: string;
+  wt: string;
+  ck: string | null;
+}
+
+/** Exact-match a card against the deep-link focus (ck narrows when present). */
+function matchesFocus(card: WorktreeCardV1, focus: WorktreeFocus): boolean {
+  if (!card.hasWorktree || card.repoKey !== focus.repoKey || card.worktreeName !== focus.wt) return false;
+  if (focus.ck === null) return true;
+  return (card.checkoutKey ?? "").endsWith(`::wt::${focus.ck}`);
+}
 
 export const LANE_LABELS: Record<WorktreeLane, string> = {
   needs_attention: "Needs attention",
@@ -49,17 +65,37 @@ export interface WorktreesLensProps {
   isMobile?: boolean;
   /** Open one changed doc in the Docs surface (the 8f URL machinery). */
   onOpenDoc?: (card: WorktreeCardV1, relPath: string) => void;
+  /** Deep-link focus target (?tab=branch-pr&wt=…) — highlight or typed miss. */
+  focusWt?: WorktreeFocus | null;
+  /** Copy a card's durable wt-link (the connected parent owns clipboard+toast). */
+  onCopyLink?: (card: WorktreeCardV1) => void;
 }
 
-export function WorktreesLens({ board, now, isMobile = false, onOpenDoc }: WorktreesLensProps) {
+export function WorktreesLens({ board, now, isMobile = false, onOpenDoc, focusWt = null, onCopyLink }: WorktreesLensProps) {
   const total = board.repos.reduce((sum, r) => sum + r.cards.length, 0);
+  const focusMatched =
+    focusWt !== null && board.repos.some((r) => r.cards.some((c) => matchesFocus(c, focusWt)));
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
+      {focusWt && !focusMatched ? (
+        <CalmNote tone={statusColors.reviewUnknown}>
+          No worktree “{focusWt.wt}” on the {focusWt.repoKey} board right now — it may have been merged and cleaned up
+          since this link was copied.
+        </CalmNote>
+      ) : null}
       {total === 0 ? (
         <CalmNote>No worktrees or in-flight branches right now — spawn one and it appears on the next derive.</CalmNote>
       ) : null}
       {board.repos.map((section) => (
-        <RepoSection key={section.repoKey} section={section} now={now} isMobile={isMobile} onOpenDoc={onOpenDoc} />
+        <RepoSection
+          key={section.repoKey}
+          section={section}
+          now={now}
+          isMobile={isMobile}
+          onOpenDoc={onOpenDoc}
+          focusWt={focusWt}
+          onCopyLink={onCopyLink}
+        />
       ))}
     </div>
   );
@@ -70,11 +106,15 @@ function RepoSection({
   now,
   isMobile,
   onOpenDoc,
+  focusWt,
+  onCopyLink,
 }: {
   section: WorktreeRepoSectionV1;
   now: number;
   isMobile: boolean;
   onOpenDoc?: (card: WorktreeCardV1, relPath: string) => void;
+  focusWt?: WorktreeFocus | null;
+  onCopyLink?: (card: WorktreeCardV1) => void;
 }) {
   const laneCounts = new Map<WorktreeLane, number>(LANE_DISPLAY_ORDER.map((lane) => [lane, 0]));
   for (const card of section.cards) laneCounts.set(card.lane, (laneCounts.get(card.lane) ?? 0) + 1);
@@ -95,8 +135,8 @@ function RepoSection({
       </header>
       {section.skippedDirty.length > 0 ? (
         <CalmNote tone={statusColors.reviewUnknown}>
-          Diff budget skipped {section.skippedDirty.length} DIRTY tree{section.skippedDirty.length === 1 ? "" : "s"}:{" "}
-          {section.skippedDirty.join(", ")} — refresh to re-evaluate.
+          {section.skippedDirty.length} DIRTY tree{section.skippedDirty.length === 1 ? "" : "s"} not evaluated (diff
+          budget, or a failed git read): {section.skippedDirty.join(", ")} — refresh to re-evaluate.
         </CalmNote>
       ) : null}
       <ConflictRadar pairs={section.overlapPairs} />
@@ -117,7 +157,14 @@ function RepoSection({
               }}
             >
               {cards.map((card) => (
-                <WorktreeCard key={card.cardKey} card={card} now={now} onOpenDoc={onOpenDoc} />
+                <WorktreeCard
+                  key={card.cardKey}
+                  card={card}
+                  now={now}
+                  onOpenDoc={onOpenDoc}
+                  focused={focusWt != null && matchesFocus(card, focusWt)}
+                  onCopyLink={onCopyLink}
+                />
               ))}
             </div>
           </div>
@@ -142,13 +189,15 @@ function ConflictRadar({ pairs }: { pairs: readonly OverlapPairV1[] }) {
         <span style={{ fontSize: 12, color: tokens.muted }}>No overlapping in-flight changes.</span>
       ) : (
         <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-          {pairs.map((pair) => {
+          {pairs.map((pair, i) => {
             const tone = pair.bothDirty ? statusColors.danger : tokens.muted;
             const shown = pair.sharedFiles.slice(0, 3);
             const more = pair.count - shown.length;
             return (
               <li
-                key={`${pair.branchA}|${pair.branchB}`}
+                // Index-qualified: pair labels are DISPLAY names and can collide
+                // (duplicate-basename detached trees) even when the cards differ.
+                key={`${i}:${pair.branchA}|${pair.branchB}`}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -194,23 +243,38 @@ function WorktreeCard({
   card,
   now,
   onOpenDoc,
+  focused = false,
+  onCopyLink,
 }: {
   card: WorktreeCardV1;
   now: number;
   onOpenDoc?: (card: WorktreeCardV1, relPath: string) => void;
+  focused?: boolean;
+  onCopyLink?: (card: WorktreeCardV1) => void;
 }) {
   const tipAge = relativeTime(card.lastCommitAt, now);
-  const firstDoc = (card.changedFiles ?? []).find((f) => /\.(md|markdown)$/i.test(f)) ?? null;
+  const firstDoc = (card.changedFiles ?? []).find((f) => DOC_FILE_RE.test(f)) ?? null;
+  // Deep-link focus: scroll the named card into view (client-only; SSR renders
+  // the ring without the effect).
+  const ref = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (focused && ref.current && typeof ref.current.scrollIntoView === "function") {
+      ref.current.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }, [focused]);
   return (
     <article
+      ref={ref}
       className="cos-fx-enter"
+      data-focused={focused || undefined}
       style={{
         display: "flex",
         flexDirection: "column",
         gap: 8,
         padding: 12,
         background: tokens.card,
-        border: `1px solid ${tokens.border}`,
+        border: `1px solid ${focused ? tokens.accentBorder : tokens.border}`,
+        boxShadow: focused ? `0 0 0 2px ${tokens.accentSoft}` : undefined,
         borderRadius: tokens.radius,
         minWidth: 0,
         transition: springTransition,
@@ -222,8 +286,35 @@ function WorktreeCard({
           title={card.worktreeName ?? card.branch ?? card.cardKey}
           style={{ fontSize: 13.5, color: tokens.fg, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}
         >
-          {card.worktreeName ?? card.branch}
+          {/* cardKey last resort: a schema-valid row with both identities null
+              must still render SOMETHING addressable (lane B P2). */}
+          {card.worktreeName ?? card.branch ?? card.cardKey}
         </strong>
+        {onCopyLink && card.hasWorktree && card.worktreeName ? (
+          <button
+            type="button"
+            onClick={() => onCopyLink(card)}
+            aria-label={`Copy a durable link to ${card.worktreeName}`}
+            title="Copy link to this worktree card"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "3px 8px",
+              borderRadius: tokens.radiusSm,
+              background: tokens.secondary,
+              border: `1px solid ${tokens.border}`,
+              color: tokens.muted,
+              font: "inherit",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              transition: springTransition,
+            }}
+          >
+            link
+          </button>
+        ) : null}
         {!card.hasWorktree ? <Pill label="no worktree" tone={tokens.muted} /> : null}
       </div>
       {card.branch && card.worktreeName ? (

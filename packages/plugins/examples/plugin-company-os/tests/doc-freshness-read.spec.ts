@@ -79,11 +79,20 @@ describe("readDocFreshness", () => {
     expect(r.branch).toBe("cos/COS-8");
   });
 
+  // Shared script fragments — the merged rungs run BEFORE the upstream rungs,
+  // so every not-merged scenario needs the trunk + both diffs scripted.
+  const TRUNK_OK = { "rev-parse --verify --quiet origin/main^{commit}": { stdout: "deadbeef\n", code: 0 as const } };
+  const DIFFERS_FROM_TIP = { "diff --name-only origin/main HEAD": { stdout: "specs/y.md\n", code: 0 as const } };
+  const DIFFERS_FROM_MB = { "diff --name-only origin/main...HEAD": { stdout: "specs/y.md\n", code: 0 as const } };
+
   it("clean + no upstream → committed (nothing pushed yet)", async () => {
     const r = await readDocFreshness(
       deps(
         scriptedGit({
           "--no-optional-locks status --porcelain": CLEAN,
+          ...TRUNK_OK,
+          ...DIFFERS_FROM_TIP,
+          ...DIFFERS_FROM_MB,
           "rev-parse --abbrev-ref": { stdout: "", code: 128 },
         }),
       ),
@@ -99,6 +108,9 @@ describe("readDocFreshness", () => {
       deps(
         scriptedGit({
           "--no-optional-locks status --porcelain": CLEAN,
+          ...TRUNK_OK,
+          ...DIFFERS_FROM_TIP,
+          ...DIFFERS_FROM_MB,
           "rev-parse --abbrev-ref": { stdout: "origin/cos/COS-8\n", code: 0 },
           "log --oneline": { stdout: "abc123 edit doc\n", code: 0 },
         }),
@@ -114,10 +126,11 @@ describe("readDocFreshness", () => {
       deps(
         scriptedGit({
           "--no-optional-locks status --porcelain": CLEAN,
+          ...TRUNK_OK,
+          ...DIFFERS_FROM_TIP,
+          ...DIFFERS_FROM_MB,
           "rev-parse --abbrev-ref": { stdout: "origin/cos/COS-8\n", code: 0 },
           "log --oneline": CLEAN,
-          "rev-parse --verify --quiet origin/main^{commit}": { stdout: "deadbeef\n", code: 0 },
-          "diff --name-only": { stdout: "specs/y.md\n", code: 0 },
         }),
       ),
       "co",
@@ -126,21 +139,64 @@ describe("readDocFreshness", () => {
     expect(r.state).toBe("pushed");
   });
 
-  it("no diff vs trunk merge-base → merged", async () => {
+  it("no branch-side changes vs the merge-base → merged (trunk may have moved on)", async () => {
+    // 2-dot differs (trunk tip moved the file), 3-dot empty (this copy has
+    // nothing trunk lacks). NO upstream keys: reaching the upstream rung
+    // would throw — proving merged is decided FIRST (the detached fix).
     const r = await readDocFreshness(
       deps(
         scriptedGit({
           "--no-optional-locks status --porcelain": CLEAN,
-          "rev-parse --abbrev-ref": { stdout: "origin/cos/COS-8\n", code: 0 },
-          "log --oneline": CLEAN,
-          "rev-parse --verify --quiet origin/main^{commit}": { stdout: "deadbeef\n", code: 0 },
-          "diff --name-only": CLEAN,
+          ...TRUNK_OK,
+          ...DIFFERS_FROM_TIP,
+          "diff --name-only origin/main...HEAD": CLEAN,
         }),
       ),
       "co",
       WT,
     );
     expect(r.state).toBe("merged");
+  });
+
+  it("squash-merged: content identical to the trunk TIP → merged (2-dot proof)", async () => {
+    const r = await readDocFreshness(
+      deps(
+        scriptedGit({
+          "--no-optional-locks status --porcelain": CLEAN,
+          ...TRUNK_OK,
+          "diff --name-only origin/main HEAD": CLEAN,
+        }),
+      ),
+      "co",
+      WT,
+    );
+    expect(r.state).toBe("merged");
+  });
+
+  it("IGNORED indexed doc reads as uncommitted, not a trunk state (--ignored)", async () => {
+    const r = await readDocFreshness(
+      deps(scriptedGit({ "--no-optional-locks status --porcelain": { stdout: "!! specs/y.md\n", code: 0 } })),
+      "co",
+      WT,
+    );
+    expect(r.state).toBe("uncommitted");
+  });
+
+  it("no trunk ref anywhere → upstream rungs still run; pushed carries the caveat", async () => {
+    const r = await readDocFreshness(
+      deps(
+        scriptedGit({
+          "--no-optional-locks status --porcelain": CLEAN,
+          "rev-parse --verify --quiet": { stdout: "", code: 1 },
+          "rev-parse --abbrev-ref": { stdout: "origin/cos/COS-8\n", code: 0 },
+          "log --oneline": CLEAN,
+        }),
+      ),
+      "co",
+      WT,
+    );
+    expect(r.state).toBe("pushed");
+    expect(r.message).toContain("No trunk ref");
   });
 
   it("row 4: checkout pruned between index fetch and git call → typed checkout_gone", async () => {

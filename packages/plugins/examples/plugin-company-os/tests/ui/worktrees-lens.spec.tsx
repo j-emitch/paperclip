@@ -216,3 +216,41 @@ describe("WorktreesLens SSR", () => {
     expect(html).toContain("No worktrees or in-flight branches");
   });
 });
+
+describe("QUAD folds: wt deep-link focus (AC-8f symmetry)", () => {
+  it("a matching focus target renders the focused card ring", () => {
+    const html = renderToStaticMarkup(
+      <WorktreesLens
+        board={board([card({ worktreeName: "cos-wt" })])}
+        now={NOW}
+        focusWt={{ repoKey: "company", wt: "cos-wt", ck: "abcabcabcabc" }}
+      />,
+    );
+    expect(html).toContain('data-focused="true"');
+    expect(html).not.toContain("may have been merged and cleaned up");
+  });
+
+  it("an unmatched focus target renders the typed miss note (a dead link must LOOK dead)", () => {
+    const html = renderToStaticMarkup(
+      <WorktreesLens
+        board={board([card({ worktreeName: "cos-wt" })])}
+        now={NOW}
+        focusWt={{ repoKey: "company", wt: "pruned-tree", ck: null }}
+      />,
+    );
+    expect(html).toContain("pruned-tree");
+    expect(html).toContain("may have been merged and cleaned up");
+    expect(html).not.toContain('data-focused="true"');
+  });
+
+  it("ck narrows: same basename, wrong hash -> miss", () => {
+    const html = renderToStaticMarkup(
+      <WorktreesLens
+        board={board([card({ worktreeName: "cos-wt" })])}
+        now={NOW}
+        focusWt={{ repoKey: "company", wt: "cos-wt", ck: "ffffffffffff" }}
+      />,
+    );
+    expect(html).toContain("may have been merged and cleaned up");
+  });
+});

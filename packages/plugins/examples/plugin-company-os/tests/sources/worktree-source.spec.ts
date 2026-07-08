@@ -142,7 +142,7 @@ describe("COH squash detector (verbatim port parity)", () => {
       [tree],
       gitFor({
         [tree.key]: {
-          "rev-parse claude/S-1/done^{tree}": proc.ok("tree-squashed-2\n"),
+          "rev-parse --end-of-options claude/S-1/done^{tree}": proc.ok("tree-squashed-2\n"),
         },
       }),
     );
@@ -219,7 +219,7 @@ describe("row 5: worktree removed mid-scan (spec §4.1)", () => {
           "log -1 --format=%cI": proc.fail(128),
           "rev-list --left-right --count": proc.fail(128),
           "merge-base --is-ancestor": proc.fail(128),
-          "rev-parse claude/R-1/gone^{tree}": proc.fail(128),
+          "rev-parse --end-of-options claude/R-1/gone^{tree}": proc.fail(128),
         },
       }),
     );
@@ -282,5 +282,20 @@ describe("activity gate (spec §5.2)", () => {
     const { signals } = await collectSignals([tree], gitFor({ [tree.key]: { "diff --name-only": proc.ok(`${names}\n`) } }));
     expect(signals[0].changedFiles).toHaveLength(200);
     expect(signals[0].changedFilesTruncated).toBe(true);
+  });
+});
+
+describe("QUAD folds: untracked files in the footprint", () => {
+  it("unions untracked files into changedFiles (deduped) so new docs drive the chip + radar", async () => {
+    const tree = wt("untracked-docs", "claude/U-1/x");
+    const { signals } = await collectSignals(
+      [tree],
+      gitFor({
+        [tree.key]: {
+          "ls-files --others --exclude-standard": proc.ok("docs/new-spec.md\nsrc/a.ts\n"),
+        },
+      }),
+    );
+    expect(signals[0].changedFiles).toEqual(["src/a.ts", "src/b.ts", "docs/new-spec.md"]);
   });
 });
