@@ -5,6 +5,8 @@
  */
 
 import type {
+  AllowlistedLogKey,
+  AllowlistedLogReader,
   Clock,
   CollectionContext,
   GhRunner,
@@ -55,6 +57,37 @@ export type FixtureFs = Record<string, Record<string, FixtureFile>>;
 /** A git/gh responder: maps `(repo, args)` to a result. */
 export type ProcResponder = (repo: string, args: readonly string[]) => SubprocessResult;
 
+/** One canned allowlisted-log tail (COS-11). A plain string = untruncated content. */
+export type FixtureLog = string | { content: string; truncated?: boolean; mtime?: string };
+
+/**
+ * Canned §3.3b logs, keyed `"codex_invocations"` | `"cannons_runs"` |
+ * `"repo_guardrails:<repoKey>"`. Absent key → null (log doesn't exist — NORMAL).
+ */
+export type FixtureLogs = Record<string, FixtureLog>;
+
+function logKeyOf(key: AllowlistedLogKey): string {
+  return key.log === "repo_guardrails" ? `repo_guardrails:${key.repoKey}` : key.log;
+}
+
+function makeLogs(logs: FixtureLogs): AllowlistedLogReader {
+  return {
+    async readAllowlistedTail(key, maxBytes) {
+      const entry = logs[logKeyOf(key)];
+      if (entry === undefined) return null;
+      const f = typeof entry === "string" ? { content: entry } : entry;
+      const truncated = f.truncated ?? Buffer.byteLength(f.content, "utf8") > maxBytes;
+      const text = truncated && f.truncated === undefined ? f.content.slice(-maxBytes) : f.content;
+      return {
+        text,
+        truncated,
+        mtime: f.mtime ?? "2026-06-20T00:00:00.000Z",
+        sizeBytes: Buffer.byteLength(f.content, "utf8"),
+      };
+    },
+  };
+}
+
 export interface FixtureOptions {
   repos?: RepoRoot[];
   worktrees?: WorktreeCheckout[];
@@ -66,6 +99,8 @@ export interface FixtureOptions {
   files?: FixtureFs;
   registry?: RegistryEntry[] | (() => Promise<RegistryLoadResult>);
   lineage?: LineageData | (() => Promise<LineageLoadResult>);
+  /** Canned §3.3b allowlisted logs (COS-11). Omit entirely → ctx.logs still wired, every read null. */
+  logs?: FixtureLogs;
 }
 
 const DEFAULT_REPOS: RepoRoot[] = [
@@ -135,6 +170,7 @@ export function makeFixtureContext(opts: FixtureOptions = {}): CollectionContext
     git,
     gh,
     fs: makeFs(opts.files ?? {}),
+    logs: makeLogs(opts.logs ?? {}),
     clock: fixedClock,
     logger: silentLogger,
     registry,

@@ -96,7 +96,7 @@ describe("collect (end-to-end bundle assembly)", () => {
     const { bundle, failedSources } = await collect(fullContext());
     expect(failedSources).toEqual([]);
     expect(bundle.batches.map((b) => b.source).sort()).toEqual(
-      ["agent", "artifact", "branch", "docs", "git-work", "lineage", "prefix-registry", "pull-request", "review-report", "routine-contract", "skills", "spec-backlog", "ticket", "worktree"].sort(),
+      ["agent", "artifact", "branch", "docs", "git-work", "lineage", "prefix-registry", "pull-request", "review-report", "routine-contract", "skills", "spec-backlog", "ticket", "worktree", "hooks", "migration_audit", "dispatch_ledger", "protection"].sort(),
     );
   });
 

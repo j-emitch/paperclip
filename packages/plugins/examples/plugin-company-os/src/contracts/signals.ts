@@ -618,6 +618,82 @@ export interface LandedPrSignal extends SignalProvenance {
   readonly ticketIds: readonly string[];
 }
 
+// ---------------------------------------------------------------------------
+// COS-11 — Gates & Pipeline signals (four small read-only sources). Each is a
+// DISTINCT kind (PF-2 filter-in): inert to every existing fold; only
+// `deriveGatesState` (+ the orientation B17 bridge) consumes them.
+// ---------------------------------------------------------------------------
+
+/** Hook-install/parity state for ONE repo (HooksSource — spec §7 row 1/2). */
+export interface HooksSignal extends SignalProvenance {
+  readonly kind: "hooks";
+  /** `git config core.hooksPath` value; null = unset; "unknown" reads failed → see errors. */
+  readonly hooksPathValue: string | null;
+  /** Byte-diff of the repo's .githooks/* vs the canonical company set. */
+  readonly parity: "in_sync" | "drifted" | "missing" | "unknown";
+  /** Hook file names that differ/are absent vs canonical ([] unless drifted/missing). */
+  readonly driftedHooks: readonly string[];
+  /** GATE_SUITES names parsed from the canonical run-hook-tests.sh ([] when unreadable). */
+  readonly gateSuites: readonly string[];
+  /** Newest row `t` in this repo's guardrails ndjson tail; null = no rows/log (NORMAL). */
+  readonly lastGuardrailAt: string | null;
+  /** Distinct `hook` kinds seen in the guardrails tail (activity fingerprint). */
+  readonly guardrailHookKinds: readonly string[];
+  /** Newest cannons-runs line for THIS repo (the pre-push gate's real receipt); null = none. */
+  readonly lastGateRun: { readonly runId: string; readonly sha8: string; readonly verdict: string; readonly at: string } | null;
+}
+
+/** One drift-audit JSON + apply-receipt summary (MigrationAuditSource — rows 3/4). */
+export interface MigrationAuditSignal extends SignalProvenance {
+  readonly kind: "migration_audit";
+  /** Audit target from the JSON ("staging" | "prod" | whatever it recorded). */
+  readonly target: string;
+  readonly ranAt: string | null;
+  readonly auditRelPath: string;
+  readonly auditMtime: string | null;
+  readonly totalEntries: number;
+  /** Entries whose `applied` !== "yes" — forward drift. */
+  readonly notAppliedCount: number;
+  readonly orphanTrackerRows: number;
+  readonly unauditedBranchFiles: number;
+  readonly grantSurfaceViolations: number;
+  readonly grantSurfaceScanned: number;
+  /** Newest apply receipt (reports/migration-apply/*.md) by mtime; nulls = none found. */
+  readonly lastApplyRelPath: string | null;
+  readonly lastApplyAt: string | null;
+}
+
+/** One parsed ledger tail (DispatchLedgerSource — row 7; one signal per log). */
+export interface DispatchLedgerSignal extends SignalProvenance {
+  readonly kind: "dispatch_ledger";
+  readonly ledger: "cannons_runs" | "codex_invocations";
+  /** True when the tail-window clipped history — renders "history truncated at <ts>". */
+  readonly truncated: boolean;
+  /** The log's mtime (the watermark shown beside truncation). */
+  readonly logMtime: string | null;
+  /** Parsed rows, LAST `LEDGER_MAX_ROWS` at most. Exactly one of the two is set. */
+  readonly cannonsRuns?: readonly { readonly runId: string; readonly sha8: string; readonly verdict: string; readonly repo: string; readonly at: string; readonly reportPath: string | null }[];
+  readonly codexRows?: readonly { readonly t: string; readonly consumer: string; readonly repo: string; readonly success: boolean; readonly model: string }[];
+}
+
+/** One managed repo's branch-protection DESIRED state (ProtectionSource — row 5). */
+export interface ProtectionSignal extends SignalProvenance {
+  readonly kind: "protection";
+  /** Short repo name (the manifest key, e.g. "juice-bar"). */
+  readonly repoName: string;
+  readonly slug: string;
+  readonly branch: string;
+  readonly enforceAdmins: boolean | null;
+  readonly requiredChecks: readonly string[];
+  readonly requiredReviews: number | null;
+  /**
+   * When the live state was last verified against this desired state; null =
+   * NEVER verified (no assert receipt exists yet — an honest warn-tier state,
+   * not silent-green).
+   */
+  readonly verifiedAt: string | null;
+}
+
 /** The discriminated union of everything a source can emit. */
 export type Signal =
   | WorkSignal
@@ -633,7 +709,11 @@ export type Signal =
   | SkillSignal
   | LineageSignal
   | TicketSignal
-  | LandedPrSignal;
+  | LandedPrSignal
+  | HooksSignal
+  | MigrationAuditSignal
+  | DispatchLedgerSignal
+  | ProtectionSignal;
 
 /** Narrowing helpers — keep the `kind` discriminant the single branch point. */
 export const isWorkSignal = (s: Signal): s is WorkSignal => s.kind === "work";
@@ -649,3 +729,7 @@ export const isSkillSignal = (s: Signal): s is SkillSignal => s.kind === "skill"
 export const isLineageSignal = (s: Signal): s is LineageSignal => s.kind === "lineage";
 export const isTicketSignal = (s: Signal): s is TicketSignal => s.kind === "ticket";
 export const isLandedPrSignal = (s: Signal): s is LandedPrSignal => s.kind === "landed_pr";
+export const isHooksSignal = (s: Signal): s is HooksSignal => s.kind === "hooks";
+export const isMigrationAuditSignal = (s: Signal): s is MigrationAuditSignal => s.kind === "migration_audit";
+export const isDispatchLedgerSignal = (s: Signal): s is DispatchLedgerSignal => s.kind === "dispatch_ledger";
+export const isProtectionSignal = (s: Signal): s is ProtectionSignal => s.kind === "protection";

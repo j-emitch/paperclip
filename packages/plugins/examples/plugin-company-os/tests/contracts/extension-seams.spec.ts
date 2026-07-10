@@ -335,6 +335,14 @@ function kindOf(signal: Signal): Signal["kind"] {
       return "worktree";
     case "landed_pr":
       return "landed_pr";
+    case "hooks":
+      return "hooks";
+    case "migration_audit":
+      return "migration_audit";
+    case "dispatch_ledger":
+      return "dispatch_ledger";
+    case "protection":
+      return "protection";
     default: {
       const _exhaustive: never = signal;
       return _exhaustive;

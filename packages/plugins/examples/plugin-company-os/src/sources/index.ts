@@ -20,6 +20,10 @@ import { skillsSource } from "./SkillsSource.js";
 import { lineageSource } from "./LineageSource.js";
 import { paperclipTicketSource } from "./PaperclipTicketSource.js";
 import { worktreeSource } from "./WorktreeSource.js";
+import { hooksSource } from "./HooksSource.js";
+import { migrationAuditSource } from "./MigrationAuditSource.js";
+import { dispatchLedgerSource } from "./DispatchLedgerSource.js";
+import { protectionSource } from "./ProtectionSource.js";
 
 export const DEFAULT_SOURCES: readonly WorkSignalSource[] = [
   gitWorkSource,
@@ -41,6 +45,11 @@ export const DEFAULT_SOURCES: readonly WorkSignalSource[] = [
   paperclipTicketSource,
   // COS-8c worktree lifecycle (additive — appended last).
   worktreeSource,
+  // COS-11 gates & pipeline (additive — appended last; distinct kinds, PF-2 inert).
+  hooksSource,
+  migrationAuditSource,
+  dispatchLedgerSource,
+  protectionSource,
 ];
 
 export * from "./GitWorkSource.js";
@@ -62,3 +71,8 @@ export * from "./PaperclipTicketSource.js";
 // file-backed read (no cached table), so the shared derive stays byte-identical.
 export * from "./TeachingSource.js";
 export * from "./parse.js";
+// COS-11 gates & pipeline sources.
+export * from "./HooksSource.js";
+export * from "./MigrationAuditSource.js";
+export * from "./DispatchLedgerSource.js";
+export * from "./ProtectionSource.js";
