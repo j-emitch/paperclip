@@ -29,9 +29,11 @@ import { branchStatusSeverity, prActionStatuses } from "../contracts/branch-heal
 import {
   GIT_STATE_SCHEMA_VERSION,
   LANDED_WINDOW_DAYS,
+  headReviewsFor,
   type BranchGitV1,
   type BranchPrV1,
   type GitStateV1,
+  type HeadReviewInput,
   type LandedPrV1,
   type PrReviewV1,
   type ProjectGitSectionV1,
@@ -54,6 +56,17 @@ export function deriveGitState(bundle: SignalBundle, nowMs: number, taxonomy: Pr
   // COS-8b: recently-landed PRs are a DISTINCT signal kind (inert to the board /
   // Atlas work folds); this projection is their only consumer.
   const landedByRepo = collectLandedByRepo(signals.filter(isLandedPrSignal), nowMs);
+  // COS-8d: the branch-tip review join input (a ReviewSignal minus its envelope).
+  const headReviewInputs: HeadReviewInput[] = reviews.map((r) => ({
+    repo: r.repo,
+    sha: r.sha,
+    reportKind: r.reportKind,
+    verdict: r.verdict,
+    generatedAt: r.generatedAt,
+    ...(r.p0 !== undefined ? { p0: r.p0 } : {}),
+    ...(r.p1 !== undefined ? { p1: r.p1 } : {}),
+    ...(r.p2 !== undefined ? { p2: r.p2 } : {}),
+  }));
 
   const branchesByRepo = new Map<string, BranchSignal[]>();
   for (const b of branches) {
@@ -70,7 +83,7 @@ export function deriveGitState(bundle: SignalBundle, nowMs: number, taxonomy: Pr
     const repoBranches =
       rg.availability === "ok"
         ? (branchesByRepo.get(rg.repo) ?? [])
-            .map((b) => toBranchGitV1(b, repoPrs))
+            .map((b) => toBranchGitV1(b, repoPrs, headReviewInputs))
             .sort((a, b) => branchSortKey(a).localeCompare(branchSortKey(b)))
         : [];
     // A PR whose head ref matches NO local branch (branch on another machine, deleted
@@ -165,7 +178,7 @@ export function deriveGitState(bundle: SignalBundle, nowMs: number, taxonomy: Pr
 }
 
 /** Map a BranchSignal's git payload → the persisted BranchGitV1 row (drop provenance). */
-function toBranchGitV1(b: BranchSignal, repoPrs: readonly BranchPrV1[]): BranchGitV1 {
+function toBranchGitV1(b: BranchSignal, repoPrs: readonly BranchPrV1[], headReviews: readonly HeadReviewInput[]): BranchGitV1 {
   // Open PRs whose head ref is this branch (COS-5e). A detached HEAD (branch===null)
   // can't match a head ref, so it carries no PRs.
   const pullRequests = b.branch === null ? [] : repoPrs.filter((pr) => pr.headRef === b.branch);
@@ -200,6 +213,8 @@ function toBranchGitV1(b: BranchSignal, repoPrs: readonly BranchPrV1[]): BranchG
     // so the tab rail and Home read one ladder (COS-8a).
     attentionSeverity: branchStatusSeverity(statuses),
     pullRequests,
+    // COS-8d: reports joined to THIS tip by the pre-push sha rule (shared fold).
+    reviewsForHead: headReviewsFor(b.repo, b.headSha, headReviews),
   };
 }
 

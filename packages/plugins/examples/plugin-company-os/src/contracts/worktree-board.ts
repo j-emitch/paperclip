@@ -26,6 +26,7 @@ export const SQUASH_DETECT_SINCE = "150 days ago" as const;
 
 import { z } from "@paperclipai/plugin-sdk";
 import { diagnosticSchema } from "./diagnostics.js";
+import { headReviewV1Schema } from "./git-state.js";
 import {
   WORKTREE_LANES,
   WORKTREE_MERGE_STATUSES,
@@ -84,6 +85,12 @@ export const worktreeCardV1Schema = z.object({
   activeHandoff: z.string().nullable(),
   /** Cleanup affordance for merged_cleanup cards: coh promote vs raw git (item 1). */
   cleanupKind: z.enum(["coh_promote", "raw_git"]).nullable(),
+  /**
+   * Review reports joined to this card's HEAD by the pre-push sha rule (COS-8d,
+   * via the SAME shared `headReviewsFor` fold the branch rows use). [] = no
+   * report on disk for this head (NORMAL — INFRA-13). Defaulted for pre-8d rows.
+   */
+  reviewsForHead: z.array(headReviewV1Schema).default([]),
 });
 export type WorktreeCardV1 = z.infer<typeof worktreeCardV1Schema>;
 

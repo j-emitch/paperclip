@@ -71,6 +71,20 @@ describe("Branch · PR Health SSR", () => {
     expect(html).toContain("cron/RE-30"); // the orphan PR's head ref is shown
   });
 
+  it("COS-8d: a head-current report renders the review cue; an unreviewed head reads the honest absence line when expanded", () => {
+    const html = renderToStaticMarkup(<BranchPrHealthView gitState={goldenGitState()} now={BRANCH_PR_NOW} />);
+    // The SSF-04 branch tip carries a joined cannons report — kind + verdict as TEXT.
+    expect(html).toContain("cannons · ship");
+    // Expanded row: the detail section + the explicit INFRA-13 absence idiom for
+    // a branch with NO on-disk report for its head.
+    const golden = goldenGitState();
+    const jb = golden.groups.find((g) => g.group.key === "juice-bar")!.repos.find((r) => r.repoKey === "juice-bar")!;
+    const unreviewed = jb.branches.find((b) => b.reviewsForHead.length === 0)!;
+    const row = renderToStaticMarkup(<BranchRow branch={unreviewed} now={BRANCH_PR_NOW} defaultExpanded />);
+    expect(row).toContain("Head review");
+    expect(row).toContain("no review report on disk for this head");
+  });
+
   it("COS-8b: the recently-landed lane renders merged vs closed HONESTLY, with ticket chips", () => {
     const html = renderToStaticMarkup(<BranchPrHealthView gitState={goldenGitState()} now={BRANCH_PR_NOW} />);
     expect(html).toContain("Recently landed (7d)");

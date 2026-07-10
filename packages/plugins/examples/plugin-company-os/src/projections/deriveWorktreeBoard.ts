@@ -23,9 +23,9 @@
  */
 
 import type { SignalBundle } from "../contracts/WorkSignalSource.js";
-import type { BranchSignal, Signal, WorktreeSignal } from "../contracts/signals.js";
+import { isReviewSignal, type BranchSignal, type Signal, type WorktreeSignal } from "../contracts/signals.js";
 import type { Diagnostic } from "../contracts/diagnostics.js";
-import { BEHIND_WARN } from "../contracts/git-state.js";
+import { BEHIND_WARN, headReviewsFor, type HeadReviewInput } from "../contracts/git-state.js";
 import {
   MAX_OVERLAP_SHARED_FILES,
   WORKTREE_ACTIVE_DAYS,
@@ -99,7 +99,7 @@ function laneOfWorktree(s: WorktreeSignal, nowMs: number): LaneDecision {
   return { lane: "stale", laneSource: "heuristic", rung: "stale-tip" };
 }
 
-function cardOfWorktree(s: WorktreeSignal, nowMs: number): WorktreeCardV1 {
+function cardOfWorktree(s: WorktreeSignal, nowMs: number, headReviews: readonly HeadReviewInput[]): WorktreeCardV1 {
   const { lane, laneSource, rung } = laneOfWorktree(s, nowMs);
   const latest = s.purpose ? latestCheckpoint(s.purpose) : null;
   return {
@@ -132,11 +132,13 @@ function cardOfWorktree(s: WorktreeSignal, nowMs: number): WorktreeCardV1 {
     // Cleanup receipts (item 1): coh promote for claude/codex trees; raw git
     // ONLY for external-origin trees.
     cleanupKind: lane === "merged_cleanup" ? (s.origin === "external" ? "raw_git" : "coh_promote") : null,
+    // COS-8d: the SAME shared head-review join the branch rows use.
+    reviewsForHead: headReviewsFor(s.repo, s.headSha, headReviews),
   };
 }
 
 /** The intent ladder MINUS `_purpose` for a branch that has no worktree. */
-function cardOfBranch(s: BranchSignal, nowMs: number): WorktreeCardV1 | null {
+function cardOfBranch(s: BranchSignal, nowMs: number, headReviews: readonly HeadReviewInput[]): WorktreeCardV1 | null {
   if (s.branch === null) return null; // detached rows belong to worktree cards
   if (TRUNK_NAMES.has(s.branch)) return null; // the trunk is not "work in flight"
   const active = tipActive(s.lastCommitAt, nowMs);
@@ -178,6 +180,7 @@ function cardOfBranch(s: BranchSignal, nowMs: number): WorktreeCardV1 | null {
     latestPushed: null,
     activeHandoff: null,
     cleanupKind: null,
+    reviewsForHead: headReviewsFor(s.repo, s.headSha || null, headReviews),
   };
 }
 
@@ -216,6 +219,18 @@ export function deriveWorktreeBoard(bundle: SignalBundle, nowMs: number): Worktr
   const signals = allSignals(bundle);
   const worktrees = signals.filter((s): s is WorktreeSignal => s.kind === "worktree");
   const branches = signals.filter((s): s is BranchSignal => s.kind === "branch");
+  // COS-8d: review reports join cards by HEAD sha (the pre-push rule; INFRA-13
+  // absence-is-normal — a card with no on-disk report simply carries []).
+  const headReviews: HeadReviewInput[] = signals.filter(isReviewSignal).map((r) => ({
+    repo: r.repo,
+    sha: r.sha,
+    reportKind: r.reportKind,
+    verdict: r.verdict,
+    generatedAt: r.generatedAt,
+    ...(r.p0 !== undefined ? { p0: r.p0 } : {}),
+    ...(r.p1 !== undefined ? { p1: r.p1 } : {}),
+    ...(r.p2 !== undefined ? { p2: r.p2 } : {}),
+  }));
 
   // Branches already covered by a worktree card don't get a second card.
   const worktreeBranches = new Set(worktrees.map((w) => `${w.repo}:${w.branch ?? ""}`));
@@ -226,11 +241,11 @@ export function deriveWorktreeBoard(bundle: SignalBundle, nowMs: number): Worktr
     list.push(card);
     byRepo.set(card.repoKey, list);
   };
-  for (const s of worktrees) push(cardOfWorktree(s, nowMs));
+  for (const s of worktrees) push(cardOfWorktree(s, nowMs, headReviews));
   for (const s of branches) {
     if (s.branch !== null && worktreeBranches.has(`${s.repo}:${s.branch}`)) continue;
     if (s.worktrees.length > 0) continue; // its trees emit worktree signals
-    const card = cardOfBranch(s, nowMs);
+    const card = cardOfBranch(s, nowMs, headReviews);
     if (card) push(card);
   }
 

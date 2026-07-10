@@ -321,3 +321,69 @@ describe("COS-8b — recently-landed lane fold", () => {
     expect(parsed.groups.every((g) => g.repos.every((r) => Array.isArray(r.landedPullRequests) && r.landedPullRequests.length === 0))).toBe(true);
   });
 });
+
+describe("COS-8d — head-review join (branch tips)", () => {
+  const jb = (gs: ReturnType<typeof deriveGitState>) =>
+    gs.groups.find((g) => g.group.key === "juice-bar")!.repos.find((r) => r.repoKey === "juice-bar")!;
+
+  it("joins a report to the branch tip by the pre-push sha rule (sha8-prefix tolerant)", () => {
+    const gs = deriveGitState(
+      bundleOf([
+        repoGitSignal("juice-bar"),
+        branchSignal("cos/COS-8", { repo: "juice-bar", headSha: "deadbeefcafe1234" }),
+        review("deadbeef", { repo: "juice-bar", verdict: "ship", p0: 0, p1: 1 }), // sha8 prefix of the head
+      ]),
+      NOW,
+      TAX,
+    );
+    const b = jb(gs).branches.find((x) => x.branch === "cos/COS-8")!;
+    expect(b.reviewsForHead).toHaveLength(1);
+    expect(b.reviewsForHead[0]).toMatchObject({ reportKind: "cannons", verdict: "ship", p0: 0, p1: 1, engines: [] });
+  });
+
+  it("a report for an OLDER tip does NOT join — a new commit honestly reads no-review", () => {
+    const gs = deriveGitState(
+      bundleOf([
+        repoGitSignal("juice-bar"),
+        branchSignal("cos/COS-8", { repo: "juice-bar", headSha: "deadbeefcafe1234" }),
+        review("0011223344556677", { repo: "juice-bar", verdict: "ship" }),
+      ]),
+      NOW,
+      TAX,
+    );
+    expect(jb(gs).branches.find((x) => x.branch === "cos/COS-8")!.reviewsForHead).toEqual([]);
+  });
+
+  it("one row per reportKind (newest wins), kinds sorted newest-first", () => {
+    const gs = deriveGitState(
+      bundleOf([
+        repoGitSignal("juice-bar"),
+        branchSignal("cos/COS-8", { repo: "juice-bar", headSha: "feedface00112233" }),
+        review("feedface00112233", { repo: "juice-bar", reportKind: "cannons", verdict: "ship", generatedAt: "2026-06-23T10:00:00Z" }),
+        review("feedface00112233", { repo: "juice-bar", reportKind: "cannons", verdict: "revise", generatedAt: "2026-06-23T12:00:00Z" }),
+        review("feedface00112233", { repo: "juice-bar", reportKind: "review", verdict: "proceed", generatedAt: "2026-06-23T11:00:00Z" }),
+      ]),
+      NOW,
+      TAX,
+    );
+    const rows = jb(gs).branches.find((x) => x.branch === "cos/COS-8")!.reviewsForHead;
+    expect(rows.map((r) => [r.reportKind, r.verdict])).toEqual([
+      ["cannons", "revise"],
+      ["review", "proceed"],
+    ]);
+  });
+
+  it("a pre-8d cached payload (no reviewsForHead key) parses via the zod default", () => {
+    const gs = deriveGitState(
+      bundleOf([repoGitSignal("juice-bar"), branchSignal("main", { repo: "juice-bar" })]),
+      NOW,
+      TAX,
+    );
+    const legacy = JSON.parse(JSON.stringify(gs)) as Record<string, unknown>;
+    for (const g of (legacy.groups as { repos: { branches: Record<string, unknown>[] }[] }[])) {
+      for (const r of g.repos) for (const b of r.branches) delete b.reviewsForHead;
+    }
+    const parsed = parseGitStateV1(legacy);
+    expect(parsed.groups.every((g) => g.repos.every((r) => r.branches.every((b) => b.reviewsForHead.length === 0)))).toBe(true);
+  });
+});

@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { deriveWorktreeBoard } from "../../src/projections/deriveWorktreeBoard.js";
 import { WORKTREE_BUDGET_MS } from "../../src/contracts/worktree-board.js";
 import type { WorktreePurpose } from "../../src/contracts/signals.js";
-import { NOW, branchSignal, bundleOf, bundleOfBatches, worktreeSignal } from "../fixtures/signals.js";
+import { NOW, branchSignal, bundleOf, bundleOfBatches, review, worktreeSignal } from "../fixtures/signals.js";
 
 const DAY = 86_400_000;
 const OLD_TIP = new Date(NOW - 40 * DAY).toISOString();
@@ -269,5 +269,37 @@ describe("QUAD folds: degraded scans, provenance, diagnostics threading", () => 
       NOW,
     );
     expect(board.diagnostics.some((d) => d.code === "worktree_diff_capped" && d.repo === "company")).toBe(true);
+  });
+});
+
+describe("COS-8d — head-review join (cards)", () => {
+  it("a worktree card carries reports joined to its HEAD; a different-sha card carries []", () => {
+    const board = deriveWorktreeBoard(
+      bundleOf([
+        worktreeSignal("reviewed-wt", { repo: "juice-bar", headSha: "feedface00112233" }),
+        worktreeSignal("other-wt", { repo: "juice-bar", headSha: "0011223344556677" }),
+        review("feedface00112233", { repo: "juice-bar", verdict: "ship", p0: 0 }),
+      ]),
+      NOW,
+    );
+    const cards = board.repos.find((r) => r.repoKey === "juice-bar")!.cards;
+    const reviewed = cards.find((c) => c.worktreeName === "reviewed-wt")!;
+    const other = cards.find((c) => c.worktreeName === "other-wt")!;
+    expect(reviewed.reviewsForHead).toHaveLength(1);
+    expect(reviewed.reviewsForHead[0]).toMatchObject({ reportKind: "cannons", verdict: "ship", engines: [] });
+    expect(other.reviewsForHead).toEqual([]); // absence is normal (INFRA-13), never an error
+  });
+
+  it("a worktree-less branch card gets the SAME shared join", () => {
+    const board = deriveWorktreeBoard(
+      bundleOf([
+        branchSignal("claude/X-9/solo", { repo: "juice-bar", headSha: "beadbead00224488", worktrees: [] }),
+        review("beadbead00224488", { repo: "juice-bar", reportKind: "review", verdict: "proceed" }),
+      ]),
+      NOW,
+    );
+    const card = board.repos.find((r) => r.repoKey === "juice-bar")!.cards.find((c) => c.branch === "claude/X-9/solo")!;
+    expect(card.reviewsForHead).toHaveLength(1);
+    expect(card.reviewsForHead[0]).toMatchObject({ reportKind: "review", verdict: "proceed" });
   });
 });

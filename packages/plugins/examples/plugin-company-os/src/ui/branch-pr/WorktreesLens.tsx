@@ -23,6 +23,7 @@ import { Pill, RepoBadge } from "../shared/badges.js";
 import { CalmNote } from "../shared/feedback.js";
 import { ClockIcon } from "../icons.js";
 import { relativeTime } from "../shared/time.js";
+import { HeadReviewChip } from "./HeadReviews.js";
 import { DOC_FILE_RE } from "../../shared/doc-files.js";
 
 /** The `?tab=branch-pr&wt=…` deep-link target: which card to focus. */
@@ -339,6 +340,8 @@ function WorktreeCard({
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         {/* The resolving intent-ladder rung — ALWAYS named (spec §8.6 / Fable major 6). */}
         <Pill label={card.rung} tone={card.laneSource === "work_record" ? tokens.accent : tokens.muted} soft title={`lane source: ${card.laneSource}`} />
+        {/* COS-8d: head-review cue — present only when a report joined this HEAD. */}
+        <HeadReviewChip reviews={card.reviewsForHead} />
         {card.dirtyFileCount !== null ? <Stat label="dirty" value={String(card.dirtyFileCount)} /> : null}
         {card.ahead !== null && card.behind !== null ? <Stat label="ahead/behind" value={`${card.ahead}/${card.behind}`} /> : null}
         {tipAge ? (

@@ -217,6 +217,88 @@ export const landedPrV1Schema = z.object({
 });
 export type LandedPrV1 = z.infer<typeof landedPrV1Schema>;
 
+// ---------------------------------------------------------------------------
+// COS-8d — review reports joined to a HEAD sha
+// ---------------------------------------------------------------------------
+
+/**
+ * One review report joined to a branch/worktree HEAD (COS-8d). The join rule is
+ * the SAME one the pre-push gate uses: the report's commit must match the HEAD
+ * sha (sha8-exact tolerant of one side being abbreviated) — a report for an
+ * older tip does NOT join (a new commit honestly reads "no review on disk",
+ * exactly like the gate would). Reports are gitignored + machine-local
+ * (INFRA-13), so ABSENCE IS NORMAL — never an error state.
+ */
+export const headReviewV1Schema = z.object({
+  reportKind: reviewReportKindSchema,
+  verdict: reviewVerdictSchema,
+  generatedAt: z.string().min(1),
+  p0: z.number().int().nonnegative().nullable(),
+  p1: z.number().int().nonnegative().nullable(),
+  p2: z.number().int().nonnegative().nullable(),
+  /**
+   * ENGINE provenance (which review lanes ran) from the COS-11 DispatchLedger
+   * WHEN PRESENT (spec §8.12); [] = report-file-only mode — the reportKind is
+   * then the only lane provenance. Defaulted so pre-ledger payloads parse.
+   */
+  engines: z.array(z.string()).default([]),
+});
+export type HeadReviewV1 = z.infer<typeof headReviewV1Schema>;
+
+/** The structural review-report input `headReviewsFor` folds (a `ReviewSignal` minus its envelope). */
+export interface HeadReviewInput {
+  readonly repo: string;
+  readonly sha: string;
+  readonly reportKind: ReviewReportKind;
+  readonly verdict: ReviewVerdict;
+  readonly generatedAt: string;
+  readonly p0?: number;
+  readonly p1?: number;
+  readonly p2?: number;
+}
+
+/** sha8-tolerant equality: exact, or one side is a ≥8-char prefix of the other. */
+export function shaMatches(a: string, b: string): boolean {
+  if (a === b) return true;
+  const short = a.length <= b.length ? a : b;
+  const long = a.length <= b.length ? b : a;
+  return short.length >= 8 && long.startsWith(short);
+}
+
+/** How concerning a verdict is — the newest-report tiebreak (same instant ⇒ worse wins). */
+const HEAD_VERDICT_CONCERN: Record<ReviewVerdict, number> = { block: 4, revise: 3, unknown: 2, proceed: 1, ship: 0 };
+
+/**
+ * The COS-8d join, shared by `deriveGitState` (branch rows) and
+ * `deriveWorktreeBoard` (cards) so the two surfaces can never disagree about
+ * what "reviewed at HEAD" means. One row per reportKind (newest wins; on an
+ * identical timestamp the MORE-concerning verdict wins), newest-first overall.
+ */
+export function headReviewsFor(repo: string, headSha: string | null, reviews: readonly HeadReviewInput[]): HeadReviewV1[] {
+  if (headSha === null || headSha === "") return [];
+  const bestByKind = new Map<ReviewReportKind, HeadReviewInput>();
+  for (const r of reviews) {
+    if (r.repo !== repo || !shaMatches(r.sha, headSha)) continue;
+    const prev = bestByKind.get(r.reportKind);
+    const newer =
+      prev === undefined ||
+      r.generatedAt.localeCompare(prev.generatedAt) > 0 ||
+      (r.generatedAt === prev.generatedAt && HEAD_VERDICT_CONCERN[r.verdict] > HEAD_VERDICT_CONCERN[prev.verdict]);
+    if (newer) bestByKind.set(r.reportKind, r);
+  }
+  return [...bestByKind.values()]
+    .sort((a, b) => b.generatedAt.localeCompare(a.generatedAt) || a.reportKind.localeCompare(b.reportKind))
+    .map((r) => ({
+      reportKind: r.reportKind,
+      verdict: r.verdict,
+      generatedAt: r.generatedAt,
+      p0: r.p0 ?? null,
+      p1: r.p1 ?? null,
+      p2: r.p2 ?? null,
+      engines: [],
+    }));
+}
+
 /** The persisted per-branch row — the `BranchSignal` git payload (no provenance envelope). */
 export const branchGitV1Schema = z.object({
   branch: z.string().nullable(),
@@ -235,6 +317,12 @@ export const branchGitV1Schema = z.object({
   attentionSeverity: healthSeveritySchema,
   /** Open PRs whose head ref is this branch (COS-5e); [] when none — shown as 0, not hidden. */
   pullRequests: z.array(branchPrV1Schema),
+  /**
+   * Review reports joined to THIS branch tip by the pre-push sha rule (COS-8d);
+   * one row per reportKind, newest first. [] = no report on disk for this head
+   * (NORMAL — reports are gitignored + retention-pruned). Defaulted for pre-8d rows.
+   */
+  reviewsForHead: z.array(headReviewV1Schema).default([]),
 });
 export type BranchGitV1 = z.infer<typeof branchGitV1Schema>;
 

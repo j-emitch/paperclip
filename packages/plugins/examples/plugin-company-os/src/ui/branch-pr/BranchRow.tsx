@@ -22,6 +22,7 @@ import { BRANCH_COMPARISON_LABELS, BRANCH_STATUS_LABELS, BRANCH_STATUS_TONES } f
 import { WorktreeBadge } from "./WorktreeBadge.js";
 import { CommitList } from "./CommitList.js";
 import { PrChip, PrDetailRow } from "./PrChip.js";
+import { HeadReviewChip, HeadReviewsDetail } from "./HeadReviews.js";
 
 export interface BranchRowProps {
   branch: BranchGitV1;
@@ -116,6 +117,8 @@ export function BranchRow({ branch, now, isMobile = false, defaultExpanded = fal
       ) : null}
     </span>
   ) : null;
+  // COS-8d: the head-review cue — present only when a report joined this tip.
+  const reviewCue = <HeadReviewChip reviews={branch.reviewsForHead} />;
   const magnitudes = (
     <span style={{ display: "flex", alignItems: "center", gap: 9, flex: "0 0 auto", fontSize: 11.5, color: tokens.muted, fontVariantNumeric: "tabular-nums" }}>
       {branch.comparison === "ok" ? (
@@ -164,10 +167,11 @@ export function BranchRow({ branch, now, isMobile = false, defaultExpanded = fal
             {branchName}
             {magnitudes}
           </div>
-          {inSync || branch.statuses.length > 0 || prCue ? (
+          {inSync || branch.statuses.length > 0 || prCue || branch.reviewsForHead.length > 0 ? (
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", paddingLeft: 22, width: "100%" }}>
               {statusChips}
               {prCue}
+              {reviewCue}
             </div>
           ) : null}
         </button>
@@ -177,6 +181,7 @@ export function BranchRow({ branch, now, isMobile = false, defaultExpanded = fal
           {branchName}
           {statusChips}
           {prCue}
+          {reviewCue}
           <span style={{ flex: 1 }} />
           {magnitudes}
         </button>
@@ -195,6 +200,10 @@ export function BranchRow({ branch, now, isMobile = false, defaultExpanded = fal
           className="cos-fx-fade"
           style={{ borderTop: `1px solid ${tokens.border}`, background: tokens.bg, padding: "9px 11px", display: "flex", flexDirection: "column", gap: 10 }}
         >
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <SectionLabel>Head review</SectionLabel>
+            <HeadReviewsDetail reviews={branch.reviewsForHead} now={now} />
+          </div>
           {prs.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <SectionLabel>{prs.length === 1 ? "Open PR" : `Open PRs (${prs.length})`}</SectionLabel>

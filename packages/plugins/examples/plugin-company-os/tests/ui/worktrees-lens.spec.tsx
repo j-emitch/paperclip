@@ -47,6 +47,7 @@ function card(over: Partial<WorktreeCardV1>): WorktreeCardV1 {
     latestPushed: null,
     activeHandoff: null,
     cleanupKind: null,
+    reviewsForHead: [],
     ...over,
   };
 }
@@ -252,6 +253,17 @@ describe("QUAD folds: wt deep-link focus (AC-8f symmetry)", () => {
       />,
     );
     expect(html).toContain("may have been merged and cleaned up");
+  });
+
+  it("COS-8d: a card with a head-joined report renders the review cue (kind + verdict as text)", () => {
+    const withReview = card({
+      worktreeName: "reviewed-wt",
+      reviewsForHead: [{ reportKind: "cannons", verdict: "ship", generatedAt: "2026-07-08T09:00:00Z", p0: 0, p1: 0, p2: 1, engines: [] }],
+    });
+    const html = renderToStaticMarkup(<WorktreesLens board={board([withReview, card({ worktreeName: "plain-wt", cardKey: "k2" })])} now={NOW} />);
+    expect(html).toContain("cannons · ship");
+    // The un-reviewed sibling renders NO review cue (chips only where a report joined).
+    expect(html.split("cannons · ship")).toHaveLength(2);
   });
 });
 

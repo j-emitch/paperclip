@@ -130,6 +130,10 @@ export function goldenGitState(): GitStateV1 {
                 staleDays: 3,
                 statuses: ["conflicting", "behind", "dirty"],
                 attentionSeverity: "high",
+                // COS-8d: a cannons report joined to THIS tip (the pre-push sha rule).
+                reviewsForHead: [
+                  { reportKind: "cannons", verdict: "ship", generatedAt: "2026-06-26T09:00:00Z", p0: 0, p1: 1, p2: 2, engines: [] },
+                ],
                 recentCommits: [
                   { sha: "a34ad7d31cc0", subject: "feat(SSF-04): forward-compat seam", author: "Joe", committedAt: "2026-06-23T16:00:00Z", stat: { filesChanged: 11, insertions: 230, deletions: 18 } },
                 ],
