@@ -179,6 +179,12 @@ export interface AllowlistedTailResult {
   /** ISO-8601 mtime — the DispatchLedgerSource watermark. */
   readonly mtime: string;
   readonly sizeBytes: number;
+  /**
+   * True when the log EXISTS but could not be read (permission/IO error, or a
+   * symlink — never followed). Distinct from absence (null): consumers surface
+   * this as DEGRADED, never as an empty/normal state (codex COS-11 P1).
+   */
+  readonly unreadable?: boolean;
 }
 
 /** Enum-only, tail-bounded reader for the §3.3b allowlist. */

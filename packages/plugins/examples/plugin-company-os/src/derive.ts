@@ -96,8 +96,13 @@ export async function deriveForCompany(
     // Resolve the taxonomy fresh from config (the worker thunk), once, then thread
     // it as the project-grouping lens to the three COS-1 projections (PF-5).
     const taxonomy = await deps.resolveTaxonomy();
-    // Prior gates state feeds the row-8 last-good merge (COS-11); null on first derive.
-    const priorGates = await readGatesState(db, companyId).catch(() => null);
+    // Prior gates state feeds the row-8 last-good merge (COS-11); null on first
+    // derive. A READ error is warned, never silent — with no prior, row-8 cannot
+    // carry a missing target this derive (codex COS-11 P1 observability note).
+    const priorGates = await readGatesState(db, companyId).catch((err) => {
+      logger.warn(`prior gates-state read failed for ${companyId} — row-8 carry unavailable this derive`, { error: String(err) });
+      return null;
+    });
     const projections = collectAndProject(merged, deps.now(), taxonomy, priorGates);
     await writeProjections(db, companyId, projections, owner);
     // Persist the per-source last-good slices from the MERGED bundle so a future

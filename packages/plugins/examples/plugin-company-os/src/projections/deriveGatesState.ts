@@ -80,7 +80,10 @@ export function deriveGatesState(bundle: SignalBundle, nowMs: number, prior: Gat
       lastApplyAt: s.lastApplyAt,
       openDriftIssueCount: s.openDriftIssueCount,
       rollingIssueNumber: s.rollingIssueNumber,
-      lastGood: false,
+      // A non-live signal is CARRIED data (scoped-merge rehydration, or the
+      // source staled it — e.g. an older file emitted past a corrupt newest):
+      // it must wear the last-good marker just like a fold-carried row.
+      lastGood: s.freshness !== "live",
     });
   }
   // ...then the row-8 carry: any prior target with no live row this derive.

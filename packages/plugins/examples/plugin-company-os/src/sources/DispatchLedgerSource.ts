@@ -16,7 +16,7 @@
 
 import { reposResponsibleFor, signalError, type CollectionContext } from "../contracts/collection-context.js";
 import type { SignalBatch, WorkSignalSource } from "../contracts/WorkSignalSource.js";
-import type { DispatchLedgerSignal, Signal } from "../contracts/signals.js";
+import type { DispatchLedgerSignal, Signal, SignalError } from "../contracts/signals.js";
 import {
   LEDGER_MAX_ROWS,
   LEDGER_TAIL_BYTES,
@@ -72,38 +72,54 @@ export const dispatchLedgerSource: WorkSignalSource = {
       errors: [],
     } as const;
 
+    const errors: SignalError[] = [];
+    /** Content that parses to NOTHING is a producer-schema break, not an empty
+     * ledger (codex COS-11 P2) — carried as a degraded error on the signal. */
+    const parseFailOf = (ledger: string, lineCount: number, rowCount: number): SignalError[] =>
+      lineCount > 0 && rowCount === 0
+        ? [signalError("parse_error", `${ledger} tail had lines but ZERO parseable rows — producer schema drift?`)]
+        : [];
+
     const cannonsTail = await ctx.logs.readAllowlistedTail({ log: "cannons_runs" }, LEDGER_TAIL_BYTES);
-    if (cannonsTail) {
-      const rows = completeTailLines(cannonsTail.text, cannonsTail.truncated)
-        .map(parseCannonsRunLine)
-        .filter((r): r is NonNullable<typeof r> => r !== null);
-      const signal: DispatchLedgerSignal = {
+    if (cannonsTail?.unreadable) {
+      errors.push(signalError("log_read_failed", "cannons-runs ledger exists but is unreadable"));
+    } else if (cannonsTail) {
+      const lines = completeTailLines(cannonsTail.text, cannonsTail.truncated);
+      const rows = lines.map(parseCannonsRunLine).filter((r): r is NonNullable<typeof r> => r !== null);
+      const parseFail = parseFailOf("cannons-runs", lines.length, rows.length);
+      signals.push({
         kind: "dispatch_ledger",
         ...provenance,
+        errors: parseFail,
+        freshness: parseFail.length > 0 ? "stale" : "live",
         ledger: "cannons_runs",
         truncated: cannonsTail.truncated,
         logMtime: cannonsTail.mtime,
         cannonsRuns: lastN(rows),
-      };
-      signals.push(signal);
+      } satisfies DispatchLedgerSignal);
     }
 
     const codexTail = await ctx.logs.readAllowlistedTail({ log: "codex_invocations" }, LEDGER_TAIL_BYTES);
-    if (codexTail) {
-      const rows = completeTailLines(codexTail.text, codexTail.truncated)
-        .map(parseCodexDispatchLine)
-        .filter((r): r is NonNullable<typeof r> => r !== null);
-      const signal: DispatchLedgerSignal = {
+    if (codexTail?.unreadable) {
+      errors.push(signalError("log_read_failed", "codex-invocations ledger exists but is unreadable"));
+    } else if (codexTail) {
+      const lines = completeTailLines(codexTail.text, codexTail.truncated);
+      const rows = lines.map(parseCodexDispatchLine).filter((r): r is NonNullable<typeof r> => r !== null);
+      const parseFail = parseFailOf("codex-invocations", lines.length, rows.length);
+      signals.push({
         kind: "dispatch_ledger",
         ...provenance,
+        errors: parseFail,
+        freshness: parseFail.length > 0 ? "stale" : "live",
         ledger: "codex_invocations",
         truncated: codexTail.truncated,
         logMtime: codexTail.mtime,
         codexRows: lastN(rows),
-      };
-      signals.push(signal);
+      } satisfies DispatchLedgerSignal);
     }
 
-    return { source: DISPATCH_LEDGER_SOURCE_ID, collectedAt, signals, repoFreshness: [] };
+    const repoFreshness =
+      errors.length > 0 ? [{ repo: LEDGER_REPO, freshness: "stale" as const, lastOkAt: null, errors }] : [];
+    return { source: DISPATCH_LEDGER_SOURCE_ID, collectedAt, signals, repoFreshness };
   },
 };

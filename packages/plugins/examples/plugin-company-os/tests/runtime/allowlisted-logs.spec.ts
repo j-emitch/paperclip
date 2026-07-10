@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, symlink, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { allowlistedLogPath, readTailBounded } from "../../src/runtime/makeCollectionContext.js";
@@ -81,5 +81,30 @@ describe("readTailBounded", () => {
   it("absence → null (NORMAL, not an error)", async () => {
     const r = await readTailBounded(join(home, ".claude", "logs", "never-written.log"), 1024, quietLogger);
     expect(r).toBeNull();
+  });
+
+  it("a SYMLINK is refused as unreadable — the allowlist is by literal path, never its target", async () => {
+    const target = join(home, "secret.txt");
+    await writeFile(target, "outside the allowlist", "utf-8");
+    const link = join(home, ".claude", "logs", "sneaky.log");
+    await symlink(target, link);
+    const r = await readTailBounded(link, 1024, quietLogger);
+    expect(r).not.toBeNull();
+    expect(r!.unreadable).toBe(true);
+    expect(r!.text).toBe(""); // the target's content NEVER leaks through
+  });
+
+  it("a present-but-unreadable file (chmod 000) is unreadable, NOT absence", async () => {
+    const p = join(home, ".claude", "logs", "locked.log");
+    await writeFile(p, "content\n", "utf-8");
+    await chmod(p, 0o000);
+    try {
+      const r = await readTailBounded(p, 1024, quietLogger);
+      if (process.getuid && process.getuid() === 0) return; // root reads anything — skip
+      expect(r).not.toBeNull();
+      expect(r!.unreadable).toBe(true);
+    } finally {
+      await chmod(p, 0o600);
+    }
   });
 });

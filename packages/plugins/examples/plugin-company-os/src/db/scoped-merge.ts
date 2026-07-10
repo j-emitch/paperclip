@@ -83,10 +83,13 @@ export function mergeScopedBundle(
     const cached = cachedBySource.get(source) ?? new Map<string, SourceVersion>();
 
     // Fresh signals are already scoped to `scopeRepo` by the collector; keep
-    // only those for the scoped repo to be safe, then add cached others.
+    // only those for the scoped repo to be safe, then add cached others —
+    // DOWNGRADED to freshness "cached" so no fold can mistake a carried signal
+    // for a live one (codex COS-11 P1: rehydrated migration rows read as live,
+    // defeating the row-8 last-good marker).
     const signals: Signal[] = [
       ...(freshBatch?.signals.filter((s) => s.repo === scopeRepo) ?? []),
-      ...[...cached.values()].flatMap((v) => [...v.signals]),
+      ...[...cached.values()].flatMap((v) => v.signals.map((s) => ({ ...s, freshness: "cached" as const }))),
     ];
     const repoFreshness: RepoFreshness[] = [
       ...(freshBatch?.repoFreshness.filter((r) => r.repo === scopeRepo) ?? []),

@@ -127,10 +127,31 @@ describe("MigrationAuditSource", () => {
     expect(fresh.errors.some((e) => e.code === "gh_unauthenticated")).toBe(true);
   });
 
-  it("parseMigrationAudit tolerates count-shaped fields and rejects non-object/missing-target", () => {
-    expect(parseMigrationAudit('{"target":"prod","entries":[],"orphan_tracker_rows":7}')?.orphanTrackerRows).toBe(7);
+  it("parseMigrationAudit is STRICT (fail-closed): count-shaped fields ok, missing/invalid counters or non-array entries fail the parse", () => {
+    const full = (over: string) =>
+      `{"target":"prod","entries":[],"orphan_tracker_rows":7,"unaudited_branch_files":[],"grant_surface_violations":[],"grant_surface_scanned":42${over}}`;
+    expect(parseMigrationAudit(full(""))?.orphanTrackerRows).toBe(7); // count-shaped ok
+    expect(parseMigrationAudit('{"target":"prod","entries":[]}')).toBeNull(); // missing counters = unwitnessed
+    expect(parseMigrationAudit(full(',"x":1').replace('"orphan_tracker_rows":7', '"orphan_tracker_rows":-1'))).toBeNull(); // negative
+    expect(parseMigrationAudit(full("").replace('"grant_surface_scanned":42', '"grant_surface_scanned":4.2'))).toBeNull(); // fractional
+    expect(parseMigrationAudit(full("").replace('"entries":[]', '"entries":{}'))).toBeNull(); // non-array entries
     expect(parseMigrationAudit('{"entries":[]}')).toBeNull();
     expect(parseMigrationAudit("[]")).toBeNull();
     expect(parseMigrationAudit("nope")).toBeNull();
+  });
+
+  it("a corrupt NEWEST audit stales the older same-target file (filename-lifted target) — never live-green past a broken newest", async () => {
+    const ctx = makeFixtureContext({
+      repos: [{ repo: "juice-bar", available: true }],
+      files: {
+        "juice-bar": {
+          "reports/migrations/audit-staging-ok.json": { content: auditJson("staging", "2026-06-01T00:00:00Z"), mtime: "2026-06-01T00:00:00.000Z" },
+          "reports/migrations/audit-staging-corrupt.json": { content: "{not json", mtime: "2026-07-01T00:00:00.000Z" },
+        },
+      },
+    });
+    const batch = await migrationAuditSource.collect(ctx);
+    const sig = batch.signals.filter(isMigrationAuditSignal)[0]!;
+    expect(sig.freshness).toBe("stale"); // the fold maps this to lastGood: true
   });
 });

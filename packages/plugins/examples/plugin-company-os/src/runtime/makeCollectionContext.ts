@@ -352,15 +352,39 @@ export function allowlistedLogPath(key: AllowlistedLogKey, absByKey: ReadonlyMap
  * Bounded tail read: at most the LAST `maxBytes` of the file. Truncation is an
  * EXPECTED state (logs grow forever and retention-prune) — the result flags it
  * and the text may begin mid-line; consumers drop the first partial line.
- * Absence returns null (NORMAL); any read error also returns null with a debug
- * log (fail-soft — a gates source degrades, it never throws).
+ * Absence (ENOENT) returns null (NORMAL); a PRESENT-but-unreadable log
+ * (perm/IO/symlink) returns `unreadable: true` so consumers degrade instead of
+ * rendering a fake empty (never throws either way).
  */
 export async function readTailBounded(absPath: string, maxBytes: number, logger: SignalLogger): Promise<AllowlistedTailResult | null> {
+  // An unreadable-but-present log is NOT absence (codex COS-11 P1): perm/IO
+  // errors and symlinks (never followed — the allowlist is by PATH, and a
+  // symlink would widen it to its target) surface as `unreadable: true`.
+  const unreadable: AllowlistedTailResult = {
+    text: "",
+    truncated: false,
+    mtime: new Date(0).toISOString(),
+    sizeBytes: 0,
+    unreadable: true,
+  };
+  try {
+    const st = await lstat(absPath);
+    if (st.isSymbolicLink()) {
+      logger.warn("allowlisted log is a symlink — refused (allowlist is by literal path)", { absPath });
+      return unreadable;
+    }
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null; // absent — normal
+    logger.warn("allowlisted log lstat failed", { absPath, error: String(e) });
+    return unreadable;
+  }
   let fh;
   try {
     fh = await open(absPath, "r");
-  } catch {
-    return null; // absent — normal
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null; // raced away — absent
+    logger.warn("allowlisted log open failed (exists but unreadable)", { absPath, error: String(e) });
+    return unreadable;
   }
   try {
     const st = await fh.stat();
@@ -377,8 +401,8 @@ export async function readTailBounded(absPath: string, maxBytes: number, logger:
       sizeBytes: size,
     };
   } catch (e) {
-    logger.debug("allowlisted tail read failed", { absPath, error: String(e) });
-    return null;
+    logger.warn("allowlisted tail read failed (exists but unreadable)", { absPath, error: String(e) });
+    return unreadable;
   } finally {
     await fh.close().catch(() => {});
   }

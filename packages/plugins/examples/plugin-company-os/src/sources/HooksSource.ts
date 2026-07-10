@@ -63,15 +63,24 @@ async function readCanonical(ctx: CollectionContext): Promise<CanonicalState> {
 }
 
 /** Newest cannons-runs row per repo, read ONCE per collect via the allowlisted tail. */
-async function readGateRuns(ctx: CollectionContext): Promise<ReadonlyMap<string, CannonsRunRow>> {
+interface GateRunsState {
+  readonly byRepo: ReadonlyMap<string, CannonsRunRow>;
+  /** Non-null when the ledger exists but was unreadable — degrades every repo. */
+  readonly error: SignalError | null;
+}
+
+async function readGateRuns(ctx: CollectionContext): Promise<GateRunsState> {
   const byRepo = new Map<string, CannonsRunRow>();
   const tail = await ctx.logs?.readAllowlistedTail({ log: "cannons_runs" }, LEDGER_TAIL_BYTES);
-  if (!tail) return byRepo;
+  if (!tail) return { byRepo, error: null }; // absent — normal
+  if (tail.unreadable) {
+    return { byRepo, error: signalError("log_read_failed", "cannons-runs ledger exists but is unreadable") };
+  }
   for (const line of completeTailLines(tail.text, tail.truncated)) {
     const row = parseCannonsRunLine(line);
     if (row) byRepo.set(row.repo, row); // later lines win — the file is append-only
   }
-  return byRepo;
+  return { byRepo, error: null };
 }
 
 /** Minimal guardrails-row parse ({t, hook} is all this source lifts). */
@@ -98,7 +107,7 @@ export const hooksSource: WorkSignalSource = {
   collect(ctx: CollectionContext): Promise<SignalBatch> {
     // Shared reads resolved lazily ONCE, then reused by every repo's reader.
     let canonicalP: Promise<CanonicalState> | null = null;
-    let gateRunsP: Promise<ReadonlyMap<string, CannonsRunRow>> | null = null;
+    let gateRunsP: Promise<GateRunsState> | null = null;
     const canonical = () => (canonicalP ??= readCanonical(ctx));
     const gateRuns = () => (gateRunsP ??= readGateRuns(ctx));
     const startMs = ctx.clock.now();
@@ -148,17 +157,21 @@ export const hooksSource: WorkSignalSource = {
         }
       }
 
-      // Guardrails activity (allowlisted tail; absence NORMAL).
+      // Guardrails activity (allowlisted tail; absence NORMAL, unreadable DEGRADES).
       let lastGuardrailAt: string | null = null;
       let guardrailHookKinds: string[] = [];
       const tail = await c.logs?.readAllowlistedTail({ log: "repo_guardrails", repoKey: repo.repo }, LEDGER_TAIL_BYTES);
-      if (tail) {
+      if (tail?.unreadable) {
+        errors.push(signalError("log_read_failed", `guardrails log exists but is unreadable in ${repo.repo}`));
+      } else if (tail) {
         const act = guardrailActivity(tail.text, tail.truncated);
         lastGuardrailAt = act.lastAt;
         guardrailHookKinds = act.kinds;
       }
 
-      const run = (await gateRuns()).get(repo.repo) ?? null;
+      const runsState = await gateRuns();
+      if (runsState.error) errors.push(runsState.error);
+      const run = runsState.byRepo.get(repo.repo) ?? null;
       const signal: HooksSignal = {
         kind: "hooks",
         source: HOOKS_SOURCE_ID,

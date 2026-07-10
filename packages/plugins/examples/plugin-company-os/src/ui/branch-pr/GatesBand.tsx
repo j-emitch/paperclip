@@ -33,21 +33,34 @@ const PARITY_LABELS: Record<RepoHooksV1["parity"], string> = {
   unknown: "unknown",
 };
 
+/** Matrix freshness rule: an audit older than this is WARN ("stale>26h"). */
+const MIGRATION_AUDIT_STALE_MS = 26 * 3_600_000;
+
+function auditIsStale(m: MigrationTargetV1, now: number): boolean {
+  return m.auditMtime !== null && now - Date.parse(m.auditMtime) > MIGRATION_AUDIT_STALE_MS;
+}
+
 /** Migration drift classes folded to one posture tone (worst wins). */
 function migrationTone(m: MigrationTargetV1): string {
   if (m.notAppliedCount > 0 || m.grantSurfaceViolations > 0) return statusColors.danger;
   if (m.unauditedBranchFiles > 0 || m.orphanTrackerRows > 0) return statusColors.revise;
+  // A grant surface that scanned NOTHING was never witnessed — vacuous, not clean
+  // (the same rule the JB gate enforces; codex COS-11 P1).
+  if (m.grantSurfaceScanned === 0) return statusColors.revise;
   return statusColors.ship;
 }
 
 /**
- * Last-good is a FRESHNESS marker, not a severity: carried drift stays
- * danger/revise (CodeRabbit COS-11 — stale tone was masking carried drift);
- * only a carried CLEAN row renders the stale tone.
+ * Last-good and audit-age are FRESHNESS markers, not severities: carried/aged
+ * drift stays danger/revise (CodeRabbit COS-11 — stale tone was masking carried
+ * drift); only a CLEAN row downgrades to stale (carried) or cached (aged>26h).
  */
-function migrationRowTone(m: MigrationTargetV1): string {
+function migrationRowTone(m: MigrationTargetV1, now: number): string {
   const tone = migrationTone(m);
-  return m.lastGood && tone === statusColors.ship ? statusColors.stale : tone;
+  if (tone !== statusColors.ship) return tone;
+  if (m.lastGood) return statusColors.stale;
+  if (auditIsStale(m, now)) return statusColors.cached;
+  return tone;
 }
 
 function migrationSummary(m: MigrationTargetV1): string {
@@ -98,13 +111,16 @@ export function GatesBandView({ gates, now, isMobile }: { gates: GatesStateV1; n
   const [open, setOpen] = useState(false);
   const drifted = gates.hooks.filter((h) => h.parity === "drifted" || h.parity === "missing");
   const unknownHooks = gates.hooks.filter((h) => h.parity === "unknown");
+  // In-sync FILES with core.hooksPath unset = hooks not ACTIVE (installed ≠
+  // activated — codex COS-11 P1); missing-parity repos already read danger.
+  const inactiveHooks = gates.hooks.filter((h) => h.parity === "in_sync" && h.hooksPathValue === null);
   // Worst wins; UNKNOWN parity is NOT green — "in sync" claims full evidence.
   const worstHooksTone =
     gates.hooks.length === 0
       ? statusColors.reviewUnknown
       : drifted.some((h) => h.parity === "missing")
         ? statusColors.danger
-        : drifted.length > 0
+        : drifted.length > 0 || inactiveHooks.length > 0
           ? statusColors.revise
           : unknownHooks.length > 0
             ? statusColors.reviewUnknown
@@ -114,9 +130,11 @@ export function GatesBandView({ gates, now, isMobile }: { gates: GatesStateV1; n
       ? "hooks: none read"
       : drifted.length > 0
         ? `hooks: ${drifted.length}/${gates.hooks.length} drifted`
-        : unknownHooks.length > 0
-          ? `hooks: ${unknownHooks.length}/${gates.hooks.length} unknown`
-          : `hooks: ${gates.hooks.length} in sync`;
+        : inactiveHooks.length > 0
+          ? `hooks: ${inactiveHooks.length}/${gates.hooks.length} inactive`
+          : unknownHooks.length > 0
+            ? `hooks: ${unknownHooks.length}/${gates.hooks.length} unknown`
+            : `hooks: ${gates.hooks.length} in sync`;
   const protDrift = gates.protection.filter((p) => p.enforceAdmins === true);
 
   return (
@@ -166,8 +184,8 @@ export function GatesBandView({ gates, now, isMobile }: { gates: GatesStateV1; n
           gates.migrations.map((m) => (
             <Pill
               key={m.target}
-              label={`${m.target}: ${migrationSummary(m)}${m.lastGood ? " · last-good" : ""}`}
-              tone={migrationRowTone(m)}
+              label={`${m.target}: ${migrationSummary(m)}${m.lastGood ? " · last-good" : ""}${!m.lastGood && auditIsStale(m, now) ? " · audit stale" : ""}`}
+              tone={migrationRowTone(m, now)}
               soft
               withDot
               title={m.lastGood ? "no live audit row this derive — carried from the prior derive" : (m.ranAt ?? undefined)}
@@ -284,7 +302,10 @@ function MigrationRow({ row, now }: { row: MigrationTargetV1; now: number }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
       <span style={{ fontSize: 12, fontWeight: 600, minWidth: 84 }}>{row.target}</span>
-      <Pill label={migrationSummary(row)} tone={migrationRowTone(row)} soft withDot />
+      <Pill label={migrationSummary(row)} tone={migrationRowTone(row, now)} soft withDot />
+      {!row.lastGood && auditIsStale(row, now) ? (
+        <Pill label="audit stale" tone={statusColors.cached} soft title="newest audit on disk is older than 26h (the matrix freshness rule)" />
+      ) : null}
       {row.lastGood ? (
         <Pill label="last-good" tone={statusColors.stale} title="no live audit row this derive — value carried from the prior derive" />
       ) : null}

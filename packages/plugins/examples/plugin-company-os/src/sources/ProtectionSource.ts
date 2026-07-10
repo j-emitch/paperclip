@@ -84,7 +84,10 @@ export function parseProtectionConfig(text: string): ParsedProtection | null {
   const rpr = o.required_pull_request_reviews;
   if (typeof rpr === "object" && rpr !== null) {
     const n = (rpr as Record<string, unknown>).required_approving_review_count;
-    if (typeof n === "number" && Number.isFinite(n)) requiredReviews = n;
+    // Only a nonnegative INTEGER is a real count — anything else stays null
+    // (unknown), so a malformed body can't abort the projection write at the
+    // nonnegative-int zod (codex COS-11 P1 fail-open class).
+    if (typeof n === "number" && Number.isInteger(n) && n >= 0) requiredReviews = n;
   }
   return { enforceAdmins, requiredChecks, requiredReviews };
 }

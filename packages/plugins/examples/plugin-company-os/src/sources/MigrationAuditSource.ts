@@ -61,11 +61,17 @@ async function readDriftIssueLane(ctx: CollectionContext): Promise<DriftIssueLan
 
 export const MIGRATION_AUDIT_SOURCE_ID = "migration_audit";
 
-/** Count-or-array JSON fields (the audit writes arrays; older shapes wrote counts). */
-function countOf(v: unknown): number {
+/**
+ * Count-or-array JSON fields (the audit writes arrays; older shapes wrote
+ * counts). STRICT (codex COS-11 P1 fail-open): a missing or invalid field is
+ * null → the whole file parse-FAILS (degraded), never a silent clean 0 — and a
+ * negative/fractional number can never reach the nonnegative-int zod at the
+ * projection write (which would abort the entire derive).
+ */
+function countOf(v: unknown): number | null {
   if (Array.isArray(v)) return v.length;
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  return 0;
+  if (typeof v === "number" && Number.isInteger(v) && v >= 0) return v;
+  return null;
 }
 
 interface ParsedAudit {
@@ -90,20 +96,30 @@ export function parseMigrationAudit(text: string): ParsedAudit | null {
   if (typeof raw !== "object" || raw === null) return null;
   const o = raw as Record<string, unknown>;
   if (typeof o.target !== "string") return null;
-  const entries = Array.isArray(o.entries) ? o.entries : [];
+  // entries MUST be an array (ground-truthed shape) — a wrong-typed field is a
+  // parse failure, not an empty-clean audit (fail-closed).
+  if (!Array.isArray(o.entries)) return null;
+  const entries = o.entries;
   let notApplied = 0;
   for (const e of entries) {
     if (typeof e === "object" && e !== null && (e as Record<string, unknown>).applied !== "yes") notApplied++;
+  }
+  const orphanTrackerRows = countOf(o.orphan_tracker_rows);
+  const unauditedBranchFiles = countOf(o.unaudited_branch_files);
+  const grantSurfaceViolations = countOf(o.grant_surface_violations);
+  const grantSurfaceScanned = countOf(o.grant_surface_scanned);
+  if (orphanTrackerRows === null || unauditedBranchFiles === null || grantSurfaceViolations === null || grantSurfaceScanned === null) {
+    return null; // missing/invalid counters = unwitnessed evidence — fail the parse
   }
   return {
     target: o.target,
     ranAt: typeof o.ran_at === "string" ? o.ran_at : null,
     totalEntries: entries.length,
     notAppliedCount: notApplied,
-    orphanTrackerRows: countOf(o.orphan_tracker_rows),
-    unauditedBranchFiles: countOf(o.unaudited_branch_files),
-    grantSurfaceViolations: countOf(o.grant_surface_violations),
-    grantSurfaceScanned: countOf(o.grant_surface_scanned),
+    orphanTrackerRows,
+    unauditedBranchFiles,
+    grantSurfaceViolations,
+    grantSurfaceScanned,
   };
 }
 
@@ -165,6 +181,12 @@ export const migrationAuditSource: WorkSignalSource = {
       // Newest file per target wins — read newest-first, first hit per target sticks.
       const sorted = [...audits].sort((a, b) => (a.mtime < b.mtime ? 1 : a.mtime > b.mtime ? -1 : 0));
       const seenTargets = new Set<string>();
+      // Targets whose NEWEST file failed to parse (target lifted from the
+      // filename: audit-<target>-*.json). An older parseable file for such a
+      // target still surfaces, but STALE — the fold marks it last-good, so a
+      // corrupt newest audit can never render its predecessor as live-green
+      // (codex COS-11 P1 on the row-8 story).
+      const corruptTargets = new Set<string>();
       for (const file of sorted) {
         let text: string;
         try {
@@ -177,6 +199,8 @@ export const migrationAuditSource: WorkSignalSource = {
         if (parsed === null) {
           // Degrade, emit NOTHING for this file — last-good merge is the fold's job.
           errors.push(signalError("parse_error", `unparseable migration audit: ${file.relPath}`));
+          const m = /audit-([a-z]+)/.exec(file.relPath.split("/").pop() ?? "");
+          if (m && !seenTargets.has(m[1])) corruptTargets.add(m[1]);
           continue;
         }
         if (seenTargets.has(parsed.target)) continue;
@@ -187,7 +211,7 @@ export const migrationAuditSource: WorkSignalSource = {
           source: MIGRATION_AUDIT_SOURCE_ID,
           repo: MIGRATION_AUDIT_REPO,
           confidence: "high",
-          freshness: "live",
+          freshness: corruptTargets.has(parsed.target) ? "stale" : "live",
           errors: [],
           target: parsed.target,
           ranAt: parsed.ranAt,

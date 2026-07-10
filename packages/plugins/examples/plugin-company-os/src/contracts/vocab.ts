@@ -40,6 +40,7 @@ export const SIGNAL_ERROR_CODES = [
   "not_found", // an expected file/ref was absent
   "truncated", // an index was capped (e.g. MAX_DOCS_PER_REPO) — partial, NOT a failed read (non-degraded)
   "git_read_failed", // a per-tree git read failed/degraded (COS-8c — the row stays, fields null)
+  "log_read_failed", // an allowlisted log existed but could not be read (perm/IO/symlink — NOT absence; COS-11)
   "worktree_diff_capped", // the activity-gated diff budget skipped eligible trees (non-degraded; names skipped-dirty)
 ] as const;
 export type SignalErrorCode = (typeof SIGNAL_ERROR_CODES)[number];

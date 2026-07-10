@@ -247,7 +247,11 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
     for (const batch of bundle.batches) {
       if (!gatesSourceIds.has(batch.source)) continue;
       for (const rf of batch.repoFreshness) {
-        if (!rf.errors.some((e) => e.degraded)) continue;
+        // STALE freshness fires even with errors:[] — a scoped-merge rehydrates
+        // cached stale rows WITHOUT their original errors (codex COS-11 P1), and
+        // a stale gate posture must keep its alert across unrelated refreshes.
+        const degraded = rf.errors.filter((e) => e.degraded);
+        if (degraded.length === 0 && rf.freshness !== "stale") continue;
         const key = `${batch.source}:${rf.repo}`;
         if (seenDegraded.has(key)) continue;
         seenDegraded.add(key);
@@ -257,7 +261,7 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
           kind: "system_degraded",
           severity: "medium",
           title: `${batch.source} gate source degraded on ${rf.repo}`,
-          detail: rf.errors.filter((e) => e.degraded).map((e) => e.message).join("; "),
+          detail: degraded.length > 0 ? degraded.map((e) => e.message).join("; ") : "stale (carried from a prior derive)",
           deepLink: { tab: "source", repoKey: rf.repo, branch: null },
         });
       }
