@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { migrationAuditSource, parseMigrationAudit } from "../../src/sources/MigrationAuditSource.js";
 import { isMigrationAuditSignal, type MigrationAuditSignal } from "../../src/contracts/signals.js";
-import { makeFixtureContext } from "../fixtures/context.js";
+import { makeFixtureContext, proc } from "../fixtures/context.js";
 
 /** Ground-truthed audit JSON shape (audit-migrations-drift.ts output). */
 function auditJson(target: string, ranAt: string, notApplied = 0): string {
@@ -92,6 +92,39 @@ describe("MigrationAuditSource", () => {
     const batch = await migrationAuditSource.collect(ctx);
     expect(batch.signals).toHaveLength(0);
     expect(batch.repoFreshness).toHaveLength(0);
+  });
+
+  it("drift-issue lane: counts open [INFRA-DB-CD] titles + finds each target's rolling issue by body marker", async () => {
+    const issues = JSON.stringify([
+      { number: 400, title: "unrelated", body: "" },
+      { number: 410, title: "[INFRA-DB-CD] Drift detected on staging (2026-07-10, 2 entries)", body: "<!-- infra-db-cd-rolling:staging -->\nrolling" },
+      { number: 411, title: "[INFRA-DB-CD] Drift detected on prod (2026-07-09, 1 entries)", body: "no marker" },
+    ]);
+    const ctx = makeFixtureContext({
+      repos: [{ repo: "juice-bar", available: true }],
+      files: { "juice-bar": { "reports/migrations/audit-staging.json": { content: auditJson("staging", "2026-07-01T00:00:00Z") } } },
+      gh: (_repo, args) => (args[0] === "issue" ? proc.ok(issues) : proc.ok("[]")),
+    });
+    const batch = await migrationAuditSource.collect(ctx);
+    const sig = batch.signals.filter(isMigrationAuditSignal)[0]!;
+    expect(sig.openDriftIssueCount).toBe(2);
+    expect(sig.rollingIssueNumber).toBe(410); // staging marker; prod's unmarked dupe doesn't match
+    expect(batch.repoFreshness[0]?.freshness).toBe("live");
+  });
+
+  it("drift-issue lane: gh unavailable → nulls + degraded (never a fake zero)", async () => {
+    const ctx = makeFixtureContext({
+      repos: [{ repo: "juice-bar", available: true }],
+      files: { "juice-bar": { "reports/migrations/audit-prod.json": { content: auditJson("prod", "2026-07-02T00:00:00Z") } } },
+      gh: () => proc.unauth(),
+    });
+    const batch = await migrationAuditSource.collect(ctx);
+    const sig = batch.signals.filter(isMigrationAuditSignal)[0]!;
+    expect(sig.openDriftIssueCount).toBeNull();
+    expect(sig.rollingIssueNumber).toBeNull();
+    const fresh = batch.repoFreshness[0]!;
+    expect(fresh.freshness).toBe("stale");
+    expect(fresh.errors.some((e) => e.code === "gh_unauthenticated")).toBe(true);
   });
 
   it("parseMigrationAudit tolerates count-shaped fields and rejects non-object/missing-target", () => {

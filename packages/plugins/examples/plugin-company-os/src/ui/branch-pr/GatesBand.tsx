@@ -291,6 +291,15 @@ function MigrationRow({ row, now }: { row: MigrationTargetV1; now: number }) {
       <span style={{ fontSize: 11, color: tokens.muted, fontVariantNumeric: "tabular-nums" }}>
         {row.totalEntries} audited · scanned {row.grantSurfaceScanned}
       </span>
+      {/* Drift-issue lane (matrix row 11): >1 open = the dupe loop is back (warn). */}
+      {row.openDriftIssueCount !== null && row.openDriftIssueCount > 1 ? (
+        <Pill label={`${row.openDriftIssueCount} open drift issues`} tone={statusColors.revise} soft withDot title="more than one open [INFRA-DB-CD] issue — the rolling-issue mechanism expects at most one" />
+      ) : null}
+      {row.rollingIssueNumber !== null ? (
+        <span style={{ fontSize: 11, color: tokens.muted, fontVariantNumeric: "tabular-nums" }} title="the rolling drift issue for this target (body-marker keyed)">
+          rolling #{row.rollingIssueNumber}
+        </span>
+      ) : null}
       <span style={{ flex: 1 }} />
       {auditAge ? (
         <span style={{ fontSize: 11, color: tokens.muted }} title={row.auditRelPath}>

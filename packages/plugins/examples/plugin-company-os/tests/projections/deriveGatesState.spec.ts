@@ -64,6 +64,8 @@ const MIG_SIG: MigrationAuditSignal = {
   grantSurfaceScanned: 42,
   lastApplyRelPath: "reports/migration-apply/a.md",
   lastApplyAt: "2026-07-01T00:00:00.000Z",
+  openDriftIssueCount: 0,
+  rollingIssueNumber: null,
 };
 
 const LEDGER_SIG: DispatchLedgerSignal = {

@@ -71,6 +71,22 @@ describe("ArtifactSource", () => {
     expect(arts.every((a) => a.artifactType === "routine_output")).toBe(true);
   });
 
+  it("indexes a local-ci run receipt with ZERO new crawler code (COS-11 matrix row 10)", async () => {
+    const receipt = `---\ntype: local-ci-receipt\ncreated_by: scripts/local-ci.sh\nsha: 4a179fab546a4416bf0edc06946e0a6d82060bc6\noutcome: success\n---\n\n| step | result |\n|---|---|\n| API · lint | pass |\n`;
+    const ctx = makeFixtureContext({
+      repos: [{ repo: "juice-bar", available: true }],
+      files: { "juice-bar": { "reports/local-ci/2026-07-09-2248-abcd1234.md": { content: receipt } } },
+    });
+    const arts = (await artifactSource.collect(ctx)).signals.filter(isArtifactSignal);
+    expect(arts).toHaveLength(1);
+    // Unknown frontmatter type falls through to the reports/** catch-all — indexed, not dropped.
+    expect(arts[0]).toMatchObject({
+      relPath: "reports/local-ci/2026-07-09-2248-abcd1234.md",
+      artifactType: "routine_output",
+      createdBy: "scripts/local-ci.sh",
+    });
+  });
+
   it("does NOT index exported Paperclip tickets (5c dedup — PaperclipTicketSource owns them)", async () => {
     const ctx = makeFixtureContext({
       repos: [{ repo: "company", available: true }],

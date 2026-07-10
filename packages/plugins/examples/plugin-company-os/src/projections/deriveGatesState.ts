@@ -78,6 +78,8 @@ export function deriveGatesState(bundle: SignalBundle, nowMs: number, prior: Gat
       grantSurfaceScanned: s.grantSurfaceScanned,
       lastApplyRelPath: s.lastApplyRelPath,
       lastApplyAt: s.lastApplyAt,
+      openDriftIssueCount: s.openDriftIssueCount,
+      rollingIssueNumber: s.rollingIssueNumber,
       lastGood: false,
     });
   }

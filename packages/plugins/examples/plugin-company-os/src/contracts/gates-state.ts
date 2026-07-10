@@ -50,6 +50,10 @@ export const migrationTargetV1Schema = z.object({
   grantSurfaceScanned: z.number().int().nonnegative(),
   lastApplyRelPath: z.string().nullable(),
   lastApplyAt: z.string().nullable(),
+  /** Open [INFRA-DB-CD] issues (dupe watch); null = gh unavailable this derive. */
+  openDriftIssueCount: z.number().int().nonnegative().nullable().default(null),
+  /** This target's rolling issue number (body-marker keyed); null = none/gh unavailable. */
+  rollingIssueNumber: z.number().int().positive().nullable().default(null),
   /** true = carried from a PRIOR derive (row-8) — renders as a stale marker, never silent-green. */
   lastGood: z.boolean(),
 });

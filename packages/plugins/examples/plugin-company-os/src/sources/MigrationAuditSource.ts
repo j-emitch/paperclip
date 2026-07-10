@@ -14,7 +14,50 @@ import { findRepoRoot, reposResponsibleFor, signalError, type CollectionContext 
 import type { RepoFreshness, SignalBatch, WorkSignalSource } from "../contracts/WorkSignalSource.js";
 import type { MigrationAuditSignal, Signal, SignalError } from "../contracts/signals.js";
 import { MIGRATION_APPLY_GLOB, MIGRATION_AUDIT_GLOB, MIGRATION_AUDIT_REPO } from "../contracts/gates.js";
-import { nowIso, readError } from "./_shared.js";
+import { errorFromSubprocess, nowIso, readError } from "./_shared.js";
+
+/** The dupe-watch issue-title prefix + per-target rolling-issue body marker (matrix row 11). */
+const DRIFT_ISSUE_TITLE_PREFIX = "[INFRA-DB-CD]";
+const ROLLING_MARKER = (target: string): string => `<!-- infra-db-cd-rolling:${target} -->`;
+
+interface DriftIssueLane {
+  readonly openDriftIssueCount: number | null;
+  readonly rollingByTarget: ReadonlyMap<string, number>;
+  readonly error: SignalError | null;
+}
+
+/** ONE gh issue list read (shared by every target signal); gh failure → nulls + degraded error. */
+async function readDriftIssueLane(ctx: CollectionContext): Promise<DriftIssueLane> {
+  const none: DriftIssueLane = { openDriftIssueCount: null, rollingByTarget: new Map(), error: null };
+  const result = await ctx.gh.run(MIGRATION_AUDIT_REPO, [
+    "issue", "list", "--state", "open", "--json", "number,title,body", "--limit", "100",
+  ]);
+  const subErr = errorFromSubprocess(result, "gh issue list");
+  if (subErr) return { ...none, error: subErr };
+  let raw: unknown;
+  try {
+    raw = JSON.parse(result.stdout);
+  } catch {
+    return { ...none, error: signalError("parse_error", "gh issue list returned non-JSON") };
+  }
+  if (!Array.isArray(raw)) return { ...none, error: signalError("parse_error", "gh issue list: expected an array") };
+  let open = 0;
+  const rollingByTarget = new Map<string, number>();
+  for (const item of raw) {
+    if (typeof item !== "object" || item === null) continue;
+    const o = item as Record<string, unknown>;
+    const number = typeof o.number === "number" ? o.number : null;
+    const title = typeof o.title === "string" ? o.title : "";
+    const body = typeof o.body === "string" ? o.body : "";
+    if (title.startsWith(DRIFT_ISSUE_TITLE_PREFIX)) open++;
+    if (number !== null) {
+      for (const target of ["staging", "prod"]) {
+        if (!rollingByTarget.has(target) && body.includes(ROLLING_MARKER(target))) rollingByTarget.set(target, number);
+      }
+    }
+  }
+  return { openDriftIssueCount: open, rollingByTarget, error: null };
+}
 
 export const MIGRATION_AUDIT_SOURCE_ID = "migration_audit";
 
@@ -106,6 +149,17 @@ export const migrationAuditSource: WorkSignalSource = {
       errors.push(readError(MIGRATION_APPLY_GLOB, e));
     }
 
+    // The drift-issue lane (matrix row 11) — fetched ONCE, lazily, only when a
+    // signal will actually carry it (no audits on disk = no gh spend).
+    let lane: DriftIssueLane | null = null;
+    const driftLane = async (): Promise<DriftIssueLane> => {
+      if (lane === null) {
+        lane = await readDriftIssueLane(ctx);
+        if (lane.error) errors.push(lane.error);
+      }
+      return lane;
+    };
+
     try {
       const audits = await ctx.fs.list(MIGRATION_AUDIT_REPO, [MIGRATION_AUDIT_GLOB]);
       // Newest file per target wins — read newest-first, first hit per target sticks.
@@ -127,6 +181,7 @@ export const migrationAuditSource: WorkSignalSource = {
         }
         if (seenTargets.has(parsed.target)) continue;
         seenTargets.add(parsed.target);
+        const issues = await driftLane();
         const signal: MigrationAuditSignal = {
           kind: "migration_audit",
           source: MIGRATION_AUDIT_SOURCE_ID,
@@ -146,6 +201,8 @@ export const migrationAuditSource: WorkSignalSource = {
           grantSurfaceScanned: parsed.grantSurfaceScanned,
           lastApplyRelPath,
           lastApplyAt,
+          openDriftIssueCount: issues.openDriftIssueCount,
+          rollingIssueNumber: issues.rollingByTarget.get(parsed.target) ?? null,
         };
         signals.push(signal);
       }

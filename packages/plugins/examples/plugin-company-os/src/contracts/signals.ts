@@ -661,6 +661,10 @@ export interface MigrationAuditSignal extends SignalProvenance {
   /** Newest apply receipt (reports/migration-apply/*.md) by mtime; nulls = none found. */
   readonly lastApplyRelPath: string | null;
   readonly lastApplyAt: string | null;
+  /** Open [INFRA-DB-CD]-titled issues (the dupe watch — matrix row 11); null = gh unavailable. */
+  readonly openDriftIssueCount: number | null;
+  /** The rolling issue for THIS target (body marker infra-db-cd-rolling:<target>); null = none/gh unavailable. */
+  readonly rollingIssueNumber: number | null;
 }
 
 /** One parsed ledger tail (DispatchLedgerSource — row 7; one signal per log). */
