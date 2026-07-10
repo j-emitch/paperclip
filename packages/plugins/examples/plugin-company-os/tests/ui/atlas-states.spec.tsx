@@ -17,7 +17,7 @@ import { LifecycleStepper } from "../../src/ui/atlas/LifecycleStepper.js";
 import { SurfaceEmpty, SurfaceError, SurfaceLoading } from "../../src/ui/shared/surface-state.js";
 import { AtlasIcon } from "../../src/ui/icons.js";
 import { COCKPIT_MOTION_STYLE_ID } from "../../src/ui/shared/cockpit-motion.js";
-import { buildAtlasView, sortDiagnostics } from "../../src/ui/atlas/atlas-view-model.js";
+import { buildAtlasView, findFamilyForWork, sortDiagnostics } from "../../src/ui/atlas/atlas-view-model.js";
 import type { AtlasDiagnosticV1, LifecycleV1 } from "../../src/contracts/build-atlas.js";
 import { goldenAtlas, ATLAS_NOW } from "./fixtures/atlas.js";
 
@@ -32,6 +32,7 @@ function render(props: Partial<Parameters<typeof BuildAtlasView>[0]> = {}): stri
       onRefresh={props.onRefresh ?? noop}
       refreshing={props.refreshing ?? false}
       refreshError={props.refreshError ?? null}
+      focusWorkId={props.focusWorkId ?? null}
     />,
   );
 }
@@ -264,6 +265,42 @@ describe("sortDiagnostics — deterministic total order (view-model)", () => {
     expect(view.diagnostics.warnCount).toBe(3); // unknown_prefix ×2 (XYZ, ZZZ) + unrouted_ticket
     expect(view.diagnostics.infoCount).toBe(2); // orphan_family ×2 (IMPRV, LDI)
     expect(view.diagnostics.sorted.map((d) => d.severity)).toEqual(["warn", "warn", "warn", "info", "info"]);
+  });
+});
+
+describe("BuildAtlasView — board deep-link focus (B1)", () => {
+  it("findFamilyForWork resolves a build ticketId to its family", () => {
+    expect(findFamilyForWork(goldenAtlas(), "COS-1")).toBe("COS");
+    expect(findFamilyForWork(goldenAtlas(), "LDI-12")).toBe("LDI");
+  });
+
+  it("findFamilyForWork falls back to the workId's own prefix for unrouted tickets", () => {
+    expect(findFamilyForWork(goldenAtlas(), "COS-999")).toBe("COS");
+  });
+
+  it("findFamilyForWork returns a typed miss for unknown ids + routine keys", () => {
+    expect(findFamilyForWork(goldenAtlas(), "NOPE-1")).toBeNull();
+    expect(findFamilyForWork(goldenAtlas(), "daily-standup")).toBeNull();
+  });
+
+  it("a matched focus expands its family card with the accent treatment", () => {
+    const html = render({ focusWorkId: "COS-1" });
+    expect(html).toContain("data-focused");
+    expect(html).not.toContain("isn’t on the atlas");
+  });
+
+  it("a missed focus renders the typed miss note and the full atlas", () => {
+    const html = render({ focusWorkId: "NOPE-1" });
+    expect(html).toContain("isn’t on the atlas");
+    expect(html).toContain("NOPE-1");
+    expect(html).not.toContain("data-focused");
+    expect(html).toContain("Company OS"); // atlas still rendered
+  });
+
+  it("no focus renders neither the note nor a focused card", () => {
+    const html = render();
+    expect(html).not.toContain("isn’t on the atlas");
+    expect(html).not.toContain("data-focused");
   });
 });
 

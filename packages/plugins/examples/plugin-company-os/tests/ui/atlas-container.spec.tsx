@@ -26,6 +26,7 @@ vi.mock("@paperclipai/plugin-sdk/ui", () => ({
 
 // Imported AFTER the mocks so the wrapper binds the mocked hooks.
 import { Atlas } from "../../src/ui/atlas/Atlas.js";
+import { setPendingTarget } from "../../src/ui/pending-target-store.js";
 
 function setState(partial: Partial<UseBuildAtlasResult>): void {
   hoisted.result = { buildAtlas: null, loading: false, error: null, refresh: () => {}, ...partial };
@@ -64,5 +65,27 @@ describe("Atlas container states", () => {
     expect(html).toContain("Build Atlas");
     expect(html).toContain("Company OS");
     expect(html).toContain("Value Chain"); // lineage rendered
+  });
+
+  it("consumes a pending board deep-link into a focused family card (B1)", () => {
+    setPendingTarget({ tab: "board", workId: "COS-1" });
+    try {
+      setState({ buildAtlas: goldenAtlas() });
+      const html = renderToStaticMarkup(<Atlas companyId="c1" />);
+      expect(html).toContain("data-focused");
+    } finally {
+      setPendingTarget(null); // never leak a target into other tests
+    }
+  });
+
+  it("renders the typed miss note for a board target the atlas doesn't host (B1)", () => {
+    setPendingTarget({ tab: "board", workId: "NOPE-1" });
+    try {
+      setState({ buildAtlas: goldenAtlas() });
+      const html = renderToStaticMarkup(<Atlas companyId="c1" />);
+      expect(html).toContain("isn’t on the atlas");
+    } finally {
+      setPendingTarget(null);
+    }
   });
 });

@@ -175,3 +175,21 @@ function builtRollup(shipped: number, total: number): string {
 export function isAtlasEmpty(atlas: BuildAtlasV1): boolean {
   return atlas.families.length === 0;
 }
+
+/**
+ * Resolve a `board` deep-link's `workId` to the family that hosts it (B1).
+ * Match order: a build's `ticketId` → a routed ticket `identifier` → the
+ * workId's own `PREFIX-` when that family exists (a ticket the atlas hasn't
+ * routed yet still lands on its family). Null = typed miss — the caller renders
+ * the miss note instead of silently dropping the target (unticketed evidence
+ * strings and routine keys land here by design).
+ */
+export function findFamilyForWork(atlas: BuildAtlasV1, workId: string): string | null {
+  for (const family of atlas.families) {
+    if (family.builds.some((b) => b.ticketId === workId)) return family.prefix;
+    if (family.tickets.some((t) => t.identifier === workId)) return family.prefix;
+  }
+  const prefix = /^([A-Z]+)-/.exec(workId)?.[1];
+  if (prefix !== undefined && atlas.families.some((f) => f.prefix === prefix)) return prefix;
+  return null;
+}

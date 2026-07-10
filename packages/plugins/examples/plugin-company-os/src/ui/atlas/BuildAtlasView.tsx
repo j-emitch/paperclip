@@ -29,6 +29,7 @@ import { LineageView } from "./LineageView.js";
 import { GATE_TONE } from "./LifecycleStepper.js";
 import {
   buildAtlasView,
+  findFamilyForWork,
   type AtlasVitals,
   type DiagnosticsView,
   type DomainSection,
@@ -44,10 +45,13 @@ export interface BuildAtlasViewProps {
   refreshing?: boolean;
   /** Last manual-refresh failure (the displayed atlas is the last good snapshot). */
   refreshError?: string | null;
+  /** Consumed `board` deep-link target — expands + scrolls its family, or a typed miss note (B1). */
+  focusWorkId?: string | null;
 }
 
-export function BuildAtlasView({ atlas, now, isMobile = false, onRefresh, refreshing = false, refreshError = null }: BuildAtlasViewProps) {
+export function BuildAtlasView({ atlas, now, isMobile = false, onRefresh, refreshing = false, refreshError = null, focusWorkId = null }: BuildAtlasViewProps) {
   const view = buildAtlasView(atlas);
+  const focusPrefix = focusWorkId !== null ? findFamilyForWork(atlas, focusWorkId) : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20, minWidth: 0, fontFamily: tokens.font }}>
@@ -75,9 +79,18 @@ export function BuildAtlasView({ atlas, now, isMobile = false, onRefresh, refres
         </Reveal>
       ) : null}
 
+      {focusWorkId !== null && focusPrefix === null ? (
+        <Reveal delayMs={40}>
+          <CalmNote tone={statusColors.revise}>
+            <strong style={{ fontFamily: tokens.mono }}>{focusWorkId}</strong> isn’t on the atlas — it may be unticketed
+            work or outside the registered spec-family taxonomy. Showing the full atlas instead.
+          </CalmNote>
+        </Reveal>
+      ) : null}
+
       {view.sections.map((section, i) => (
         <Reveal key={section.domain.id} delayMs={70 + i * 60}>
-          <DomainSectionView section={section} now={now} isMobile={isMobile} />
+          <DomainSectionView section={section} now={now} isMobile={isMobile} focusPrefix={focusPrefix} />
         </Reveal>
       ))}
 
@@ -207,7 +220,17 @@ function Masthead({
 // Domain section — family cards
 // ---------------------------------------------------------------------------
 
-function DomainSectionView({ section, now, isMobile }: { section: DomainSection; now: number; isMobile: boolean }) {
+function DomainSectionView({
+  section,
+  now,
+  isMobile,
+  focusPrefix = null,
+}: {
+  section: DomainSection;
+  now: number;
+  isMobile: boolean;
+  focusPrefix?: string | null;
+}) {
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -221,7 +244,7 @@ function DomainSectionView({ section, now, isMobile }: { section: DomainSection;
       </div>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(360px, 1fr))", gap: 12 }}>
         {section.families.map((family) => (
-          <FamilyCard key={family.prefix} family={family} now={now} />
+          <FamilyCard key={family.prefix} family={family} now={now} focused={family.prefix === focusPrefix} />
         ))}
       </div>
     </section>

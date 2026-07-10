@@ -12,6 +12,7 @@ import { usePluginAction } from "@paperclipai/plugin-sdk/ui";
 import { useBuildAtlas } from "../hooks/useBuildAtlas.js";
 import { useIsMobile } from "../hooks/useMediaQuery.js";
 import { useNow } from "../hooks/useNow.js";
+import { clearPendingTarget, usePendingTarget } from "../pending-target-store.js";
 import { SurfaceEmpty, SurfaceError, SurfaceLoading } from "../shared/surface-state.js";
 import { AtlasIcon } from "../icons.js";
 import { BuildAtlasView } from "./BuildAtlasView.js";
@@ -21,6 +22,18 @@ export function Atlas({ companyId }: { companyId: string | null }) {
   const isMobile = useIsMobile();
   const now = useNow();
   const { buildAtlas, loading, error, refresh } = useBuildAtlas(companyId);
+
+  // B1: consume a pending `board` deep-link (Home attention/recent-work rows) —
+  // the one-shot store idiom every other destination surface uses. The workId is
+  // held locally so the focus survives the store clear + later re-renders.
+  const pending = usePendingTarget();
+  const [focusWorkId, setFocusWorkId] = useState<string | null>(() => (pending?.tab === "board" ? pending.workId : null));
+  useEffect(() => {
+    if (pending?.tab === "board") {
+      setFocusWorkId(pending.workId);
+      clearPendingTarget(pending);
+    }
+  }, [pending]);
 
   const refreshAction = usePluginAction("refresh-board");
   const [refreshing, setRefreshing] = useState(false);
@@ -55,5 +68,15 @@ export function Atlas({ companyId }: { companyId: string | null }) {
     );
   }
 
-  return <BuildAtlasView atlas={buildAtlas} now={now} isMobile={isMobile} onRefresh={companyId ? handleRefresh : undefined} refreshing={refreshing} refreshError={refreshError} />;
+  return (
+    <BuildAtlasView
+      atlas={buildAtlas}
+      now={now}
+      isMobile={isMobile}
+      onRefresh={companyId ? handleRefresh : undefined}
+      refreshing={refreshing}
+      refreshError={refreshError}
+      focusWorkId={focusWorkId}
+    />
+  );
 }

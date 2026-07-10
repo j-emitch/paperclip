@@ -12,7 +12,7 @@
  * aesthetic (ported from the Board's `Chip`) — clean dividers, no card-in-card.
  */
 
-import type { CSSProperties } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import type { BuildV1, FamilyV1, TicketRefV1 } from "../../contracts/index.js";
 import { columnAccent, statusColors, tokens } from "../tokens.js";
 import { withAlpha } from "../shared/color.js";
@@ -34,11 +34,23 @@ export function FamilyCard({
   family,
   now,
   defaultExpanded = false,
+  focused = false,
 }: {
   family: FamilyV1;
   now: number;
   defaultExpanded?: boolean;
+  /** Deep-link focus (B1) — opens the card, scrolls it into view, accent ring. */
+  focused?: boolean;
 }) {
+  // Same scroll idiom as the Branch·PR worktree cards (8f): client-only effect,
+  // guarded so SSR/static render paths never touch it.
+  const ref = useRef<HTMLDetailsElement | null>(null);
+  useEffect(() => {
+    if (focused && ref.current && typeof ref.current.scrollIntoView === "function") {
+      ref.current.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }, [focused]);
+
   const activeBuilds = family.builds.filter((b) => b.state === "in_progress" || b.state === "in_review").length;
   const summaryAria =
     `${family.prefix} ${family.name} — ${family.builtSummary}` +
@@ -47,11 +59,14 @@ export function FamilyCard({
 
   return (
     <details
+      ref={ref}
       className="cos-fx-card"
-      open={defaultExpanded}
+      open={defaultExpanded || focused}
+      data-focused={focused || undefined}
       style={{
         background: tokens.card,
-        border: `1px solid ${tokens.border}`,
+        border: `1px solid ${focused ? tokens.accentBorder : tokens.border}`,
+        boxShadow: focused ? `0 0 0 2px ${withAlpha(tokens.accent, 0.18)}` : undefined,
         borderRadius: tokens.radius,
         overflow: "hidden",
       }}
