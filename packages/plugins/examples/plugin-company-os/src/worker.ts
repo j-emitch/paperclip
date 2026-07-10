@@ -16,6 +16,7 @@ import {
   readBuildAtlas,
   readWorktreeBoard,
   readDocIndex,
+  readGatesState,
   readGitState,
   readOrientation,
   readRoutineHealth,
@@ -177,6 +178,8 @@ const plugin = definePlugin({
     ctx.data.register("build-atlas", async (params) => readBuildAtlas(ctx.db, str(params.companyId)));
     // COS-8c worktrees-lens read handler (the Branch·PR Worktrees toggle).
     ctx.data.register("worktree-board", async (params) => readWorktreeBoard(ctx.db, str(params.companyId)));
+    // COS-11 gates & pipeline read handler (the Gates band + tab).
+    ctx.data.register("gates-state", async (params) => readGatesState(ctx.db, str(params.companyId)));
 
     // --- docs viewer: a LIVE, index-gated, containment-checked single-file read ---
     ctx.data.register("report-content", async (params) => {

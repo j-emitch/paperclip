@@ -38,6 +38,7 @@ export class FakeDb implements DbClient {
   buildAtlas = new Map<string, SnapRow>();
 
   worktreeBoard = new Map<string, SnapRow>();
+  gatesState = new Map<string, SnapRow>();
   sourceVersions = new Map<string, { companyId: string; source: string; repo: string; signals: unknown; freshness: string; lastOkAt: string | null }>();
   runs: Array<Record<string, unknown>> = [];
 
@@ -105,6 +106,7 @@ export class FakeDb implements DbClient {
     if (s.includes("INSERT INTO") && s.includes("cos_agent_system")) return this.fencedUpsert(this.agentSystem, params);
     if (s.includes("INSERT INTO") && s.includes("cos_build_atlas")) return this.fencedUpsert(this.buildAtlas, params);
     if (s.includes("INSERT INTO") && s.includes("cos_worktree_board")) return this.fencedUpsert(this.worktreeBoard, params);
+    if (s.includes("INSERT INTO") && s.includes("cos_gates_state")) return this.fencedUpsert(this.gatesState, params);
     if (s.includes("DELETE FROM") && s.includes("cos_source_versions")) {
       const companyId = String(params[0]);
       const scopeRepo = params.length > 1 ? String(params[1]) : null; // scoped delete passes repo
@@ -165,6 +167,7 @@ export class FakeDb implements DbClient {
     if (s.includes("FROM") && s.includes("cos_agent_system")) return snap(this.agentSystem.get(id));
     if (s.includes("FROM") && s.includes("cos_build_atlas")) return snap(this.buildAtlas.get(id));
     if (s.includes("FROM") && s.includes("cos_worktree_board")) return snap(this.worktreeBoard.get(id));
+    if (s.includes("FROM") && s.includes("cos_gates_state")) return snap(this.gatesState.get(id));
     if (s.includes("FROM") && s.includes("cos_source_versions")) {
       return [...this.sourceVersions.values()]
         .filter((v) => v.companyId === id) // mirror the real WHERE company_id = $1

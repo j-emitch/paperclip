@@ -25,6 +25,7 @@ import {
   loadSourceVersions,
   writeProjections,
   readGitState,
+  readGatesState,
   type DbClient,
 } from "./db/cache.js";
 import { bundleToSourceVersions, mergeScopedBundle } from "./db/scoped-merge.js";
@@ -95,7 +96,9 @@ export async function deriveForCompany(
     // Resolve the taxonomy fresh from config (the worker thunk), once, then thread
     // it as the project-grouping lens to the three COS-1 projections (PF-5).
     const taxonomy = await deps.resolveTaxonomy();
-    const projections = collectAndProject(merged, deps.now(), taxonomy);
+    // Prior gates state feeds the row-8 last-good merge (COS-11); null on first derive.
+    const priorGates = await readGatesState(db, companyId).catch(() => null);
+    const projections = collectAndProject(merged, deps.now(), taxonomy, priorGates);
     await writeProjections(db, companyId, projections, owner);
     // Persist the per-source last-good slices from the MERGED bundle so a future
     // scoped refresh of a different repo still has every other repo's last-good.

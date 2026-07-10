@@ -16,6 +16,7 @@ import type { WorkSignalSource, SignalBatch } from "../contracts/WorkSignalSourc
 import type { HooksSignal, SignalError } from "../contracts/signals.js";
 import {
   CANONICAL_HOOKS_GLOB,
+  GATES_BUDGET_MS,
   GATES_COMPANY_REPO,
   HOOK_TESTS_REL,
   LEDGER_TAIL_BYTES,
@@ -97,8 +98,17 @@ export const hooksSource: WorkSignalSource = {
     let gateRunsP: Promise<ReadonlyMap<string, CannonsRunRow>> | null = null;
     const canonical = () => (canonicalP ??= readCanonical(ctx));
     const gateRuns = () => (gateRunsP ??= readGateRuns(ctx));
+    const startMs = ctx.clock.now();
 
     return collectPerRepo(HOOKS_SOURCE_ID, ctx, async (repo, c): Promise<RepoReadResult> => {
+      // GATES_BUDGET_MS backstop: repos past the budget are skipped with a
+      // degraded error (stale badge + diagnostic), never a silent green row.
+      if (c.clock.now() - startMs > GATES_BUDGET_MS) {
+        return {
+          signals: [],
+          errors: [signalError("subprocess_timeout", `gates budget exhausted before ${repo.repo} hooks read`)],
+        };
+      }
       const errors: SignalError[] = [];
 
       // core.hooksPath (exit 1 + empty stdout = unset — a normal state, not an error).

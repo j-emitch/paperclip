@@ -17,6 +17,13 @@ export const LEDGER_MAX_ROWS = 2_000 as const;
 /** Combined budget for the four gates sources per derive tick; exhaustion → diagnostic. */
 export const GATES_BUDGET_MS = 4_000 as const;
 
+/**
+ * The four gates source ids — the batches `deriveGatesState` reads freshness
+ * from. Kept in lockstep with each source's exported `*_SOURCE_ID` (drift-
+ * guarded in the deriveGatesState spec).
+ */
+export const GATES_SOURCE_IDS = ["hooks", "migration_audit", "dispatch_ledger", "protection"] as const;
+
 // ---------------------------------------------------------------------------
 // Contract-constant read paths (repo-relative; the repo key is named beside each)
 // ---------------------------------------------------------------------------

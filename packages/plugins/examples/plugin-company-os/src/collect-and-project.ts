@@ -19,6 +19,7 @@ import type { SkillsCatalogV1 } from "./contracts/skills-catalog.js";
 import type { AgentSystemV1 } from "./contracts/agent-system.js";
 import type { BuildAtlasV1 } from "./contracts/build-atlas.js";
 import type { WorktreeBoardV1 } from "./contracts/worktree-board.js";
+import type { GatesStateV1 } from "./contracts/gates-state.js";
 import { deriveBoardState } from "./projections/deriveBoardState.js";
 import { deriveArtifactIndex } from "./projections/deriveArtifactIndex.js";
 import { deriveRoutineHealth } from "./projections/deriveRoutineHealth.js";
@@ -29,6 +30,7 @@ import { deriveSkillsCatalog } from "./projections/deriveSkillsCatalog.js";
 import { deriveAgentSystem } from "./projections/deriveAgentSystem.js";
 import { deriveBuildAtlas } from "./projections/deriveBuildAtlas.js";
 import { deriveWorktreeBoard } from "./projections/deriveWorktreeBoard.js";
+import { deriveGatesState } from "./projections/deriveGatesState.js";
 
 /** The full set of projections one derive produces — what the worker persists per company. */
 export interface ProjectionSet {
@@ -42,6 +44,7 @@ export interface ProjectionSet {
   readonly agentSystem: AgentSystemV1;
   readonly buildAtlas: BuildAtlasV1;
   readonly worktreeBoard: WorktreeBoardV1;
+  readonly gatesState: GatesStateV1;
 }
 
 /**
@@ -52,7 +55,12 @@ export interface ProjectionSet {
  * the COS-1h skills catalog groups by origin, and COS-1R agents are company-global,
  * so those two take only `(bundle, nowMs)`.
  */
-export function collectAndProject(bundle: SignalBundle, nowMs: number, taxonomy: ProjectTaxonomyV1): ProjectionSet {
+export function collectAndProject(
+  bundle: SignalBundle,
+  nowMs: number,
+  taxonomy: ProjectTaxonomyV1,
+  priorGates: GatesStateV1 | null = null,
+): ProjectionSet {
   return {
     board: deriveBoardState(bundle, nowMs),
     artifactIndex: deriveArtifactIndex(bundle, nowMs),
@@ -69,5 +77,9 @@ export function collectAndProject(bundle: SignalBundle, nowMs: number, taxonomy:
     // the ticket-prefix registry, not the repo→project map.
     buildAtlas: deriveBuildAtlas(bundle, nowMs),
     worktreeBoard: deriveWorktreeBoard(bundle, nowMs),
+    // COS-11 gates: the ONE fold that takes prior state (row-8 last-good merge
+    // for migration targets) — threaded from the worker's readGatesState, null
+    // on the first derive.
+    gatesState: deriveGatesState(bundle, nowMs, priorGates),
   };
 }

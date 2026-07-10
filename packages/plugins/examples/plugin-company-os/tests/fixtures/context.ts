@@ -101,6 +101,8 @@ export interface FixtureOptions {
   lineage?: LineageData | (() => Promise<LineageLoadResult>);
   /** Canned §3.3b allowlisted logs (COS-11). Omit entirely → ctx.logs still wired, every read null. */
   logs?: FixtureLogs;
+  /** Override the fixed clock (COS-11 budget tests advance time per call). */
+  clock?: Clock;
 }
 
 const DEFAULT_REPOS: RepoRoot[] = [
@@ -171,7 +173,7 @@ export function makeFixtureContext(opts: FixtureOptions = {}): CollectionContext
     gh,
     fs: makeFs(opts.files ?? {}),
     logs: makeLogs(opts.logs ?? {}),
-    clock: fixedClock,
+    clock: opts.clock ?? fixedClock,
     logger: silentLogger,
     registry,
     lineage,
