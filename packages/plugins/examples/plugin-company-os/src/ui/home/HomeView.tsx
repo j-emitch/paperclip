@@ -18,6 +18,7 @@ import { StaleSourcePills } from "../shared/freshness.js";
 import { ClockIcon, CloseIcon } from "../icons.js";
 import { relativeTime } from "../shared/time.js";
 import { CockpitMotionStyles } from "../shared/cockpit-motion.js";
+import { DiagnosticsStrip } from "../shared/diagnostics-strip.js";
 import { MetricsStrip } from "./MetricsStrip.js";
 import { PinnedBriefing } from "./PinnedBriefing.js";
 import { BranchHealthPanel } from "./BranchHealthPanel.js";
@@ -58,6 +59,8 @@ export function HomeView({
   const snapshot = (
     <Panel index={0} title="Snapshot" isMobile={isMobile}>
       <MetricsStrip metrics={orientation.metrics} isMobile={isMobile} onNavigateTab={onNavigateTab} />
+      {/* B2: what degraded on this derive — the shared strip, right under the numbers it qualifies. */}
+      <DiagnosticsStrip diagnostics={orientation.diagnostics} />
     </Panel>
   );
   const alerts = (

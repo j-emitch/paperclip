@@ -94,3 +94,40 @@ describe("home-view-model", () => {
     expect(groupByProject(o.taxonomy, o.branchHealth)).toHaveLength(0);
   });
 });
+
+describe("Home diagnostics strip (B2)", () => {
+  const diag = (level: "error" | "warn" | "info", code: string) => ({
+    level,
+    code,
+    message: `${code} happened`,
+    repo: "juice-bar",
+    source: "branch",
+  });
+
+  it("renders derive diagnostics worst-first under the snapshot", () => {
+    const o = { ...goldenOrientation(), diagnostics: [diag("info", "conflict_check_capped"), diag("error", "cache_write_failed"), diag("warn", "git_budget_exceeded")] };
+    const html = renderToStaticMarkup(<HomeView orientation={o} now={HOME_NOW} />);
+    expect(html).toContain("cache_write_failed");
+    expect(html).toContain("git_budget_exceeded");
+    // Worst-first: the error row precedes the warn row precedes the info row.
+    expect(html.indexOf("cache_write_failed")).toBeLessThan(html.indexOf("git_budget_exceeded"));
+    expect(html.indexOf("git_budget_exceeded")).toBeLessThan(html.indexOf("conflict_check_capped"));
+    expect(html).not.toContain("more diagnostic"); // 3 rows fit the strip
+  });
+
+  it("collapses past three rows behind an SSR-faithful details summary", () => {
+    const o = {
+      ...goldenOrientation(),
+      diagnostics: [diag("error", "e1"), diag("warn", "w1"), diag("warn", "w2"), diag("info", "i1"), diag("info", "i2")],
+    };
+    const html = renderToStaticMarkup(<HomeView orientation={o} now={HOME_NOW} />);
+    expect(html).toContain("2 more diagnostics");
+    expect(html).toContain("i2 happened"); // overflow rows still in the tree (details body)
+  });
+
+  it("shows the calm all-clear line when the derive was clean (show the 0)", () => {
+    const o = { ...goldenOrientation(), diagnostics: [] };
+    const html = renderToStaticMarkup(<HomeView orientation={o} now={HOME_NOW} />);
+    expect(html).toContain("No derive diagnostics");
+  });
+});
