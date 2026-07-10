@@ -51,6 +51,9 @@ export const ALERT_KIND_LABELS: Record<OrientationAlertKind, string> = {
   routine_missing: "Routine missing",
   branch_at_risk: "Branch at risk",
   work_stale: "Work stalled",
+  // COS-11 B17 diagnostics-class lane.
+  gate_unprotected: "Gate unprotected",
+  system_degraded: "System degraded",
 };
 
 /** Cross-session work item kinds (spec §5.3). */

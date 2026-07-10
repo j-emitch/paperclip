@@ -254,12 +254,19 @@ export type HealthSeverity = (typeof HEALTH_SEVERITIES)[number];
 export const ALERT_SEVERITIES = ["high", "medium"] as const;
 export type AlertSeverity = (typeof ALERT_SEVERITIES)[number];
 
-/** Orientation alert kinds — the unified "needs attention" union (spec §5.3). */
+/**
+ * Orientation alert kinds — the unified "needs attention" union (spec §5.3).
+ * COS-11 B17 adds the diagnostics-class lane: `gate_unprotected` (branch-
+ * protection drift class — error tier) and `system_degraded` (a gates source
+ * degraded — the pipeline itself needs attention, not the work).
+ */
 export const ORIENTATION_ALERT_KINDS = [
   "routine_stale",
   "routine_missing",
   "branch_at_risk",
   "work_stale",
+  "gate_unprotected",
+  "system_degraded",
 ] as const;
 export type OrientationAlertKind = (typeof ORIENTATION_ALERT_KINDS)[number];
 

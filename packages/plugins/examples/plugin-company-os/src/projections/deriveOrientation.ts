@@ -12,12 +12,14 @@ import type { SignalBundle } from "../contracts/WorkSignalSource.js";
 import {
   isArtifactSignal,
   isBranchSignal,
+  isProtectionSignal,
   isRepoGitSignal,
   isRoutineSignal,
   isWorkSignal,
   type BranchSignal,
   type WorkSignal,
 } from "../contracts/signals.js";
+import { GATES_SOURCE_IDS } from "../contracts/gates.js";
 import type { Diagnostic } from "../contracts/diagnostics.js";
 import type { ProjectTaxonomyV1 } from "../contracts/projects.js";
 import { repoBadge } from "../contracts/grouping.js";
@@ -218,6 +220,48 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
       detail: w.title ?? w.evidence,
       deepLink: { tab: "board", workId: w.ticketId ?? w.evidence },
     });
+  }
+
+  // --- COS-11 B17 diagnostics-class lane (gates → Home) ---
+  // gate_unprotected (error tier): the branch-protection drift class. The
+  // codified single-admin posture is enforce_admins=false everywhere (the
+  // 2026-06-23 incident class) — a desired-state file showing `true` is the
+  // drift the reconciler exists to catch, surfaced within one derive tick.
+  for (const p of signals.filter(isProtectionSignal)) {
+    if (p.enforceAdmins !== true) continue;
+    alerts.push({
+      id: `gate:protection:${p.repoName}`,
+      projectKey: proj(p.repoName),
+      kind: "gate_unprotected",
+      severity: "high",
+      title: `branch protection drifted on ${p.repoName}`,
+      detail: `enforce_admins=true (single-admin deadlock class) · desired false · ${p.slug}@${p.branch}`,
+      deepLink: { tab: "source", repoKey: p.repoName, branch: null },
+    });
+  }
+  // system_degraded (warn tier): a gates source itself degraded — the PIPELINE
+  // needs attention (stale posture would otherwise read as all-clear).
+  {
+    const gatesSourceIds = new Set<string>(GATES_SOURCE_IDS);
+    const seenDegraded = new Set<string>();
+    for (const batch of bundle.batches) {
+      if (!gatesSourceIds.has(batch.source)) continue;
+      for (const rf of batch.repoFreshness) {
+        if (!rf.errors.some((e) => e.degraded)) continue;
+        const key = `${batch.source}:${rf.repo}`;
+        if (seenDegraded.has(key)) continue;
+        seenDegraded.add(key);
+        alerts.push({
+          id: `gate:degraded:${key}`,
+          projectKey: proj(rf.repo),
+          kind: "system_degraded",
+          severity: "medium",
+          title: `${batch.source} gate source degraded on ${rf.repo}`,
+          detail: rf.errors.filter((e) => e.degraded).map((e) => e.message).join("; "),
+          deepLink: { tab: "source", repoKey: rf.repo, branch: null },
+        });
+      }
+    }
   }
 
   // --- Metrics (current snapshot, directly from signals) ---

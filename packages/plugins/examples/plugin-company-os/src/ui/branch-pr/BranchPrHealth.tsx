@@ -24,6 +24,7 @@ import { useNow } from "../hooks/useNow.js";
 import { useSelectTab } from "../routing-sync.js";
 import { ckOfEntry, printCockpitSearch } from "../routing.js";
 import { BranchPrHealthView } from "./BranchPrHealthView.js";
+import { GatesBand } from "./GatesBand.js";
 import { WorktreesLens, type WorktreeFocus } from "./WorktreesLens.js";
 import type { WorktreeCardV1 } from "../../contracts/worktree-board.js";
 
@@ -80,6 +81,8 @@ export function BranchPrHealth({ companyId }: { companyId: string | null }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+      {/* COS-11 masthead: every ship-pipeline gate's posture, above both lenses. */}
+      <GatesBand companyId={companyId} now={now} isMobile={isMobile} />
       <LensToggle lens={lens} onPick={setLens} />
       {lens === "branches" ? (
         <BranchPrHealthView gitState={gitState} now={now} isMobile={isMobile} expandKey={expandKey} onFocusBranch={onFocusBranch} />
