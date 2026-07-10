@@ -39,6 +39,12 @@ const ROLLUP_JSON_FIELDS = "statusCheckRollup,mergeable";
  * `--state closed` is GitHub's MERGED superset — `mergedAt` splits real merges
  * from closed-via-ff-push rows (the JB ship-to-prod idiom), which the parse
  * keeps as `via: "closed"`. The projection window-filters to LANDED_WINDOW_DAYS.
+ *
+ * KNOWN BOUND: `gh pr list` orders by CREATION date (no sort flag outside the
+ * search API), so the top-50 covers ~5 weeks of this workspace's PR volume — a
+ * PR created earlier than that and merged inside the 7d window would be missed.
+ * Accepted: the alternative (`--search sort:updated`) switches API class and
+ * rate-limit pool for a pathology our volume doesn't hit.
  */
 const LANDED_JSON_FIELDS = "number,title,url,headRefName,mergedAt,closedAt";
 const LANDED_LIST_LIMIT = 50;
