@@ -76,6 +76,11 @@ export interface AtlasVitals {
   /** Human built rollup ("18 shipped · 42 builds"). */
   builtSummary: string;
   diagnosticsCount: number;
+  /**
+   * B11: whether the masthead Diagnostics tile TINTS — the one severity ladder
+   * (§9.5.4): warn+ tints, info NEVER tints. The tile still shows the full count.
+   */
+  diagnosticsTinted: boolean;
   laneCount: number;
   edgeCount: number;
 }
@@ -146,6 +151,7 @@ export function buildAtlasView(atlas: BuildAtlasV1): AtlasView {
       totalBuilds,
       builtSummary: builtRollup(shippedBuilds, totalBuilds),
       diagnosticsCount: atlas.diagnostics.length,
+      diagnosticsTinted: warnCount > 0,
       laneCount,
       edgeCount: atlas.edges.length,
     },

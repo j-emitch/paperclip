@@ -327,3 +327,16 @@ describe("Atlas non-data states", () => {
     expect(html).toContain("Refresh");
   });
 });
+
+describe("Atlas masthead diagnostics tint (B11)", () => {
+  it("info-only diagnostics do NOT tint the masthead tile (one severity ladder)", () => {
+    const infoOnly = { ...goldenAtlas(), diagnostics: goldenAtlas().diagnostics.filter((d) => d.severity === "info") };
+    const view = buildAtlasView(infoOnly);
+    expect(view.vitals.diagnosticsCount).toBeGreaterThan(0); // count still shows
+    expect(view.vitals.diagnosticsTinted).toBe(false);
+  });
+
+  it("a warn diagnostic tints", () => {
+    expect(buildAtlasView(goldenAtlas()).vitals.diagnosticsTinted).toBe(true); // golden has 3 warns
+  });
+});

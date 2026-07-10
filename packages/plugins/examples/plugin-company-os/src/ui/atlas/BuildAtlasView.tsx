@@ -142,7 +142,8 @@ function Masthead({
     { value: String(vitals.domainCount), label: "Domains" },
     { value: String(vitals.shippedBuilds), label: "Shipped builds" },
     { value: String(vitals.laneCount), label: "Lineage lanes" },
-    { value: String(vitals.diagnosticsCount), label: "Diagnostics", tone: vitals.diagnosticsCount > 0 ? statusColors.revise : undefined },
+    // B11: tint rides the ONE severity ladder — warn+ tints, info never does.
+    { value: String(vitals.diagnosticsCount), label: "Diagnostics", tone: vitals.diagnosticsTinted ? statusColors.revise : undefined },
   ];
 
   return (
