@@ -231,7 +231,9 @@ function collectLandedByRepo(landed: readonly LandedPrSignal[], nowMs: number): 
   const byRepo = new Map<string, LandedPrV1[]>();
   for (const s of landed) {
     const t = Date.parse(s.landedAt);
-    if (!Number.isFinite(t) || nowMs - t > windowMs) continue;
+    // Future timestamps are dropped too (CodeRabbit TRIPLE P2): a skewed/malformed
+    // future landedAt would otherwise read as forever-fresh in the lane.
+    if (!Number.isFinite(t) || t > nowMs || nowMs - t > windowMs) continue;
     const key = `${s.repo}#${s.prNumber}`;
     if (seen.has(key)) continue;
     seen.add(key);

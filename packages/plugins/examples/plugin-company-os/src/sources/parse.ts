@@ -494,11 +494,20 @@ function checkItemState(o: Record<string, unknown>): "pass" | "fail" | "pending"
   const conclusion = typeof o.conclusion === "string" ? o.conclusion.toUpperCase() : "";
   const status = typeof o.status === "string" ? o.status.toUpperCase() : "";
   const state = typeof o.state === "string" ? o.state.toUpperCase() : "";
-  if (["FAILURE", "ERROR", "TIMED_OUT", "STARTUP_FAILURE"].includes(conclusion) || ["FAILURE", "ERROR"].includes(state)) return "fail";
+  // ACTION_REQUIRED + CANCELLED are TERMINAL non-success conclusions (CodeRabbit
+  // TRIPLE P1): both block a merge and demand a human, so they must read fail —
+  // falling through to "pending" rendered them as "CI running" forever.
+  if (
+    ["FAILURE", "ERROR", "TIMED_OUT", "STARTUP_FAILURE", "ACTION_REQUIRED", "CANCELLED"].includes(conclusion) ||
+    ["FAILURE", "ERROR"].includes(state)
+  ) {
+    return "fail";
+  }
   if (["SUCCESS", "NEUTRAL", "SKIPPED"].includes(conclusion) || state === "SUCCESS") return "pass";
   if (conclusion === "" && (status === "" && state === "")) return "pending";
   // In-progress check runs have status QUEUED/IN_PROGRESS and empty conclusion;
-  // StatusContext PENDING/EXPECTED land here too.
+  // StatusContext PENDING/EXPECTED land here too — and so does conclusion STALE
+  // (the result was invalidated and a re-run is expected), deliberately.
   return "pending";
 }
 

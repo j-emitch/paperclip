@@ -260,10 +260,12 @@ describe("QUAD folds: wt deep-link focus (AC-8f symmetry)", () => {
       worktreeName: "reviewed-wt",
       reviewsForHead: [{ reportKind: "cannons", verdict: "ship", generatedAt: "2026-07-08T09:00:00Z", p0: 0, p1: 0, p2: 1, engines: [] }],
     });
-    const html = renderToStaticMarkup(<WorktreesLens board={board([withReview, card({ worktreeName: "plain-wt", cardKey: "k2" })])} now={NOW} />);
-    expect(html).toContain("cannons · ship");
-    // The un-reviewed sibling renders NO review cue (chips only where a report joined).
-    expect(html.split("cannons · ship")).toHaveLength(2);
+    // Card-specific assertions (CodeRabbit TRIPLE P2): render each card ALONE so
+    // the cue is provably on the reviewed card, not merely somewhere on the page.
+    const reviewed = renderToStaticMarkup(<WorktreesLens board={board([withReview])} now={NOW} />);
+    expect(reviewed).toContain("cannons · ship");
+    const plain = renderToStaticMarkup(<WorktreesLens board={board([card({ worktreeName: "plain-wt", cardKey: "k2" })])} now={NOW} />);
+    expect(plain).not.toContain("cannons · ship");
   });
 });
 

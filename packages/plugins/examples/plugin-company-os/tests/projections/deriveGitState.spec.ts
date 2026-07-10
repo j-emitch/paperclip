@@ -286,6 +286,15 @@ describe("COS-8b — recently-landed lane fold", () => {
     expect(jb(gs).landedPullRequests.map((l) => l.prNumber)).toEqual([3]);
   });
 
+  it("a FUTURE landedAt is dropped (skewed clock must not read forever-fresh)", () => {
+    const gs = deriveGitState(
+      bundleOf([repoGitSignal("juice-bar"), landedPr(5, { landedAt: new Date(NOW + 2 * day).toISOString() })]),
+      NOW,
+      TAX,
+    );
+    expect(jb(gs).landedPullRequests).toEqual([]);
+  });
+
   it("dedups by {repo, prNumber} — a doubled batch folds once", () => {
     const gs = deriveGitState(
       bundleOf([repoGitSignal("juice-bar"), landedPr(9), landedPr(9)]),

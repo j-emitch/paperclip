@@ -324,6 +324,15 @@ describe("glob matcher", () => {
 });
 
 describe("parseGhPrRollup (COS-11.gh-fields)", () => {
+  it("terminal non-success conclusions read fail; STALE stays pending (CodeRabbit TRIPLE P1)", () => {
+    for (const conclusion of ["ACTION_REQUIRED", "CANCELLED"]) {
+      const { rollup } = parseGhPrRollup(JSON.stringify({ statusCheckRollup: [{ conclusion }], mergeable: "MERGEABLE" }));
+      expect(rollup.ciState).toBe("fail");
+    }
+    const { rollup: stale } = parseGhPrRollup(JSON.stringify({ statusCheckRollup: [{ conclusion: "STALE" }], mergeable: "MERGEABLE" }));
+    expect(stale.ciState).toBe("pending"); // invalidated result, re-run expected
+  });
+
   it("CheckRun conclusions fold: any FAILURE → fail", () => {
     const { rollup, ok } = parseGhPrRollup(
       JSON.stringify({ statusCheckRollup: [{ conclusion: "SUCCESS" }, { conclusion: "FAILURE" }], mergeable: "MERGEABLE" }),
