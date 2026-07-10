@@ -13,9 +13,9 @@
 
 import { type CollectionContext, type PriorPrRollup, type RepoRoot } from "../contracts/collection-context.js";
 import type { WorkSignalSource, SignalBatch } from "../contracts/WorkSignalSource.js";
-import type { SignalError, WorkSignal } from "../contracts/signals.js";
+import type { LandedPrSignal, SignalError, WorkSignal } from "../contracts/signals.js";
 import type { PrCiState, PrMergeableState } from "../contracts/vocab.js";
-import { extractTicketIds, parseBranch, parseGhPrList, parseGhPrRollup, prefixOf, type GhPr } from "./parse.js";
+import { extractTicketIds, parseBranch, parseGhLandedPrList, parseGhPrList, parseGhPrRollup, prefixOf, type GhLandedPr, type GhPr } from "./parse.js";
 import { collectPerRepo, errorFromSubprocess, type RepoReadResult } from "./_shared.js";
 
 export const PULL_REQUEST_SOURCE_ID = "pull-request";
@@ -33,6 +33,15 @@ const PR_LIST_LIMIT = 200;
  */
 const MAX_ROLLUP_FETCHES = 20;
 const ROLLUP_JSON_FIELDS = "statusCheckRollup,mergeable";
+
+/**
+ * COS-8b landed lane: ONE additional bounded list call per repo per tick.
+ * `--state closed` is GitHub's MERGED superset — `mergedAt` splits real merges
+ * from closed-via-ff-push rows (the JB ship-to-prod idiom), which the parse
+ * keeps as `via: "closed"`. The projection window-filters to LANDED_WINDOW_DAYS.
+ */
+const LANDED_JSON_FIELDS = "number,title,url,headRefName,mergedAt,closedAt";
+const LANDED_LIST_LIMIT = 50;
 
 interface ResolvedRollup {
   readonly ciState: PrCiState;
@@ -127,10 +136,66 @@ export const pullRequestSource: WorkSignalSource = {
       }
       const errors: SignalError[] = [];
       const rollups = await resolveRollups(c, repo.repo, prs, errors);
-      return { signals: prs.flatMap((pr) => prSignals(repo, pr, rollups.get(pr.number))), errors };
+      const landed = await collectLandedPrs(c, repo, errors);
+      return {
+        signals: [...prs.flatMap((pr) => prSignals(repo, pr, rollups.get(pr.number))), ...landed],
+        errors,
+      };
     });
   },
 };
+
+/**
+ * The COS-8b landed fetch: one bounded `gh pr list --state closed` per repo.
+ * Degrade-never-throw: a failed/unparseable read records ONE degraded error and
+ * yields no landed signals (the lane's absence is honest — open-PR signals from
+ * the same tick are unaffected).
+ */
+async function collectLandedPrs(ctx: CollectionContext, repo: RepoRoot, errors: SignalError[]): Promise<LandedPrSignal[]> {
+  const result = await ctx.gh.run(repo.repo, [
+    "pr",
+    "list",
+    "--state",
+    "closed",
+    "--limit",
+    String(LANDED_LIST_LIMIT),
+    "--json",
+    LANDED_JSON_FIELDS,
+  ]);
+  const ghErr = errorFromSubprocess(result, "gh pr list --state closed");
+  if (ghErr) {
+    errors.push(ghErr);
+    return [];
+  }
+  const { prs, ok } = parseGhLandedPrList(result.stdout);
+  if (!ok) {
+    errors.push({ code: "parse_error", message: "gh pr list --state closed returned unparseable JSON", degraded: true });
+    return [];
+  }
+  return prs.map((pr) => landedSignal(repo, pr));
+}
+
+/** One `LandedPrSignal` per landed PR (ticketIds ride the ONE signal — no fan-out). */
+function landedSignal(repo: RepoRoot, pr: GhLandedPr): LandedPrSignal {
+  const fromTitle = extractTicketIds(pr.title);
+  const ticketIds = fromTitle.length > 0 ? fromTitle : parseBranch(pr.headRefName).ticketIds;
+  return {
+    kind: "landed_pr",
+    source: PULL_REQUEST_SOURCE_ID,
+    repo: repo.repo,
+    prNumber: pr.number,
+    confidence: fromTitle.length > 0 ? "high" : "medium",
+    freshness: "live",
+    errors: [],
+    mtime: pr.landedAt,
+    title: pr.title || null,
+    url: pr.url || null,
+    headRef: pr.headRefName || null,
+    landedAt: pr.landedAt,
+    via: pr.via,
+    ticketIds,
+  };
+}
 
 /** Resolve a PR's tickets from its title scope, falling back to the head branch. */
 function ticketsForPr(pr: GhPr): { ticketIds: string[]; viaBranch: boolean } {

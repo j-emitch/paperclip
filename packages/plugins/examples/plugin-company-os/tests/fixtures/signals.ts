@@ -10,6 +10,7 @@ import type {
   AgentSignal,
   BranchSignal,
   DocSignal,
+  LandedPrSignal,
   LineageSignal,
   RepoGitSignal,
   ReviewSignal,
@@ -43,6 +44,26 @@ export function work(
     state,
     precedence,
     evidence: over.evidence ?? `${ticketId ?? "?"} evidence`,
+    ...over,
+  };
+}
+
+/** A recently-landed PR signal (COS-8b) — landedAt defaults to 1 day before NOW. */
+export function landedPr(prNumber: number, over: Partial<LandedPrSignal> = {}): LandedPrSignal {
+  return {
+    kind: "landed_pr",
+    source: "pull-request",
+    repo: "juice-bar",
+    prNumber,
+    confidence: "high",
+    freshness: "live",
+    errors: [],
+    title: `feat(COS-${prNumber}): landed`,
+    url: `https://gh/${prNumber}`,
+    headRef: `cos/COS-${prNumber}`,
+    landedAt: new Date(NOW - 24 * 60 * 60 * 1000).toISOString(),
+    via: "merged",
+    ticketIds: [`COS-${prNumber}`],
     ...over,
   };
 }

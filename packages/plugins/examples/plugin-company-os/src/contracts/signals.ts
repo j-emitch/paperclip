@@ -37,6 +37,7 @@ import type {
   WorktreeOrigin,
   WorktreeMergeStatus,
   PrCiState,
+  PrLandedVia,
   PrMergeableState,
   PrReviewDecision,
 } from "./vocab.js";
@@ -588,6 +589,35 @@ export interface TicketSignal extends SignalProvenance {
   readonly referencedFamilies: readonly string[];
 }
 
+// ---------------------------------------------------------------------------
+// COS-8b — recently-landed PR signal
+//
+// A DISTINCT kind (the PF-2 filter-in idiom — like DocSignal/WorktreeSignal),
+// NOT a `WorkSignal` with a marker flag: `deriveBoardState`, `deriveBuildAtlas`,
+// and `deriveOrientation` all fold `isWorkSignal` work into board columns /
+// Atlas lifecycle / shipped chips, and a merged-PR "shipped" work signal would
+// duplicate `GitWorkSource`'s commit-derived ships in every one of them. A
+// distinct kind is inert to every existing (and future) work fold by
+// construction; only `deriveGitState` consumes it, for the landed lane.
+// ---------------------------------------------------------------------------
+
+/** A PR that recently left the open state — the Branch·PR recently-landed lane's currency. */
+export interface LandedPrSignal extends SignalProvenance {
+  readonly kind: "landed_pr";
+  /** PR number — REQUIRED here (narrows the optional provenance `prNumber`). */
+  readonly prNumber: number;
+  readonly title: string | null;
+  readonly url: string | null;
+  /** The PR's head branch name; null when gh omitted it. */
+  readonly headRef: string | null;
+  /** When it landed: `mergedAt`, else `closedAt` (ISO-8601) — the lane's clock. */
+  readonly landedAt: string;
+  /** merged (GitHub merge) vs closed (ff-push-landed OR abandoned — rendered distinctly). */
+  readonly via: PrLandedVia;
+  /** Tickets resolved from the PR title scope, else its head branch (may be empty). */
+  readonly ticketIds: readonly string[];
+}
+
 /** The discriminated union of everything a source can emit. */
 export type Signal =
   | WorkSignal
@@ -602,7 +632,8 @@ export type Signal =
   | DocSignal
   | SkillSignal
   | LineageSignal
-  | TicketSignal;
+  | TicketSignal
+  | LandedPrSignal;
 
 /** Narrowing helpers — keep the `kind` discriminant the single branch point. */
 export const isWorkSignal = (s: Signal): s is WorkSignal => s.kind === "work";
@@ -617,3 +648,4 @@ export const isDocSignal = (s: Signal): s is DocSignal => s.kind === "doc";
 export const isSkillSignal = (s: Signal): s is SkillSignal => s.kind === "skill";
 export const isLineageSignal = (s: Signal): s is LineageSignal => s.kind === "lineage";
 export const isTicketSignal = (s: Signal): s is TicketSignal => s.kind === "ticket";
+export const isLandedPrSignal = (s: Signal): s is LandedPrSignal => s.kind === "landed_pr";

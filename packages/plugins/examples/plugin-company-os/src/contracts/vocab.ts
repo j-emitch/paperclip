@@ -311,6 +311,16 @@ export const PR_REVIEW_DECISIONS = ["approved", "changes_requested", "review_req
 export type PrReviewDecision = (typeof PR_REVIEW_DECISIONS)[number];
 
 /**
+ * How a landed PR left the open state (COS-8b recently-landed lane). `merged` =
+ * GitHub recorded a merge (`mergedAt` set); `closed` = closed with a null
+ * `mergedAt` — which on this workspace usually means the work LANDED via the JB
+ * ship-to-prod ff-push (GitHub marks those PRs closed, not merged), but can also
+ * be a genuinely-abandoned PR. The lane renders the two honestly distinct.
+ */
+export const PR_LANDED_VIAS = ["merged", "closed"] as const;
+export type PrLandedVia = (typeof PR_LANDED_VIAS)[number];
+
+/**
  * COS-8f doc-git reads: the 5-state freshness ladder for a doc copy, and the
  * shared result statuses of the `doc-git-freshness` / `doc-diff` handlers.
  * `checkout_gone` is §4.1 row 4 — a worktree pruned between index fetch and

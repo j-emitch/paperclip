@@ -21,6 +21,7 @@ import { projectGroupV1Schema, projectTaxonomyV1Schema } from "./projects.js";
 import {
   BRANCH_COMPARISONS,
   PR_CI_STATES,
+  PR_LANDED_VIAS,
   PR_MERGEABLE_STATES,
   PR_REVIEW_DECISIONS,
   BRANCH_STATUSES,
@@ -35,6 +36,7 @@ import {
   type Expect,
   type HealthSeverity,
   type PrCiState,
+  type PrLandedVia,
   type PrMergeableState,
   type PrReviewDecision,
   type RepoAvailability,
@@ -188,6 +190,33 @@ export function prRollupKey(repoKey: string, prNumber: number): string {
 /** Per-tick bound on rollup fetches — the other half of the rate contract. */
 export const MAX_ROLLUP_FETCHES = 20;
 
+// ---------------------------------------------------------------------------
+// COS-8b — the recently-landed lane
+// ---------------------------------------------------------------------------
+
+/** The landed lane's window: PRs that left the open state within the last N days. */
+export const LANDED_WINDOW_DAYS = 7 as const;
+
+export const prLandedViaSchema = z.enum(PR_LANDED_VIAS);
+
+/**
+ * One recently-landed PR (COS-8b) — the `LandedPrSignal` payload minus its
+ * provenance envelope. `via: "closed"` (null `mergedAt`) is kept and rendered
+ * distinctly: the JB ship-to-prod ff-push lands work but leaves the PR
+ * closed-not-merged, so dropping non-merged rows would hide real ships.
+ */
+export const landedPrV1Schema = z.object({
+  prNumber: z.number().int().positive(),
+  title: z.string().nullable(),
+  url: z.string().min(1).nullable(),
+  headRef: z.string().min(1).nullable(),
+  /** When it landed (`mergedAt` ?? `closedAt`, ISO-8601) — drives the window + sort. */
+  landedAt: z.string().min(1),
+  via: prLandedViaSchema,
+  ticketIds: z.array(z.string()),
+});
+export type LandedPrV1 = z.infer<typeof landedPrV1Schema>;
+
 /** The persisted per-branch row — the `BranchSignal` git payload (no provenance envelope). */
 export const branchGitV1Schema = z.object({
   branch: z.string().nullable(),
@@ -224,6 +253,12 @@ export const repoGitStateV1Schema = z.object({
    * visible (never dropped) so the branch/PR picture is honest; [] when none.
    */
   orphanPullRequests: z.array(branchPrV1Schema),
+  /**
+   * PRs that landed within `LANDED_WINDOW_DAYS` (COS-8b), newest first. Named
+   * "landed" not "merged": closed-via-ff-push rows (JB ship-to-prod) are landed
+   * work GitHub never marked merged. Defaulted so pre-8b cached payloads parse.
+   */
+  landedPullRequests: z.array(landedPrV1Schema).default([]),
 });
 export type RepoGitStateV1 = z.infer<typeof repoGitStateV1Schema>;
 
@@ -273,3 +308,4 @@ type _HealthSeverityMatches = Expect<AssertEqual<z.infer<typeof healthSeveritySc
 type _PrCiStateMatches = Expect<AssertEqual<z.infer<typeof prCiStateSchema>, PrCiState>>;
 type _PrMergeableMatches = Expect<AssertEqual<z.infer<typeof prMergeableStateSchema>, PrMergeableState>>;
 type _PrReviewDecisionMatches = Expect<AssertEqual<z.infer<typeof prReviewDecisionSchema>, PrReviewDecision>>;
+type _PrLandedViaMatches = Expect<AssertEqual<z.infer<typeof prLandedViaSchema>, PrLandedVia>>;

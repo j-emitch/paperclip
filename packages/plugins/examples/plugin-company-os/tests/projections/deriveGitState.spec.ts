@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { deriveGitState } from "../../src/projections/deriveGitState.js";
 import { parseGitStateV1 } from "../../src/contracts/git-state.js";
-import { NOW, branchSignal, bundleOf, repoGitSignal, review, work } from "../fixtures/signals.js";
+import { NOW, branchSignal, bundleOf, landedPr, repoGitSignal, review, work } from "../fixtures/signals.js";
 import { taxonomyFixture } from "../fixtures/taxonomy.js";
 import type { WorkSignal } from "../../src/contracts/signals.js";
 
@@ -248,5 +248,76 @@ describe("COS-8a — PR-action statuses fold (one ladder: git + PR states)", () 
     const b = jb(gs).branches.find((x) => x.branch === "claude/D-1/x")!;
     expect(b.statuses).toContain("pr_ci_failing");
     expect(b.statuses).not.toContain("pr_changes_requested");
+  });
+});
+
+describe("COS-8b — recently-landed lane fold", () => {
+  const jb = (gs: ReturnType<typeof deriveGitState>) =>
+    gs.groups.find((g) => g.group.key === "juice-bar")!.repos.find((r) => r.repoKey === "juice-bar")!;
+  const day = 24 * 60 * 60 * 1000;
+
+  it("folds landed signals into the repo row — newest first, via + tickets carried", () => {
+    const gs = deriveGitState(
+      bundleOf([
+        repoGitSignal("juice-bar"),
+        landedPr(395, { landedAt: new Date(NOW - 2 * day).toISOString(), ticketIds: ["GD-5"] }),
+        landedPr(401, { landedAt: new Date(NOW - 1 * day).toISOString(), via: "closed", ticketIds: ["SSF-07"] }),
+      ]),
+      NOW,
+      TAX,
+    );
+    const landed = jb(gs).landedPullRequests;
+    expect(landed.map((l) => l.prNumber)).toEqual([401, 395]);
+    expect(landed[0]).toMatchObject({ via: "closed", ticketIds: ["SSF-07"] });
+    expect(landed[1]).toMatchObject({ via: "merged", ticketIds: ["GD-5"] });
+  });
+
+  it("window-filters to LANDED_WINDOW_DAYS; unparseable landedAt drops out", () => {
+    const gs = deriveGitState(
+      bundleOf([
+        repoGitSignal("juice-bar"),
+        landedPr(1, { landedAt: new Date(NOW - 8 * day).toISOString() }), // outside 7d
+        landedPr(2, { landedAt: "not-a-date" }),
+        landedPr(3, { landedAt: new Date(NOW - 6 * day).toISOString() }),
+      ]),
+      NOW,
+      TAX,
+    );
+    expect(jb(gs).landedPullRequests.map((l) => l.prNumber)).toEqual([3]);
+  });
+
+  it("dedups by {repo, prNumber} — a doubled batch folds once", () => {
+    const gs = deriveGitState(
+      bundleOf([repoGitSignal("juice-bar"), landedPr(9), landedPr(9)]),
+      NOW,
+      TAX,
+    );
+    expect(jb(gs).landedPullRequests).toHaveLength(1);
+  });
+
+  it("landed signals never touch open-PR rows or the rollup cache", () => {
+    const gs = deriveGitState(
+      bundleOf([
+        repoGitSignal("juice-bar"),
+        branchSignal("cos/COS-9", { repo: "juice-bar" }),
+        landedPr(9, { headRef: "cos/COS-9" }),
+      ]),
+      NOW,
+      TAX,
+    );
+    const b = jb(gs).branches.find((x) => x.branch === "cos/COS-9")!;
+    expect(b.pullRequests).toEqual([]);
+    expect(jb(gs).orphanPullRequests).toEqual([]);
+    expect(Object.keys(gs.prRollups)).toEqual([]);
+  });
+
+  it("a pre-8b cached payload (no landedPullRequests key) parses via the zod default", () => {
+    const gs = deriveGitState(bundleOf([repoGitSignal("juice-bar")]), NOW, TAX);
+    const legacy = JSON.parse(JSON.stringify(gs)) as Record<string, unknown>;
+    for (const g of (legacy.groups as { repos: Record<string, unknown>[] }[])) {
+      for (const r of g.repos) delete r.landedPullRequests;
+    }
+    const parsed = parseGitStateV1(legacy);
+    expect(parsed.groups.every((g) => g.repos.every((r) => Array.isArray(r.landedPullRequests) && r.landedPullRequests.length === 0))).toBe(true);
   });
 });

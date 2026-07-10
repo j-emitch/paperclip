@@ -13,10 +13,12 @@
 import type { SignalBundle } from "../contracts/WorkSignalSource.js";
 import {
   isBranchSignal,
+  isLandedPrSignal,
   isRepoGitSignal,
   isReviewSignal,
   isWorkSignal,
   type BranchSignal,
+  type LandedPrSignal,
   type ReviewSignal,
   type WorkSignal,
 } from "../contracts/signals.js";
@@ -26,9 +28,11 @@ import type { PrCiState, PrMergeableState, PrReviewDecision, ReviewVerdict } fro
 import { branchStatusSeverity, prActionStatuses } from "../contracts/branch-health.js";
 import {
   GIT_STATE_SCHEMA_VERSION,
+  LANDED_WINDOW_DAYS,
   type BranchGitV1,
   type BranchPrV1,
   type GitStateV1,
+  type LandedPrV1,
   type PrReviewV1,
   type ProjectGitSectionV1,
   type RepoGitStateV1,
@@ -47,6 +51,9 @@ export function deriveGitState(bundle: SignalBundle, nowMs: number, taxonomy: Pr
   // multi-ticket PR fans into several signals, so the collector dedups by number.
   const prSignals = signals.filter(isWorkSignal).filter((w) => typeof w.prNumber === "number");
   const reviews = signals.filter(isReviewSignal);
+  // COS-8b: recently-landed PRs are a DISTINCT signal kind (inert to the board /
+  // Atlas work folds); this projection is their only consumer.
+  const landedByRepo = collectLandedByRepo(signals.filter(isLandedPrSignal), nowMs);
 
   const branchesByRepo = new Map<string, BranchSignal[]>();
   for (const b of branches) {
@@ -78,6 +85,7 @@ export function deriveGitState(bundle: SignalBundle, nowMs: number, taxonomy: Pr
       trunk: { ref: rg.trunk.ref, state: rg.trunk.state },
       branches: repoBranches,
       orphanPullRequests,
+      landedPullRequests: landedByRepo.get(rg.repo) ?? [],
     });
   }
 
@@ -99,6 +107,7 @@ export function deriveGitState(bundle: SignalBundle, nowMs: number, taxonomy: Pr
         trunk: { ref: null, state: "missing" },
         branches: [],
         orphanPullRequests: [],
+        landedPullRequests: [],
       };
     });
 
@@ -192,6 +201,41 @@ function toBranchGitV1(b: BranchSignal, repoPrs: readonly BranchPrV1[]): BranchG
     attentionSeverity: branchStatusSeverity(statuses),
     pullRequests,
   };
+}
+
+/**
+ * Fold `LandedPrSignal`s into per-repo lane rows (COS-8b): window-filter to
+ * `LANDED_WINDOW_DAYS` against the derive clock, dedup by `{repo, prNumber}`
+ * (the source emits one signal per PR, but a doubled batch must not double the
+ * lane), newest-landed first. An unparseable `landedAt` fails the window check
+ * and drops out — a row with no clock can't claim recency.
+ */
+function collectLandedByRepo(landed: readonly LandedPrSignal[], nowMs: number): Map<string, LandedPrV1[]> {
+  const windowMs = LANDED_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const seen = new Set<string>();
+  const byRepo = new Map<string, LandedPrV1[]>();
+  for (const s of landed) {
+    const t = Date.parse(s.landedAt);
+    if (!Number.isFinite(t) || nowMs - t > windowMs) continue;
+    const key = `${s.repo}#${s.prNumber}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const list = byRepo.get(s.repo) ?? [];
+    list.push({
+      prNumber: s.prNumber,
+      title: s.title,
+      url: s.url,
+      headRef: s.headRef,
+      landedAt: s.landedAt,
+      via: s.via,
+      ticketIds: [...s.ticketIds],
+    });
+    byRepo.set(s.repo, list);
+  }
+  for (const list of byRepo.values()) {
+    list.sort((a, b) => b.landedAt.localeCompare(a.landedAt) || b.prNumber - a.prNumber);
+  }
+  return byRepo;
 }
 
 /**

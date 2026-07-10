@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { pullRequestSource } from "../../src/sources/PullRequestSource.js";
-import { isWorkSignal } from "../../src/contracts/signals.js";
+import { isLandedPrSignal, isWorkSignal } from "../../src/contracts/signals.js";
 import { makeFixtureContext, proc, type ProcResponder } from "../fixtures/context.js";
 
 const prJson = (prs: unknown[]): string => JSON.stringify(prs);
@@ -8,13 +8,18 @@ const rollupJson = (over: Partial<{ statusCheckRollup: unknown[]; mergeable: str
   JSON.stringify({ statusCheckRollup: over.statusCheckRollup ?? [], mergeable: over.mergeable ?? "UNKNOWN" });
 
 /**
- * Route `pr list` to the test's responder and `pr view` (the COS-11 rollup step)
- * to a benign empty rollup unless the test supplies its own — keeps the
- * pre-rollup tests' single-responder ergonomics.
+ * Route the source's THREE gh calls: `pr view` (the COS-11 rollup step) → a
+ * benign empty rollup, the `--state closed` list (the COS-8b landed step) → an
+ * empty array, and the open `pr list` → the test's responder — each overridable.
+ * Keeps the pre-rollup tests' single-responder ergonomics.
  */
-function ctxWithGh(list: ProcResponder, view?: ProcResponder) {
+function ctxWithGh(list: ProcResponder, view?: ProcResponder, landed?: ProcResponder) {
   const gh: ProcResponder = (repo, args) =>
-    args[1] === "view" ? (view ?? (() => proc.ok(rollupJson())))(repo, args) : list(repo, args);
+    args[1] === "view"
+      ? (view ?? (() => proc.ok(rollupJson())))(repo, args)
+      : args.includes("closed")
+        ? (landed ?? (() => proc.ok("[]")))(repo, args)
+        : list(repo, args);
   return makeFixtureContext({ repos: [{ repo: "juice-bar", available: true }], gh });
 }
 
@@ -222,5 +227,56 @@ describe("COS-11.gh-fields rollup — bounded fetch + cache-by-change", () => {
     const errors = batch.repoFreshness.flatMap((f) => f.errors.map((e) => e.code));
     expect(errors).toContain("parse_error");
     expect(batch.signals.filter(isWorkSignal)[0]).toMatchObject({ prNumber: 6, ciState: "unknown" });
+  });
+});
+
+describe("COS-8b — landed-PR fetch", () => {
+  const landedJson = JSON.stringify([
+    { number: 395, title: "feat(GD-5): blast radius", url: "https://gh/395", headRefName: "claude/GD-5/x", mergedAt: "2026-07-08T10:00:00Z", closedAt: "2026-07-08T10:00:00Z" },
+    { number: 401, title: "ship to prod", url: "https://gh/401", headRefName: "claude/SSF-07/claims", mergedAt: null, closedAt: "2026-07-09T09:00:00Z" },
+  ]);
+
+  it("emits ONE landed_pr signal per closed PR — merged + ff-push-closed, tickets resolved", async () => {
+    const ctx = ctxWithGh(
+      () => proc.ok("[]"),
+      undefined,
+      () => proc.ok(landedJson),
+    );
+    const landed = (await pullRequestSource.collect(ctx)).signals.filter(isLandedPrSignal);
+    expect(landed).toHaveLength(2);
+    expect(landed[0]).toMatchObject({
+      kind: "landed_pr",
+      prNumber: 395,
+      via: "merged",
+      landedAt: "2026-07-08T10:00:00Z",
+      ticketIds: ["GD-5"],
+      confidence: "high",
+    });
+    // No title scope → head-branch fallback, lower confidence.
+    expect(landed[1]).toMatchObject({ prNumber: 401, via: "closed", ticketIds: ["SSF-07"], confidence: "medium" });
+  });
+
+  it("a failed landed fetch degrades WITHOUT hiding the open-PR signals", async () => {
+    const ctx = ctxWithGh(
+      () => proc.ok(prJson([{ number: 8, title: "feat(COS-8): x", headRefName: "cos/COS-8", headRefOid: "s", url: "u", isDraft: false, updatedAt: "t" }])),
+      undefined,
+      () => proc.fail(1, "boom"),
+    );
+    const batch = await pullRequestSource.collect(ctx);
+    expect(batch.signals.filter(isWorkSignal)).toHaveLength(1);
+    expect(batch.signals.filter(isLandedPrSignal)).toEqual([]);
+    expect(batch.repoFreshness[0].errors.length).toBeGreaterThan(0);
+  });
+
+  it("malformed landed JSON → parse_error, no landed signals, open flow unaffected", async () => {
+    const ctx = ctxWithGh(
+      () => proc.ok("[]"),
+      undefined,
+      () => proc.ok("not json"),
+    );
+    const batch = await pullRequestSource.collect(ctx);
+    expect(batch.signals.filter(isLandedPrSignal)).toEqual([]);
+    const errors = batch.repoFreshness.flatMap((f) => f.errors.map((e) => e.code));
+    expect(errors).toContain("parse_error");
   });
 });

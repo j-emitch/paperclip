@@ -9,6 +9,7 @@ import { parseGhPrRollup,
   parseCommitScope,
   parseCompanyOsBlock,
   parseFrontmatter,
+  parseGhLandedPrList,
   parseGhPrList,
   parseGitLogRecords,
   parseMergeBranch,
@@ -255,6 +256,35 @@ describe("gh pr list JSON", () => {
   it("ok:false on non-JSON / non-array", () => {
     expect(parseGhPrList("not json").ok).toBe(false);
     expect(parseGhPrList('{"x":1}').ok).toBe(false);
+  });
+});
+
+describe("parseGhLandedPrList (COS-8b)", () => {
+  it("mergedAt set → via merged; null mergedAt but closedAt → via closed (ff-push idiom kept)", () => {
+    const { prs, ok } = parseGhLandedPrList(
+      JSON.stringify([
+        { number: 395, title: "feat(GD-5): x", url: "u1", headRefName: "claude/GD-5/x", mergedAt: "2026-07-08T10:00:00Z", closedAt: "2026-07-08T10:00:00Z" },
+        { number: 396, title: "fix(GD-6): y", url: "u2", headRefName: "claude/GD-6/y", mergedAt: null, closedAt: "2026-07-09T09:00:00Z" },
+      ]),
+    );
+    expect(ok).toBe(true);
+    expect(prs).toEqual([
+      { number: 395, title: "feat(GD-5): x", url: "u1", headRefName: "claude/GD-5/x", landedAt: "2026-07-08T10:00:00Z", via: "merged" },
+      { number: 396, title: "fix(GD-6): y", url: "u2", headRefName: "claude/GD-6/y", landedAt: "2026-07-09T09:00:00Z", via: "closed" },
+    ]);
+  });
+  it("a row with NEITHER timestamp is skipped (no clock, no window claim)", () => {
+    const { prs, ok } = parseGhLandedPrList(
+      JSON.stringify([{ number: 7, title: "t", url: "u", headRefName: "h", mergedAt: null, closedAt: null }]),
+    );
+    expect(ok).toBe(true);
+    expect(prs).toEqual([]);
+  });
+  it("ok:false on non-JSON / non-array; missing fields coerce", () => {
+    expect(parseGhLandedPrList("nope").ok).toBe(false);
+    expect(parseGhLandedPrList('{"x":1}').ok).toBe(false);
+    const { prs } = parseGhLandedPrList(JSON.stringify([{ number: 3, closedAt: "2026-07-01T00:00:00Z" }]));
+    expect(prs[0]).toEqual({ number: 3, title: "", url: "", headRefName: "", landedAt: "2026-07-01T00:00:00Z", via: "closed" });
   });
 });
 

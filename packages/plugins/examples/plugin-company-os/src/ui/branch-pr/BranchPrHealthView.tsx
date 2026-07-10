@@ -29,6 +29,7 @@ import {
 } from "../shared/git-labels.js";
 import { BranchRow } from "./BranchRow.js";
 import { PrChip, PrDetailRow } from "./PrChip.js";
+import { RecentlyLandedLane } from "./RecentlyLandedLane.js";
 import { type AttentionRow, type FlaggedReviewRow, buildBranchPrView } from "./branch-pr-view-model.js";
 
 export interface BranchPrHealthViewProps {
@@ -455,22 +456,28 @@ function RepoSection({
 
       {!available ? (
         <CalmNote>This repo is configured but {REPO_AVAILABILITY_LABELS[repo.availability]} — nothing to show until it&rsquo;s present.</CalmNote>
-      ) : branches.length === 0 && repo.orphanPullRequests.length === 0 ? (
-        <CalmNote tone={statusColors.ship}>No branches — clean working copy.</CalmNote>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {branches.map((branch) => (
-            <BranchRow
-              key={branch.branch ?? `_detached:${branch.headSha}`}
-              branch={branch}
-              now={now}
-              isMobile={isMobile}
-              defaultExpanded={expandKey === branchExpandKey(repo.repoKey, branch.branch)}
-            />
-          ))}
-          {repo.orphanPullRequests.length > 0 ? (
-            <OrphanPrs prs={repo.orphanPullRequests} now={now} />
-          ) : null}
+          {branches.length === 0 && repo.orphanPullRequests.length === 0 ? (
+            <CalmNote tone={statusColors.ship}>No branches — clean working copy.</CalmNote>
+          ) : (
+            <>
+              {branches.map((branch) => (
+                <BranchRow
+                  key={branch.branch ?? `_detached:${branch.headSha}`}
+                  branch={branch}
+                  now={now}
+                  isMobile={isMobile}
+                  defaultExpanded={expandKey === branchExpandKey(repo.repoKey, branch.branch)}
+                />
+              ))}
+              {repo.orphanPullRequests.length > 0 ? (
+                <OrphanPrs prs={repo.orphanPullRequests} now={now} />
+              ) : null}
+            </>
+          )}
+          {/* COS-8b: what shipped this week — rendered for every available repo (show-0). */}
+          <RecentlyLandedLane landed={repo.landedPullRequests} now={now} />
         </div>
       )}
     </section>

@@ -183,6 +183,27 @@ export function goldenGitState(): GitStateV1 {
               },
             ],
             orphanPullRequests: [],
+            // COS-8b: a real merge + a closed-via-ff-push row (rendered distinctly).
+            landedPullRequests: [
+              {
+                prNumber: 396,
+                title: "fix(GD-6): hook-drift heal",
+                url: "https://github.com/j-emitch/JuiceBar/pull/396",
+                headRef: "claude/GD-6/heal",
+                landedAt: "2026-06-25T14:00:00Z",
+                via: "merged",
+                ticketIds: ["GD-6"],
+              },
+              {
+                prNumber: 379,
+                title: "feat(SSF-07): sale-identity claims",
+                url: "https://github.com/j-emitch/JuiceBar/pull/379",
+                headRef: "claude/SSF-07/claims",
+                landedAt: "2026-06-24T10:00:00Z",
+                via: "closed",
+                ticketIds: ["SSF-07"],
+              },
+            ],
           },
           {
             repoKey: "arc-scraper",

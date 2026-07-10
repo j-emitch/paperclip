@@ -12,7 +12,7 @@
  */
 
 import type { CommitRef, CommitStat } from "../contracts/signals.js";
-import type { PrCiState, PrMergeableState, PrReviewDecision, DocType, ReviewReportKind, ReviewVerdict, UnclassifiedReason } from "../contracts/vocab.js";
+import type { PrCiState, PrLandedVia, PrMergeableState, PrReviewDecision, DocType, ReviewReportKind, ReviewVerdict, UnclassifiedReason } from "../contracts/vocab.js";
 import { extractTicketIds, prefixOf, ticketFromFilename } from "../contracts/ticket-id.js";
 
 // ---------------------------------------------------------------------------
@@ -422,6 +422,59 @@ export function parseGhPrList(stdout: string): { prs: GhPr[]; ok: boolean } {
       isDraft: o.isDraft === true,
       updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : "",
       reviewDecision: normalizeReviewDecision(o.reviewDecision),
+    });
+  }
+  return { prs, ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// gh pr list --state closed JSON (COS-8b recently-landed lane)
+// ---------------------------------------------------------------------------
+
+export interface GhLandedPr {
+  readonly number: number;
+  readonly title: string;
+  readonly url: string;
+  readonly headRefName: string;
+  /** When it landed: `mergedAt`, else `closedAt` (ISO-8601). */
+  readonly landedAt: string;
+  readonly via: PrLandedVia;
+}
+
+/**
+ * Parse `gh pr list --state closed --json number,title,url,headRefName,mergedAt,closedAt`.
+ * GitHub's closed state is the MERGED superset, and `mergedAt` splits the two:
+ * set → `via: "merged"`; null → `via: "closed"` (the JB ship-to-prod ff-push
+ * lands work but leaves the PR closed-not-merged, so closed rows are kept — the
+ * lane renders them distinctly). A row with NEITHER timestamp has no clock for
+ * the landed window and is skipped. `ok: false` on malformed/non-array JSON so
+ * the caller records a `parse_error` rather than throwing.
+ */
+export function parseGhLandedPrList(stdout: string): { prs: GhLandedPr[]; ok: boolean } {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(stdout);
+  } catch {
+    return { prs: [], ok: false };
+  }
+  if (!Array.isArray(raw)) return { prs: [], ok: false };
+  const prs: GhLandedPr[] = [];
+  for (const item of raw) {
+    if (typeof item !== "object" || item === null) continue;
+    const o = item as Record<string, unknown>;
+    const number = typeof o.number === "number" ? o.number : Number.parseInt(String(o.number), 10);
+    if (!Number.isFinite(number)) continue;
+    const mergedAt = typeof o.mergedAt === "string" && o.mergedAt !== "" ? o.mergedAt : null;
+    const closedAt = typeof o.closedAt === "string" && o.closedAt !== "" ? o.closedAt : null;
+    const landedAt = mergedAt ?? closedAt;
+    if (landedAt === null) continue;
+    prs.push({
+      number,
+      title: typeof o.title === "string" ? o.title : "",
+      url: typeof o.url === "string" ? o.url : "",
+      headRefName: typeof o.headRefName === "string" ? o.headRefName : "",
+      landedAt,
+      via: mergedAt !== null ? "merged" : "closed",
     });
   }
   return { prs, ok: true };

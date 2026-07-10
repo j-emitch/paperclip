@@ -333,6 +333,8 @@ function kindOf(signal: Signal): Signal["kind"] {
       return "ticket";
     case "worktree":
       return "worktree";
+    case "landed_pr":
+      return "landed_pr";
     default: {
       const _exhaustive: never = signal;
       return _exhaustive;

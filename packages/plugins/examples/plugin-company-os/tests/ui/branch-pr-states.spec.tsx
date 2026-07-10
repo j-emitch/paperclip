@@ -71,6 +71,21 @@ describe("Branch · PR Health SSR", () => {
     expect(html).toContain("cron/RE-30"); // the orphan PR's head ref is shown
   });
 
+  it("COS-8b: the recently-landed lane renders merged vs closed HONESTLY, with ticket chips", () => {
+    const html = renderToStaticMarkup(<BranchPrHealthView gitState={goldenGitState()} now={BRANCH_PR_NOW} />);
+    expect(html).toContain("Recently landed (7d)");
+    // The juice-bar lane: a real merge + a closed-via-ff-push row, distinct chips.
+    expect(html).toContain("#396");
+    expect(html).toContain("merged");
+    expect(html).toContain("#379");
+    expect(html).toContain("closed");
+    // Ticket chips cross-link the lane to the family vocabulary.
+    expect(html).toContain("GD-6");
+    expect(html).toContain("SSF-07");
+    // A repo with NO landed PRs shows the honest 0 line, not a hidden lane.
+    expect(html).toContain("none in the last 7d");
+  });
+
   it("renders the empty git state as a calm 0-state, never a crash", () => {
     const html = renderToStaticMarkup(<BranchPrHealthView gitState={emptyGitState()} now={BRANCH_PR_NOW} />);
     expect(html).toContain("Branch · PR Health");
