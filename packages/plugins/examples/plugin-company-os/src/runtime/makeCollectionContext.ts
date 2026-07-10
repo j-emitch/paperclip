@@ -15,13 +15,17 @@
 import { execFile, type ExecFileException } from "node:child_process";
 import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
-import { readdir, lstat } from "node:fs/promises";
+import { open, readdir, lstat } from "node:fs/promises";
+import { homedir } from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { readContainedText, readContainedTextHead, statContained } from "./workspace-fs.js";
 import { buildCheckoutKeyMap } from "./checkout-keys.js";
 
 import type {
+  AllowlistedLogKey,
+  AllowlistedLogReader,
+  AllowlistedTailResult,
   Clock,
   CollectionContext,
   ContentHasher,
@@ -187,6 +191,7 @@ export async function makeCollectionContext(deps: AdapterDeps): Promise<Collecti
   };
 
   const fs: WorkspaceReader = makeWorkspaceReader(absByKey, opts, logger);
+  const logs: AllowlistedLogReader = makeAllowlistedLogReader(absByKey, logger);
   const hash: ContentHasher = (input) => createHash("sha256").update(input).digest("hex");
   const registry: RegistryLoader = makeRegistryLoader(absByKey, logger);
   const lineage: LineageLoader = makeLineageLoader(absByKey, logger);
@@ -199,6 +204,7 @@ export async function makeCollectionContext(deps: AdapterDeps): Promise<Collecti
     git,
     gh,
     fs,
+    logs,
     clock,
     logger,
     registry,
@@ -314,6 +320,74 @@ async function walk(
       }
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Allowlisted out-of-repo log reader (COS-11 T0 — spec §3.3b)
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve an `AllowlistedLogKey` to its ONE sanctioned absolute path. This map
+ * is the entire out-of-repo read surface: enum-addressed here, never exposed as
+ * a free path to any source. `homeRoot` is injectable for tests.
+ */
+export function allowlistedLogPath(key: AllowlistedLogKey, absByKey: ReadonlyMap<string, string>, homeRoot: string): string | null {
+  switch (key.log) {
+    case "codex_invocations":
+      return path.join(homeRoot, ".claude", "logs", "codex-invocations.ndjson");
+    case "cannons_runs":
+      return path.join(homeRoot, ".claude", "logs", "cannons-runs.log");
+    case "repo_guardrails": {
+      const repoAbs = absByKey.get(key.repoKey);
+      return repoAbs ? path.join(repoAbs, ".claude", "logs", "guardrails.ndjson") : null;
+    }
+  }
+}
+
+/**
+ * Bounded tail read: at most the LAST `maxBytes` of the file. Truncation is an
+ * EXPECTED state (logs grow forever and retention-prune) — the result flags it
+ * and the text may begin mid-line; consumers drop the first partial line.
+ * Absence returns null (NORMAL); any read error also returns null with a debug
+ * log (fail-soft — a gates source degrades, it never throws).
+ */
+export async function readTailBounded(absPath: string, maxBytes: number, logger: SignalLogger): Promise<AllowlistedTailResult | null> {
+  let fh;
+  try {
+    fh = await open(absPath, "r");
+  } catch {
+    return null; // absent — normal
+  }
+  try {
+    const st = await fh.stat();
+    const size = st.size;
+    const readBytes = Math.min(size, Math.max(0, maxBytes));
+    const start = size - readBytes;
+    const buf = Buffer.alloc(readBytes);
+    await fh.read(buf, 0, readBytes, start);
+    return {
+      text: buf.toString("utf8"),
+      truncated: size > maxBytes,
+      mtime: st.mtime.toISOString(),
+      sizeBytes: size,
+    };
+  } catch (e) {
+    logger.debug("allowlisted tail read failed", { absPath, error: String(e) });
+    return null;
+  } finally {
+    await fh.close().catch(() => {});
+  }
+}
+
+function makeAllowlistedLogReader(absByKey: ReadonlyMap<string, string>, logger: SignalLogger): AllowlistedLogReader {
+  const home = homedir();
+  return {
+    async readAllowlistedTail(key, maxBytes) {
+      const abs = allowlistedLogPath(key, absByKey, home);
+      if (!abs) return null; // unknown repoKey — normal (a repo without a root)
+      return readTailBounded(abs, maxBytes, logger);
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------

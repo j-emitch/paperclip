@@ -151,6 +151,42 @@ export interface SignalLogger {
  */
 export type ContentHasher = (input: string) => string;
 
+// ---------------------------------------------------------------------------
+// COS-11 T0 — the §3.3b allowlisted out-of-repo reader
+// ---------------------------------------------------------------------------
+
+/**
+ * The ONLY out-of-repo files the pipeline may read (spec §3.3b), addressed by
+ * ENUM — no free-path argument exists anywhere on this seam, so a source
+ * cannot be coaxed into reading an arbitrary home-dir path. The key→absolute-
+ * path mapping lives in the COS-0c adapter (never in a source):
+ *   codex_invocations → ~/.claude/logs/codex-invocations.ndjson
+ *   cannons_runs      → ~/.claude/logs/cannons-runs.log
+ *   repo_guardrails   → <repoRoot>/.claude/logs/guardrails.ndjson (per repoKey)
+ */
+export type AllowlistedLogKey =
+  | { readonly log: "codex_invocations" }
+  | { readonly log: "cannons_runs" }
+  | { readonly log: "repo_guardrails"; readonly repoKey: string };
+
+/** A bounded TAIL read of an allowlisted log (logs grow forever + retention-prune). */
+export interface AllowlistedTailResult {
+  /** The last ≤ maxBytes of the file. May BEGIN mid-line when truncated — the
+   * consumer drops the first partial line (spec §4.1 row 7). */
+  readonly text: string;
+  /** True when the file was larger than maxBytes (an EXPECTED state, never an error). */
+  readonly truncated: boolean;
+  /** ISO-8601 mtime — the DispatchLedgerSource watermark. */
+  readonly mtime: string;
+  readonly sizeBytes: number;
+}
+
+/** Enum-only, tail-bounded reader for the §3.3b allowlist. */
+export interface AllowlistedLogReader {
+  /** null = the log does not exist (NORMAL — e.g. a repo that never ran the gate). */
+  readAllowlistedTail(key: AllowlistedLogKey, maxBytes: number): Promise<AllowlistedTailResult | null>;
+}
+
 /** The context handed to every `WorkSignalSource.collect`. */
 export interface CollectionContext {
   /** All resolved repo roots (available or not). Sources skip unavailable repos with a stale signal. */
@@ -176,6 +212,15 @@ export interface CollectionContext {
   readonly git: GitRunner;
   readonly gh: GhRunner;
   readonly fs: WorkspaceReader;
+  /**
+   * The §3.3b allowlisted out-of-repo log reader (COS-11 T0). A SEPARATE seam
+   * from `fs` on purpose: `WorkspaceReader`'s containment story is "repo-key-
+   * relative reads only", and these three logs are the sole sanctioned
+   * exception — enum-addressed, tail-bounded. Optional so fixture contexts
+   * that predate COS-11 stay valid; a gates source treats absence as
+   * "logs unreadable this run" (degraded, never a throw).
+   */
+  readonly logs?: AllowlistedLogReader;
   readonly clock: Clock;
   readonly logger: SignalLogger;
   /** The canonical prefix-registry loader (single source of truth — see registry.ts). */
