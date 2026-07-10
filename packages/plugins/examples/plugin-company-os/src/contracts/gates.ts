@@ -91,11 +91,14 @@ export function parseCodexDispatchLine(line: string): CodexDispatchRow | null {
   if (typeof raw !== "object" || raw === null) return null;
   const o = raw as Record<string, unknown>;
   if (typeof o.t !== "string" || typeof o.consumer !== "string") return null;
+  // success is load-bearing (lane pass/fail) — a row without a boolean is
+  // malformed, not "false" (coercion would render a fake failed lane).
+  if (typeof o.success !== "boolean") return null;
   return {
     t: o.t,
     consumer: o.consumer,
     repo: typeof o.repo === "string" ? o.repo : "",
-    success: o.success === true,
+    success: o.success,
     model: typeof o.model === "string" ? o.model : "",
   };
 }
@@ -105,8 +108,15 @@ export function parseCodexDispatchLine(line: string): CodexDispatchRow | null {
  * first line may be partial and is DROPPED (spec §4.1 row 7).
  */
 export function completeTailLines(text: string, truncated: boolean): string[] {
-  const lines = text.split("\n").filter((l) => l.trim() !== "");
-  return truncated ? lines.slice(1) : lines;
+  let t = text;
+  if (truncated) {
+    // Drop ONLY the initial partial segment (up to the first newline). When the
+    // cut lands exactly ON a newline the first segment is empty and the first
+    // FULL row survives — filtering empties before slicing used to eat it.
+    const nl = t.indexOf("\n");
+    t = nl === -1 ? "" : t.slice(nl + 1);
+  }
+  return t.split("\n").filter((l) => l.trim() !== "");
 }
 
 /** Parse the GATE_SUITES= assignment out of run-hook-tests.sh (suite names, space-separated). */

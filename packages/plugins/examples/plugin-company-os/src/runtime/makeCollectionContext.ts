@@ -191,7 +191,11 @@ export async function makeCollectionContext(deps: AdapterDeps): Promise<Collecti
   };
 
   const fs: WorkspaceReader = makeWorkspaceReader(absByKey, opts, logger);
-  const logs: AllowlistedLogReader = makeAllowlistedLogReader(absByKey, logger);
+  // The guardrails allowlist covers MAIN repo roots only — never worktree
+  // checkout keys or skill roots (CodeRabbit COS-11: passing the full read-key
+  // map widened the §3.3b repo_guardrails domain beyond configured repos).
+  const mainRootAbsByKey = new Map(checkoutKeys.mainRoots.map((r) => [r.repoKey, r.absPath]));
+  const logs: AllowlistedLogReader = makeAllowlistedLogReader(mainRootAbsByKey, logger);
   const hash: ContentHasher = (input) => createHash("sha256").update(input).digest("hex");
   const registry: RegistryLoader = makeRegistryLoader(absByKey, logger);
   const lineage: LineageLoader = makeLineageLoader(absByKey, logger);
@@ -364,9 +368,10 @@ export async function readTailBounded(absPath: string, maxBytes: number, logger:
     const readBytes = Math.min(size, Math.max(0, maxBytes));
     const start = size - readBytes;
     const buf = Buffer.alloc(readBytes);
-    await fh.read(buf, 0, readBytes, start);
+    const { bytesRead } = await fh.read(buf, 0, readBytes, start);
     return {
-      text: buf.toString("utf8"),
+      // Decode only what was actually read — a short read must not append NULs.
+      text: buf.subarray(0, bytesRead).toString("utf8"),
       truncated: size > maxBytes,
       mtime: st.mtime.toISOString(),
       sizeBytes: size,

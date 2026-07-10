@@ -14,7 +14,7 @@
  * derive is trivial (§10.8 deviation note).
  */
 
-import { reposResponsibleFor, type CollectionContext } from "../contracts/collection-context.js";
+import { reposResponsibleFor, signalError, type CollectionContext } from "../contracts/collection-context.js";
 import type { SignalBatch, WorkSignalSource } from "../contracts/WorkSignalSource.js";
 import type { DispatchLedgerSignal, Signal } from "../contracts/signals.js";
 import {
@@ -43,12 +43,25 @@ export const dispatchLedgerSource: WorkSignalSource = {
     }
     const signals: Signal[] = [];
 
-    // No logs seam (pre-COS-11 fixture context) → nothing to read this run. The
-    // runtime always wires ctx.logs; absence is a fixture-only state, so this is
-    // a warn + empty, not a degraded board row.
+    // No logs seam → the ledgers were UNREADABLE this run — degraded per the
+    // CollectionContext contract ("a gates source treats absence as logs
+    // unreadable this run"), never a silent empty (the runtime always wires
+    // ctx.logs; only a pre-COS-11 fixture context lacks it).
     if (!ctx.logs) {
       ctx.logger.warn(`${DISPATCH_LEDGER_SOURCE_ID}: ctx.logs absent; ledgers not read`);
-      return { source: DISPATCH_LEDGER_SOURCE_ID, collectedAt, signals, repoFreshness: [] };
+      return {
+        source: DISPATCH_LEDGER_SOURCE_ID,
+        collectedAt,
+        signals,
+        repoFreshness: [
+          {
+            repo: LEDGER_REPO,
+            freshness: "stale",
+            lastOkAt: null,
+            errors: [signalError("not_found", "ctx.logs absent — dispatch ledgers unreadable this run")],
+          },
+        ],
+      };
     }
 
     const provenance = {

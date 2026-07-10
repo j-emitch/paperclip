@@ -96,6 +96,30 @@ describe("HooksSource", () => {
     expect(jb.gateSuites).toEqual([]);
   });
 
+  it("a FAILED canonical read (company available) degrades every repo — parity unknown is never silent-live", async () => {
+    const base = makeFixtureContext({
+      repos: [
+        { repo: "juice-bar", available: true },
+        { repo: "company", available: true },
+      ],
+      files: { "juice-bar": { ".githooks/pre-push": { content: CANONICAL_PRE_PUSH } } },
+    });
+    const ctx = {
+      ...base,
+      fs: {
+        ...base.fs,
+        list: (repo: string, globs: readonly string[]) =>
+          repo === "company" ? Promise.reject(new Error("boom")) : base.fs.list(repo, globs),
+      },
+    };
+    const batch = await hooksSource.collect(ctx);
+    const jb = batch.signals.filter(isHooksSignal).find((s) => s.repo === "juice-bar") as HooksSignal;
+    expect(jb.parity).toBe("unknown");
+    const fresh = batch.repoFreshness.find((f) => f.repo === "juice-bar")!;
+    expect(fresh.freshness).toBe("stale");
+    expect(fresh.errors.length).toBeGreaterThan(0);
+  });
+
   it("no logs at all: guardrail fields null/[], lastGateRun null (absence is NORMAL)", async () => {
     const ctx = makeFixtureContext({
       repos: [

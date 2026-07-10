@@ -42,12 +42,12 @@ export const migrationTargetV1Schema = z.object({
   ranAt: z.string().nullable(),
   auditRelPath: z.string().min(1),
   auditMtime: z.string().nullable(),
-  totalEntries: z.number().int(),
-  notAppliedCount: z.number().int(),
-  orphanTrackerRows: z.number().int(),
-  unauditedBranchFiles: z.number().int(),
-  grantSurfaceViolations: z.number().int(),
-  grantSurfaceScanned: z.number().int(),
+  totalEntries: z.number().int().nonnegative(),
+  notAppliedCount: z.number().int().nonnegative(),
+  orphanTrackerRows: z.number().int().nonnegative(),
+  unauditedBranchFiles: z.number().int().nonnegative(),
+  grantSurfaceViolations: z.number().int().nonnegative(),
+  grantSurfaceScanned: z.number().int().nonnegative(),
   lastApplyRelPath: z.string().nullable(),
   lastApplyAt: z.string().nullable(),
   /** true = carried from a PRIOR derive (row-8) — renders as a stale marker, never silent-green. */
@@ -92,7 +92,7 @@ export const protectionRepoV1Schema = z.object({
   branch: z.string().min(1),
   enforceAdmins: z.boolean().nullable(),
   requiredChecks: z.array(z.string()),
-  requiredReviews: z.number().int().nullable(),
+  requiredReviews: z.number().int().nonnegative().nullable(),
   /** null = NEVER verified against live (no assert receipt exists) — an honest warn tier. */
   verifiedAt: z.string().nullable(),
 });

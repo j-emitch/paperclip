@@ -40,6 +40,16 @@ function migrationTone(m: MigrationTargetV1): string {
   return statusColors.ship;
 }
 
+/**
+ * Last-good is a FRESHNESS marker, not a severity: carried drift stays
+ * danger/revise (CodeRabbit COS-11 — stale tone was masking carried drift);
+ * only a carried CLEAN row renders the stale tone.
+ */
+function migrationRowTone(m: MigrationTargetV1): string {
+  const tone = migrationTone(m);
+  return m.lastGood && tone === statusColors.ship ? statusColors.stale : tone;
+}
+
 function migrationSummary(m: MigrationTargetV1): string {
   const drift: string[] = [];
   if (m.notAppliedCount > 0) drift.push(`${m.notAppliedCount} unapplied`);
@@ -52,14 +62,34 @@ function migrationSummary(m: MigrationTargetV1): string {
 function protectionTone(p: ProtectionRepoV1): string {
   // enforce_admins=true is the codified drift class (single-admin deadlock).
   if (p.enforceAdmins === true) return statusColors.danger;
+  // Unreadable/absent field ≠ unverified desired state — distinct tones.
+  if (p.enforceAdmins === null) return statusColors.reviewUnknown;
   if (p.verifiedAt === null) return statusColors.revise;
   return statusColors.ship;
 }
 
-/** Connected masthead: quiet while absent — the band never displaces the board. */
+/**
+ * Connected masthead: quiet while LOADING/absent (the band never displaces the
+ * board with a frame), but a fetch ERROR renders an explicit one-liner with
+ * retry — an errored gates read must not look like "no gates" (silent-green).
+ */
 export function GatesBand({ companyId, now, isMobile }: { companyId: string | null; now: number; isMobile: boolean }) {
-  const { gates } = useGatesState(companyId);
-  if (!gates) return null;
+  const { gates, error, refresh } = useGatesState(companyId);
+  if (!gates) {
+    if (!error) return null;
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: tokens.muted }}>
+        <span>gates state unreadable: {error.message}</span>
+        <button
+          type="button"
+          onClick={refresh}
+          style={{ background: "none", border: `1px solid ${tokens.border}`, borderRadius: 6, padding: "1px 8px", color: "inherit", font: "inherit", cursor: "pointer" }}
+        >
+          retry
+        </button>
+      </div>
+    );
+  }
   return <GatesBandView gates={gates} now={now} isMobile={isMobile} />;
 }
 
@@ -67,6 +97,8 @@ export function GatesBand({ companyId, now, isMobile }: { companyId: string | nu
 export function GatesBandView({ gates, now, isMobile }: { gates: GatesStateV1; now: number; isMobile: boolean }) {
   const [open, setOpen] = useState(false);
   const drifted = gates.hooks.filter((h) => h.parity === "drifted" || h.parity === "missing");
+  const unknownHooks = gates.hooks.filter((h) => h.parity === "unknown");
+  // Worst wins; UNKNOWN parity is NOT green — "in sync" claims full evidence.
   const worstHooksTone =
     gates.hooks.length === 0
       ? statusColors.reviewUnknown
@@ -74,7 +106,17 @@ export function GatesBandView({ gates, now, isMobile }: { gates: GatesStateV1; n
         ? statusColors.danger
         : drifted.length > 0
           ? statusColors.revise
-          : statusColors.ship;
+          : unknownHooks.length > 0
+            ? statusColors.reviewUnknown
+            : statusColors.ship;
+  const hooksLabel =
+    gates.hooks.length === 0
+      ? "hooks: none read"
+      : drifted.length > 0
+        ? `hooks: ${drifted.length}/${gates.hooks.length} drifted`
+        : unknownHooks.length > 0
+          ? `hooks: ${unknownHooks.length}/${gates.hooks.length} unknown`
+          : `hooks: ${gates.hooks.length} in sync`;
   const protDrift = gates.protection.filter((p) => p.enforceAdmins === true);
 
   return (
@@ -95,7 +137,15 @@ export function GatesBandView({ gates, now, isMobile }: { gates: GatesStateV1; n
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         style={{
-          all: "unset",
+          // Explicit resets, NOT `all: "unset"` — that nuked the native
+          // :focus-visible outline (keyboard focus must stay visible).
+          background: "none",
+          border: "none",
+          margin: 0,
+          padding: 0,
+          font: "inherit",
+          color: "inherit",
+          textAlign: "left",
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
@@ -109,18 +159,7 @@ export function GatesBandView({ gates, now, isMobile }: { gates: GatesStateV1; n
         <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: tokens.muted }}>
           Gates
         </span>
-        <Pill
-          label={
-            gates.hooks.length === 0
-              ? "hooks: none read"
-              : drifted.length > 0
-                ? `hooks: ${drifted.length}/${gates.hooks.length} drifted`
-                : `hooks: ${gates.hooks.length} in sync`
-          }
-          tone={worstHooksTone}
-          soft
-          withDot
-        />
+        <Pill label={hooksLabel} tone={worstHooksTone} soft withDot />
         {gates.migrations.length === 0 ? (
           <Pill label="migrations: no audit on disk" tone={statusColors.reviewUnknown} soft />
         ) : (
@@ -128,7 +167,7 @@ export function GatesBandView({ gates, now, isMobile }: { gates: GatesStateV1; n
             <Pill
               key={m.target}
               label={`${m.target}: ${migrationSummary(m)}${m.lastGood ? " · last-good" : ""}`}
-              tone={m.lastGood ? statusColors.stale : migrationTone(m)}
+              tone={migrationRowTone(m)}
               soft
               withDot
               title={m.lastGood ? "no live audit row this derive — carried from the prior derive" : (m.ranAt ?? undefined)}
@@ -245,7 +284,7 @@ function MigrationRow({ row, now }: { row: MigrationTargetV1; now: number }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
       <span style={{ fontSize: 12, fontWeight: 600, minWidth: 84 }}>{row.target}</span>
-      <Pill label={migrationSummary(row)} tone={row.lastGood ? statusColors.stale : migrationTone(row)} soft withDot />
+      <Pill label={migrationSummary(row)} tone={migrationRowTone(row)} soft withDot />
       {row.lastGood ? (
         <Pill label="last-good" tone={statusColors.stale} title="no live audit row this derive — value carried from the prior derive" />
       ) : null}

@@ -35,11 +35,14 @@ interface CanonicalState {
   /** hook name → content; null = company repo unreadable this run. */
   readonly hooks: ReadonlyMap<string, string> | null;
   readonly gateSuites: readonly string[];
+  /** Non-null when the canonical read FAILED (vs company merely unavailable) —
+   * propagated onto every repo's errors so "parity unknown" is never silent. */
+  readonly error: SignalError | null;
 }
 
 async function readCanonical(ctx: CollectionContext): Promise<CanonicalState> {
   const company = ctx.repos.find((r) => r.repo === GATES_COMPANY_REPO);
-  if (!company || !company.available) return { hooks: null, gateSuites: [] };
+  if (!company || !company.available) return { hooks: null, gateSuites: [], error: null };
   const hooks = new Map<string, string>();
   try {
     const stats = await ctx.fs.list(GATES_COMPANY_REPO, [CANONICAL_HOOKS_GLOB]);
@@ -47,8 +50,8 @@ async function readCanonical(ctx: CollectionContext): Promise<CanonicalState> {
       const name = st.relPath.split("/").pop() ?? st.relPath;
       hooks.set(name, await ctx.fs.readText(GATES_COMPANY_REPO, st.relPath));
     }
-  } catch {
-    return { hooks: null, gateSuites: [] };
+  } catch (e) {
+    return { hooks: null, gateSuites: [], error: readError(`${GATES_COMPANY_REPO}/${CANONICAL_HOOKS_GLOB}`, e) };
   }
   let gateSuites: string[] = [];
   try {
@@ -56,7 +59,7 @@ async function readCanonical(ctx: CollectionContext): Promise<CanonicalState> {
   } catch {
     /* roster unreadable — [] renders honestly */
   }
-  return { hooks, gateSuites };
+  return { hooks, gateSuites, error: null };
 }
 
 /** Newest cannons-runs row per repo, read ONCE per collect via the allowlisted tail. */
@@ -118,6 +121,9 @@ export const hooksSource: WorkSignalSource = {
 
       // Parity byte-diff vs canonical.
       const canon = await canonical();
+      // A FAILED canonical read (vs company merely unavailable) degrades every
+      // repo this run — "parity unknown" must carry its why, never read live-green.
+      if (canon.error) errors.push(canon.error);
       let parity: HooksSignal["parity"] = "unknown";
       const driftedHooks: string[] = [];
       if (canon.hooks !== null) {

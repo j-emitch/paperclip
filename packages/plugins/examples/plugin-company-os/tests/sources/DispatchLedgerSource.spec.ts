@@ -81,6 +81,27 @@ describe("DispatchLedgerSource", () => {
     expect(batch.repoFreshness).toHaveLength(0);
   });
 
+  it("MISSING logs seam (pre-COS-11 context) degrades — unreadable is never a silent empty", async () => {
+    const ctx = { ...makeFixtureContext(), logs: undefined };
+    const batch = await dispatchLedgerSource.collect(ctx);
+    expect(batch.signals).toHaveLength(0);
+    expect(batch.repoFreshness).toHaveLength(1);
+    expect(batch.repoFreshness[0].freshness).toBe("stale");
+    expect(batch.repoFreshness[0].errors[0]?.message).toContain("unreadable");
+  });
+
+  it("completeTailLines: a cut landing exactly ON a newline keeps the first FULL row", async () => {
+    // Tail text begins with "\n" (the cut consumed exactly up to a line break) —
+    // only the empty initial segment is dropped, not the first complete row.
+    const ctx = makeFixtureContext({
+      logs: { cannons_runs: { content: `\n${CANNONS}`, truncated: true, mtime: "2026-07-09T12:00:00.000Z" } },
+    });
+    const batch = await dispatchLedgerSource.collect(ctx);
+    const sig = batch.signals.filter(isDispatchLedgerSignal)[0] as DispatchLedgerSignal;
+    expect(sig.cannonsRuns).toHaveLength(2);
+    expect(sig.cannonsRuns![0].runId).toBe("111-1-1");
+  });
+
   it("emits nothing on a scoped refresh that doesn't touch company", async () => {
     const ctx = makeFixtureContext({ scopeRepo: "juice-bar", logs: { cannons_runs: CANNONS } });
     const batch = await dispatchLedgerSource.collect(ctx);

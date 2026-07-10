@@ -109,7 +109,7 @@ export const migrationAuditSource: WorkSignalSource = {
     try {
       const audits = await ctx.fs.list(MIGRATION_AUDIT_REPO, [MIGRATION_AUDIT_GLOB]);
       // Newest file per target wins — read newest-first, first hit per target sticks.
-      const sorted = [...audits].sort((a, b) => (a.mtime < b.mtime ? 1 : -1));
+      const sorted = [...audits].sort((a, b) => (a.mtime < b.mtime ? 1 : a.mtime > b.mtime ? -1 : 0));
       const seenTargets = new Set<string>();
       for (const file of sorted) {
         let text: string;
