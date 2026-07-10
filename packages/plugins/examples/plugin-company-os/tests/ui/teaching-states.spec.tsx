@@ -106,3 +106,12 @@ describe("Teaching surface freshness (B4)", () => {
     expect(html).toMatch(/Teaching is (live|stale)/);
   });
 });
+
+describe("Teaching synthesis SLO card (B10)", () => {
+  it("renders the synthesis tile through the shared RoutineSloCard", () => {
+    const html = view(populated());
+    expect(html).toContain('data-slo-variant="card"');
+    expect(html).toContain("Librarian Routine 12");
+    expect(html).toContain("Never ran"); // populated() synthesis verdict = never_ran, via the shared verdict ladder
+  });
+});

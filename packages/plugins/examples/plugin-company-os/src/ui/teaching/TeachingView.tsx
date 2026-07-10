@@ -17,7 +17,9 @@ import { Pill } from "../shared/badges.js";
 import { withAlpha } from "../shared/color.js";
 import { CockpitSurfaceStyles } from "../shared/surface-styles.js";
 import { StaleSourcePills, SurfaceFreshnessBadge } from "../shared/freshness.js";
-import { InboxIcon, ClockIcon, CheckIcon, AlertIcon, TeachingIcon } from "../icons.js";
+import { RoutineSloCard } from "../shared/RoutineSloCard.js";
+import type { RoutineSloView } from "../shared/routine-slo-view.js";
+import { InboxIcon, CheckIcon, AlertIcon, TeachingIcon } from "../icons.js";
 import { relativeTime } from "../shared/time.js";
 import { TeachingFilters } from "./TeachingFilters.js";
 import {
@@ -29,7 +31,6 @@ import {
   PUBLISH_LABELS,
   PUBLISH_ORDER,
   PUBLISH_TONES,
-  SYNTH_VERDICT_LABELS,
   SYNTH_VERDICT_TONES,
   buildTeachingView,
   prettyUnit,
@@ -232,21 +233,27 @@ function BacklogCard({ overview, now }: { overview: TeachingOverviewV1; now: num
   );
 }
 
+/**
+ * B10: the synthesis loop-health tile IS a routine SLO — render it through the
+ * shared `RoutineSloCard` (verdict ladder, last-run, artifact presence) instead
+ * of a bespoke StatCard. The teaching contract's synthesis verdict already
+ * reuses the routine-health ladder, so the mapping is structural.
+ */
 function SynthesisCard({ overview, now }: { overview: TeachingOverviewV1; now: number }) {
-  const { verdict, lastSynthesisAt } = overview.synthesis;
-  const tone = SYNTH_VERDICT_TONES[verdict];
-  const last = relativeTime(lastSynthesisAt, now);
-  return (
-    <StatCard tone={tone} icon={<ClockIcon size={16} />} title="Synthesis">
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <Pill label={SYNTH_VERDICT_LABELS[verdict]} tone={tone} soft withDot />
-        <span style={{ fontSize: 12.5, color: tokens.muted }}>{last ? `last run ${last}` : "never run"}</span>
-      </div>
-      <p style={{ margin: 0, fontSize: 11.5, color: tokens.muted, lineHeight: 1.4 }}>
-        Librarian Routine 12 synthesizes the inbox into units.
-      </p>
-    </StatCard>
-  );
+  const routine: RoutineSloView = {
+    routineKey: "librarian-teachings-synthesis",
+    displayName: "Synthesis — Librarian Routine 12",
+    cadence: "on inbox promote",
+    freshnessKind: "artifact",
+    expectedArtifactGlob: "docs/teachings/**/units/**",
+    lastRunAt: overview.synthesis.lastSynthesisAt,
+    nextExpectedAt: null,
+    expectedArtifactPresent: overview.unitCounts.total > 0,
+    latestArtifactPath: null,
+    verdict: overview.synthesis.verdict,
+    detail: "Librarian Routine 12 synthesizes the inbox into units.",
+  };
+  return <RoutineSloCard routine={routine} now={now} variant="card" />;
 }
 
 // ---------------------------------------------------------------------------
