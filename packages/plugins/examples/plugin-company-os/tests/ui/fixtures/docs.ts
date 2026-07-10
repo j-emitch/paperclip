@@ -7,7 +7,7 @@
  * (this COS-1 spec read from the `cos-COS-1 @ docs/COS-1` worktree).
  */
 
-import { makeDocId, parseDocIndexV1, type DocEntryV1, type DocIndexV1 } from "../../../src/contracts/index.js";
+import { DOC_INDEX_SCHEMA_VERSION, makeDocId, parseDocIndexV1, type DocEntryV1, type DocIndexV1 } from "../../../src/contracts/index.js";
 import { findProjectGroup } from "../../../src/contracts/projects.js";
 import type { DocIndexType } from "../../../src/contracts/vocab.js";
 import { taxonomyFixture } from "../../fixtures/taxonomy.js";
@@ -77,7 +77,7 @@ function bucket(type: DocIndexType, docs: DocEntryV1[]) {
 
 export function goldenDocIndex(): DocIndexV1 {
   return parseDocIndexV1({
-    schemaVersion: 1,
+    schemaVersion: DOC_INDEX_SCHEMA_VERSION,
     derivedAt: "2026-06-26T17:56:00Z",
     taxonomy: TAX,
     groups: [
@@ -109,7 +109,7 @@ export function goldenDocIndex(): DocIndexV1 {
 
 export function emptyDocIndex(): DocIndexV1 {
   return parseDocIndexV1({
-    schemaVersion: 1,
+    schemaVersion: DOC_INDEX_SCHEMA_VERSION,
     derivedAt: "2026-06-26T17:56:00Z",
     taxonomy: TAX,
     groups: [],

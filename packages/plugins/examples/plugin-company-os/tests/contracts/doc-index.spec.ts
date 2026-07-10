@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DOC_FRONTMATTER_SCAN_BYTES,
+  DOC_INDEX_SCHEMA_VERSION,
   MAX_DOCS_PER_REPO,
   docIndexV1Schema,
   parseDocIndexV1,
@@ -11,7 +12,7 @@ const TAXONOMY = { schemaVersion: 1 as const, groups: [], source: "derived-defau
 const GROUP = { key: "company", displayName: "Company", kind: "company" as const, repos: [{ repoKey: "company", role: "primary" as const }], order: 0 };
 
 const MINIMAL = {
-  schemaVersion: 1 as const,
+  schemaVersion: DOC_INDEX_SCHEMA_VERSION,
   derivedAt: "2026-06-23T00:00:00.000Z",
   taxonomy: TAXONOMY,
   groups: [],
@@ -44,6 +45,10 @@ describe("DocIndexV1", () => {
                   provenance: "main",
                   title: "X",
                   status: "shipped",
+                  owner: "joe",
+                  lastUpdated: "2026-07-01",
+                  statusVerifiedAt: null,
+                  description: "A doc.",
                   mtime: "2026-06-23T01:00:00.000Z",
                 },
                 {
@@ -57,6 +62,10 @@ describe("DocIndexV1", () => {
                   provenance: "worktree",
                   title: "X (worktree)",
                   status: "draft",
+                  owner: null,
+                  lastUpdated: null,
+                  statusVerifiedAt: null,
+                  description: null,
                   mtime: "2026-06-23T02:00:00.000Z",
                 },
               ],
@@ -81,7 +90,7 @@ describe("DocIndexV1", () => {
   });
 
   it("rejects a wrong schemaVersion", () => {
-    expect(docIndexV1Schema.safeParse({ ...MINIMAL, schemaVersion: 2 }).success).toBe(false);
+    expect(docIndexV1Schema.safeParse({ ...MINIMAL, schemaVersion: 99 }).success).toBe(false);
   });
 
   it("exposes the index-time cap constants", () => {
