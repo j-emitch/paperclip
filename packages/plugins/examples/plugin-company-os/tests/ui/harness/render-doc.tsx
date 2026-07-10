@@ -11,7 +11,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactElement, ReactNode } from "react";
 import { CompanyOsBoardView } from "../../../src/ui/board/CompanyOsBoardView.js";
 import { EmptyState, ErrorState, LoadingState } from "../../../src/ui/board/states.js";
-import { ReportsView } from "../../../src/ui/reports/ReportsView.js";
 import { DocumentViewerPanel } from "../../../src/ui/shared/DocumentViewerPanel.js";
 import { HomeView } from "../../../src/ui/home/HomeView.js";
 import { BranchPrHealthView } from "../../../src/ui/branch-pr/BranchPrHealthView.js";
@@ -24,11 +23,10 @@ import { SurfaceEmpty } from "../../../src/ui/shared/surface-state.js";
 import { AtlasIcon } from "../../../src/ui/icons.js";
 import { CockpitMotionStyles } from "../../../src/ui/shared/cockpit-motion.js";
 import { TeachingView } from "../../../src/ui/teaching/TeachingView.js";
-import { EMPTY_FILTER } from "../../../src/ui/reports/reports-view-model.js";
 import { EMPTY_TEACHING_FILTER } from "../../../src/ui/teaching/teaching-view-model.js";
 import type { BoardStateV1, TeachingOverviewV1 } from "../../../src/contracts/index.js";
 import { goldenBoard, staleBoard, zeroChipBoard, RENDER_NOW } from "../fixtures/board.js";
-import { goldenArtifactIndex, okMarkdownContent, REPORTS_NOW } from "../fixtures/reports.js";
+import { okMarkdownContent } from "../fixtures/reports.js";
 import { goldenOrientation, emptyOrientation, HOME_NOW } from "../fixtures/home.js";
 import { goldenGitState, emptyGitState, BRANCH_PR_NOW } from "../fixtures/branch-pr.js";
 import { goldenDocIndex, emptyDocIndex, dogfoodSpecDocId, DOCS_NOW } from "../fixtures/docs.js";
@@ -77,21 +75,6 @@ function board(state: BoardStateV1, now: number, isMobile: boolean): ReactElemen
       onSetAllCollapsed={noop}
       onRefresh={noop}
       refreshing={false}
-    />
-  );
-}
-
-function reports(isMobile: boolean): ReactElement {
-  return (
-    <ReportsView
-      index={goldenArtifactIndex()}
-      filter={EMPTY_FILTER}
-      onFilterChange={noop}
-      selectedKey={null}
-      onSelect={noop}
-      now={REPORTS_NOW}
-      isMobile={isMobile}
-      viewer={<DocumentViewerPanel content={okMarkdownContent()} loading={false} error={null} now={REPORTS_NOW} isMobile={isMobile} renderMarkdown={preMarkdown} />}
     />
   );
 }
@@ -217,8 +200,6 @@ export function harnessDocs(): HarnessDoc[] {
     { name: "empty", width: 1180, html: document("Board · empty", renderToStaticMarkup(<EmptyState onRefresh={noop} />), 720) },
     { name: "loading", width: 1180, html: document("Board · loading", renderToStaticMarkup(<LoadingState />), 720) },
     { name: "error", width: 1180, html: document("Board · error", renderToStaticMarkup(<ErrorState message="The plugin worker did not respond." onRetry={noop} />), 720) },
-    { name: "reports-desktop", width: 1180, html: document("Reports · populated", renderToStaticMarkup(reports(false)), 1180) },
-    { name: "reports-mobile", width: 390, html: document("Reports · mobile", renderToStaticMarkup(reports(true)), 390) },
     { name: "home-desktop", width: 1180, html: document("Home · populated", renderToStaticMarkup(home(false)), 1180) },
     { name: "home-mobile", width: 390, html: document("Home · mobile", renderToStaticMarkup(home(true)), 390) },
     { name: "home-empty", width: 1180, html: document("Home · empty (all 0-states)", renderToStaticMarkup(home(false, { empty: true })), 1180) },
