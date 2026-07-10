@@ -31,7 +31,17 @@ const SPEC_GLOBS = [
 ] as const;
 const CONTEXT_GLOBS = ["CONTEXT.md"] as const;
 
-/** Frontmatter status → board state. Unlisted/`done`-family → no work signal. */
+/**
+ * Frontmatter status → board state. Unlisted/`done`-family → no work signal.
+ *
+ * C5 (B9): the 2026-07-02 backlog standard's states are FIRST-CLASS here —
+ * `triaged` → next_up, `validation-ready`/`implemented-pending-review` →
+ * in_review — instead of silently emitting nothing. The canonical vocabulary is
+ * owned by `company/docs/status-frontmatter-standard.md` + its machine copy
+ * `company/config/lib/frontmatter-meta.mjs` (WF-06); this hand-copied mapping is
+ * pinned by the lockstep test in `SpecBacklogSource.spec.ts` (cross-repo import
+ * is unavailable at source layer — noted in the order-0 plan §10).
+ */
 const NEXT_UP_STATUSES = new Set([
   "draft",
   "planned",
@@ -46,15 +56,18 @@ const NEXT_UP_STATUSES = new Set([
   "approved",
   "open",
   "blocked",
+  "triaged",
 ]);
 const IN_PROGRESS_STATUSES = new Set(["in-progress", "in_progress", "active", "building", "wip"]);
+const IN_REVIEW_STATUSES = new Set(["validation-ready", "implemented-pending-review"]);
 
 function stateForStatus(status: string | null): WorkState | null {
   if (!status) return null;
   const s = status.trim().toLowerCase();
   if (NEXT_UP_STATUSES.has(s)) return "next_up";
   if (IN_PROGRESS_STATUSES.has(s)) return "in_progress";
-  return null; // done/shipped/complete/etc. — git owns Shipped
+  if (IN_REVIEW_STATUSES.has(s)) return "in_review";
+  return null; // done/shipped/deferred/archived/etc. — git owns Shipped; parked states stay off the board
 }
 
 export const specBacklogSource: WorkSignalSource = {
