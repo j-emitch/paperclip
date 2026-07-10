@@ -183,7 +183,7 @@ describe("GitStateV1", () => {
   });
 
   it("exposes the §7 threshold + cost-cap constants (K7-retuned COS-8e)", () => {
-    expect(BEHIND_WARN).toBe(6);
+    expect(BEHIND_WARN).toBe(24); // K7 round 2: ~1 week of trunk velocity
     expect(STALE_WARN).toBe(14);
     // K7 2026-07-09: cap 12 left ~90% of live jb's 117 eligible branches
     // conflict-blind; 48 covers every ACTIVE-eligible branch (29) with headroom.

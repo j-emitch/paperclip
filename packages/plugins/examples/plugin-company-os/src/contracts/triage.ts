@@ -19,22 +19,35 @@
  *      (K7), so the Branch·PR repo header renders conflict-prediction
  *      coverage so a budget-blinded repo can't read as calm.
  *
- * K7 ALERT-NOISE DECISIONS (2026-07-09, live jb = 203 branches / 117
- * conflict-eligible / 29 eligible-AND-active):
+ * K7 ALERT-NOISE DECISIONS (2026-07-09, two rounds against the LIVE population;
+ * round-1 capture: jb = 203 branches / 117 conflict-eligible / 29 active-eligible;
+ * round-2 capture, post-round-1 live derive: jb attention lane still 103/208
+ * cards — 79 of them "behind-heavy" ACTIVE trees (p50 behind = 68), company 41
+ * (p50 = 325 — a docs-velocity trunk), arc 5 (ALL behind 7-24)):
  *   - `stale` and `unmerged_orphan` are LOW severity (cleanup-queue items, not
  *     daily alerts) — an old tip with no fresh work flooding the attention
- *     band was the K7 signal (165 jb cards).
+ *     band was the original K7 signal (165 jb cards).
  *   - `behind` fires ONLY while the branch is still ACTIVE (tip within
- *     STALE_WARN days): an active behind-heavy branch needs a rebase NOW; a
- *     stale behind branch is just stale.
- *   - The worktree lane ladder mirrors the same rule: behind-heavy promotes to
- *     `needs_attention` only for a tip-active tree.
+ *     STALE_WARN days), and is LOW severity: with conflict prediction at real
+ *     coverage (48-cap, dirty+recent-first), behind-alone is informational —
+ *     `conflicting`, `dirty`, and the PR-action statuses own the attention
+ *     band. Trunk velocity (~28 commits/wk jb; far higher on company) makes any
+ *     small behind threshold vacuous, which round 2 proved live.
+ *   - The worktree lane ladder promotes behind-heavy to `needs_attention` only
+ *     when the tree is ALSO DIRTY (uncommitted work sitting on a diverging
+ *     base); a clean active behind tree is routine in-flight work — rebase is
+ *     an ordinary step, not an alert. Branch-only cards (no working tree to be
+ *     dirty) rely on `conflicts-predicted`.
  *   - Dirty stays MEDIUM everywhere (uncommitted work at risk is real), and
  *     `conflicting` stays the only HIGH.
  */
 
-/** A branch/tree is "behind-heavy" past this many commits behind its trunk. */
-export const BEHIND_WARN = 6 as const;
+/**
+ * A branch/tree is "behind-heavy" past this many commits behind its trunk —
+ * roughly ONE WEEK of this workspace's trunk velocity (round-2 K7: 6 tripped on
+ * effectively every active tree within days).
+ */
+export const BEHIND_WARN = 24 as const;
 
 /** A tip older than this many days is stale — and no longer "active" for the behind rule. */
 export const STALE_WARN = 14 as const;

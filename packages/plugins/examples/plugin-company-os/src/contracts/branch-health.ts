@@ -27,7 +27,10 @@ import type { BranchStatus, HealthSeverity } from "./vocab.js";
  */
 export const BRANCH_STATUS_SEVERITY: Record<BranchStatus, HealthSeverity> = {
   conflicting: "high",
-  behind: "medium",
+  // K7 round 2: behind is informational — conflict prediction (real coverage
+  // since COS-8e) + dirty + PR actions own the attention band; trunk velocity
+  // made behind-alone fire on virtually every active branch (triage.ts).
+  behind: "low",
   stale: "low",
   dirty: "medium",
   unmerged_orphan: "low",

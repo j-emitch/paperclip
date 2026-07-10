@@ -64,9 +64,11 @@ function tipActive(lastCommitAt: string | null, nowMs: number): boolean {
 function laneOfWorktree(s: WorktreeSignal, nowMs: number): LaneDecision {
   const dirty = (s.dirtyFileCount ?? 0) > 0;
   const active = tipActive(s.lastCommitAt, nowMs);
-  // COS-8e/K7: behind-heavy promotes to needs_attention only while the tree is
-  // ACTIVE — a stale behind tree is just stale (see contracts/triage.ts).
-  const behindHeavy = (s.behind ?? 0) > BEHIND_WARN && active;
+  // COS-8e/K7 round 2: behind-heavy alerts only for an ACTIVE tree that is ALSO
+  // DIRTY — uncommitted work on a diverging base. A clean behind tree is
+  // routine in-flight work (rebase is a step, not an alert); a stale one is
+  // just stale (see contracts/triage.ts for the live captures).
+  const behindHeavy = (s.behind ?? 0) > BEHIND_WARN && active && dirty;
 
   // 0. Degraded scan — every git read failed (budget exhausted before this
   // tree, or a corrupt/vanishing worktree). A tree the scan could not SEE must
@@ -86,7 +88,7 @@ function laneOfWorktree(s: WorktreeSignal, nowMs: number): LaneDecision {
     if (behindHeavy || (dirty && !active)) {
       // The OVERLAY decided this lane, not the Work Record — provenance must
       // say so or the card pill tints a git heuristic as work-record-sourced.
-      return { lane: "needs_attention", laneSource: "heuristic", rung: behindHeavy ? "behind-heavy" : "dirty-stale" };
+      return { lane: "needs_attention", laneSource: "heuristic", rung: behindHeavy ? "behind-heavy-dirty" : "dirty-stale" };
     }
     if (latest.wip === true) return { lane: "in_flight", laneSource: "work_record", rung: "work-record:wip" };
     if (latest.pushed === true) return { lane: "in_flight", laneSource: "work_record", rung: "work-record:pushed" };
@@ -95,7 +97,7 @@ function laneOfWorktree(s: WorktreeSignal, nowMs: number): LaneDecision {
 
   // 3. Heuristics — Work-Record-absent trees only.
   if (dirty && !active) return { lane: "needs_attention", laneSource: "heuristic", rung: "dirty-stale" };
-  if (behindHeavy) return { lane: "needs_attention", laneSource: "heuristic", rung: "behind-heavy" };
+  if (behindHeavy) return { lane: "needs_attention", laneSource: "heuristic", rung: "behind-heavy-dirty" };
   if (dirty) return { lane: "in_flight", laneSource: "heuristic", rung: "dirty" };
   if (active) return { lane: "in_flight", laneSource: "heuristic", rung: "tip-recent" };
   return { lane: "stale", laneSource: "heuristic", rung: "stale-tip" };
@@ -144,12 +146,12 @@ function cardOfBranch(s: BranchSignal, nowMs: number, headReviews: readonly Head
   if (s.branch === null) return null; // detached rows belong to worktree cards
   if (TRUNK_NAMES.has(s.branch)) return null; // the trunk is not "work in flight"
   const active = tipActive(s.lastCommitAt, nowMs);
-  // Same K7 rule as laneOfWorktree: behind-heavy alerts only while active.
-  const behindHeavy = (s.behind ?? 0) > BEHIND_WARN && active;
+  // K7 round 2: a branch-only card has no working tree to be dirty, so
+  // behind-heavy never promotes it — conflicts-predicted is its alert signal.
   const conflicts = s.conflictsWithTrunk === true;
   let decision: LaneDecision;
-  if (conflicts || behindHeavy) {
-    decision = { lane: "needs_attention", laneSource: "heuristic", rung: conflicts ? "conflicts-predicted" : "behind-heavy" };
+  if (conflicts) {
+    decision = { lane: "needs_attention", laneSource: "heuristic", rung: "conflicts-predicted" };
   } else if (active) {
     decision = { lane: "in_flight", laneSource: "heuristic", rung: "tip-recent" };
   } else {

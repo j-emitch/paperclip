@@ -66,7 +66,7 @@ describe("lane ladder", () => {
     const board = deriveWorktreeBoard(
       bundleOf([
         worktreeSignal("dirty-stale", { dirtyFileCount: 2, lastCommitAt: OLD_TIP }),
-        worktreeSignal("behind-heavy", { behind: 12 }),
+        worktreeSignal("behind-heavy", { behind: 30, dirtyFileCount: 2 }),
         worktreeSignal("just-old", { lastCommitAt: OLD_TIP }),
         worktreeSignal("fresh", {}),
       ]),
@@ -74,7 +74,7 @@ describe("lane ladder", () => {
     );
     const lane = (name: string) => board.repos[0].cards.find((c) => c.worktreeName === name)!;
     expect(lane("dirty-stale")).toMatchObject({ lane: "needs_attention", rung: "dirty-stale", laneSource: "heuristic" });
-    expect(lane("behind-heavy")).toMatchObject({ lane: "needs_attention", rung: "behind-heavy" });
+    expect(lane("behind-heavy")).toMatchObject({ lane: "needs_attention", rung: "behind-heavy-dirty" });
     expect(lane("just-old")).toMatchObject({ lane: "stale", rung: "stale-tip" });
     expect(lane("fresh")).toMatchObject({ lane: "in_flight", rung: "tip-recent" });
   });
@@ -240,12 +240,12 @@ describe("QUAD folds: degraded scans, provenance, diagnostics threading", () => 
       checkpoints: [{ headSha: "abc", wip: true, pushed: false, at: new Date(NOW - 3_600_000).toISOString() }],
     };
     const board = deriveWorktreeBoard(
-      bundleOf([worktreeSignal("wr-behind", { purpose, behind: 40, dirtyFileCount: 0 })]),
+      bundleOf([worktreeSignal("wr-behind", { purpose, behind: 40, dirtyFileCount: 3 })]),
       NOW,
     );
     const card = board.repos[0].cards[0];
     expect(card.lane).toBe("needs_attention");
-    expect(card.rung).toBe("behind-heavy");
+    expect(card.rung).toBe("behind-heavy-dirty");
     expect(card.laneSource).toBe("heuristic"); // the overlay decided, not the Work Record
   });
 
@@ -304,18 +304,34 @@ describe("COS-8d — head-review join (cards)", () => {
   });
 });
 
-describe("COS-8e/K7 — behind-heavy alerts only while active", () => {
-  it("an ACTIVE behind-heavy tree needs attention; a STALE behind-heavy tree is just stale", () => {
+describe("COS-8e/K7 round 2 — behind-heavy alerts only for ACTIVE + DIRTY trees", () => {
+  it("active+dirty behind-heavy → attention; clean active → in_flight; stale → stale", () => {
+    const fresh = new Date(NOW - 2 * DAY).toISOString();
     const board = deriveWorktreeBoard(
       bundleOf([
-        worktreeSignal("active-behind", { behind: 20, lastCommitAt: new Date(NOW - 2 * DAY).toISOString() }),
-        worktreeSignal("stale-behind", { behind: 20, lastCommitAt: OLD_TIP }),
+        worktreeSignal("dirty-behind", { behind: 30, dirtyFileCount: 4, lastCommitAt: fresh }),
+        worktreeSignal("clean-behind", { behind: 30, dirtyFileCount: 0, lastCommitAt: fresh }),
+        worktreeSignal("stale-behind", { behind: 30, dirtyFileCount: 0, lastCommitAt: OLD_TIP }),
       ]),
       NOW,
     );
     const cards = board.repos[0].cards;
-    expect(cards.find((c) => c.worktreeName === "active-behind")!.lane).toBe("needs_attention");
-    expect(cards.find((c) => c.worktreeName === "active-behind")!.rung).toBe("behind-heavy");
+    expect(cards.find((c) => c.worktreeName === "dirty-behind")!).toMatchObject({ lane: "needs_attention", rung: "behind-heavy-dirty" });
+    expect(cards.find((c) => c.worktreeName === "clean-behind")!).toMatchObject({ lane: "in_flight", rung: "tip-recent" });
     expect(cards.find((c) => c.worktreeName === "stale-behind")!.lane).toBe("stale");
+  });
+
+  it("a branch-only card never promotes on behind alone — conflicts-predicted is its alert", () => {
+    const fresh = new Date(NOW - 2 * DAY).toISOString();
+    const board = deriveWorktreeBoard(
+      bundleOf([
+        branchSignal("claude/K-7/behind-only", { repo: "juice-bar", behind: 300, worktrees: [], lastCommitAt: fresh, conflictsWithTrunk: false }),
+        branchSignal("claude/K-7/conflicts", { repo: "juice-bar", behind: 300, worktrees: [], lastCommitAt: fresh, conflictsWithTrunk: true }),
+      ]),
+      NOW,
+    );
+    const cards = board.repos.find((r) => r.repoKey === "juice-bar")!.cards;
+    expect(cards.find((c) => c.branch === "claude/K-7/behind-only")!.lane).toBe("in_flight");
+    expect(cards.find((c) => c.branch === "claude/K-7/conflicts")!).toMatchObject({ lane: "needs_attention", rung: "conflicts-predicted" });
   });
 });

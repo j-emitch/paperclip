@@ -128,7 +128,8 @@ export function goldenGitState(): GitStateV1 {
                 conflictsWithTrunk: true,
                 lastCommitAt: "2026-06-23T16:00:00Z",
                 staleDays: 3,
-                statuses: ["conflicting", "behind", "dirty"],
+                // K7 round 2: behind(14) < BEHIND_WARN(24) — no behind status.
+                statuses: ["conflicting", "dirty"],
                 attentionSeverity: "high",
                 // COS-8d: a cannons report joined to THIS tip (the pre-push sha rule).
                 reviewsForHead: [

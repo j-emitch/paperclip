@@ -81,7 +81,7 @@ describe("BranchSource — happy path", () => {
 
   it("K7: behind fires only while the branch is ACTIVE (fresh tip + behind-heavy)", async () => {
     const fresh = new Date(NOW - 2 * 86_400_000).toISOString();
-    const { branches } = await run({ handler: happyHandler({ tipDate: fresh }) });
+    const { branches } = await run({ handler: happyHandler({ tipDate: fresh, revList: "30\t2" }) });
     const b = branches[0]!;
     expect(b.staleDays).toBeLessThanOrEqual(14);
     expect(b.statuses).toContain("behind");
