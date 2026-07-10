@@ -46,12 +46,18 @@ import {
 
 export const GIT_STATE_SCHEMA_VERSION = 1 as const;
 
-/** §7 branch-health thresholds (default values; the alert math lives in the projection). */
-export const BEHIND_WARN = 6 as const;
-export const STALE_WARN = 14 as const;
-/** Per-repo cost caps for `BranchSource` (spec §5.2/§12). */
-export const MAX_CONFLICT_CHECKS = 12 as const;
-export const REPO_GIT_BUDGET_MS = 8000 as const;
+/** §7 branch-health thresholds — OWNED by the triage contract (COS-8e); re-exported for existing importers. */
+export { BEHIND_WARN, STALE_WARN } from "./triage.js";
+/**
+ * Per-repo cost caps for `BranchSource` (spec §5.2/§12), K7-tuned 2026-07-09
+ * against live jb (203 branches / 117 conflict-eligible / 29 eligible-AND-
+ * active; one merge-tree check ~10ms): the old cap 12 left ~90% of eligible
+ * branches conflict-blind, and most-behind-first ordering spent those 12 on
+ * the STALEST branches. 48 covers every active-eligible branch with headroom
+ * at <1s of git cost; the pass now runs dirty+recent-first (see BranchSource).
+ */
+export const MAX_CONFLICT_CHECKS = 48 as const;
+export const REPO_GIT_BUDGET_MS = 12_000 as const;
 export const RECENT_COMMITS_PER_BRANCH = 10 as const;
 
 export const repoAvailabilitySchema = z.enum(REPO_AVAILABILITY);

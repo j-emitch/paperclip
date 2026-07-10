@@ -57,7 +57,8 @@ describe("Branch · PR Health SSR", () => {
 
   it("renders the attention band + the review-flagged callout with matching counts", () => {
     const html = renderToStaticMarkup(<BranchPrHealthView gitState={goldenGitState()} now={BRANCH_PR_NOW} />);
-    // Attention band: SSF-04 (conflicting=high) + docs/COS-1 (dirty) + arc mtpfeed (stale) = 3
+    // Attention band: SSF-04 (conflicting=high) + docs/COS-1 (dirty) = 2 — arc
+    // mtpfeed (stale) dropped to LOW by the K7 alert-noise pass (COS-8e).
     expect(html).toContain("Needs attention");
     expect(html).toContain("At risk"); // the high-severity label (SSF-04)
     // Second health axis — the blocking review on #372
@@ -98,6 +99,12 @@ describe("Branch · PR Health SSR", () => {
     expect(html).toContain("SSF-07");
     // A repo with NO landed PRs shows the honest 0 line, not a hidden lane.
     expect(html).toContain("none in the last 7d");
+  });
+
+  it("COS-8e: the repo header renders conflict-prediction coverage over eligible branches", () => {
+    const html = renderToStaticMarkup(<BranchPrHealthView gitState={goldenGitState()} now={BRANCH_PR_NOW} />);
+    // juice-bar: SSF-04 is the only ahead-AND-behind branch and it was evaluated.
+    expect(html).toContain("conflict prediction 1/1 (100%)");
   });
 
   it("renders the empty git state as a calm 0-state, never a crash", () => {
@@ -144,16 +151,17 @@ describe("buildBranchPrView", () => {
     expect(view.vitals.branchCount).toBe(5); // 2 + 2 + 1
     expect(view.vitals.openPrCount).toBe(4); // 3 attached + 1 orphan
     expect(view.vitals.reviewedPrCount).toBe(2); // #361 ship + #372 no-ship (both head-current)
-    expect(view.vitals.needsAttentionCount).toBe(3); // SSF-04 + docs/COS-1 + arc mtpfeed
+    // K7 (COS-8e): arc mtpfeed (stale) is LOW now — SSF-04 + docs/COS-1 only.
+    expect(view.vitals.needsAttentionCount).toBe(2);
     expect(view.vitals.orphanPrCount).toBe(1);
   });
 
   it("orders the attention band worst-severity-first", () => {
     const view = buildBranchPrView(goldenGitState());
-    expect(view.attention).toHaveLength(3);
+    // K7 (COS-8e): the stale-only arc branch no longer qualifies for the band.
+    expect(view.attention).toHaveLength(2);
     expect(view.attention[0].branch).toBe("claude/SSF-04/reconciliation-rehaul"); // high (conflicting)
     expect(view.attention[0].severity).toBe("high");
-    // the remaining two are medium
     expect(view.attention.slice(1).every((r) => r.severity === "medium")).toBe(true);
   });
 

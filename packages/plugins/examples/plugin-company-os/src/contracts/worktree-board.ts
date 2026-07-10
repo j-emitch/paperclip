@@ -6,7 +6,7 @@
  */
 
 /** A tree counts "active" when its tip is younger than this (days). */
-export const WORKTREE_ACTIVE_DAYS = 21 as const;
+export { WORKTREE_ACTIVE_DAYS } from "./triage.js";
 
 /** Max changedFiles evaluations per repo per collect. */
 export const MAX_WORKTREE_DIFFS = 32 as const;

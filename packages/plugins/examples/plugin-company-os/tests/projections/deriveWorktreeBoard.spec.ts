@@ -303,3 +303,19 @@ describe("COS-8d — head-review join (cards)", () => {
     expect(card.reviewsForHead[0]).toMatchObject({ reportKind: "review", verdict: "proceed" });
   });
 });
+
+describe("COS-8e/K7 — behind-heavy alerts only while active", () => {
+  it("an ACTIVE behind-heavy tree needs attention; a STALE behind-heavy tree is just stale", () => {
+    const board = deriveWorktreeBoard(
+      bundleOf([
+        worktreeSignal("active-behind", { behind: 20, lastCommitAt: new Date(NOW - 2 * DAY).toISOString() }),
+        worktreeSignal("stale-behind", { behind: 20, lastCommitAt: OLD_TIP }),
+      ]),
+      NOW,
+    );
+    const cards = board.repos[0].cards;
+    expect(cards.find((c) => c.worktreeName === "active-behind")!.lane).toBe("needs_attention");
+    expect(cards.find((c) => c.worktreeName === "active-behind")!.rung).toBe("behind-heavy");
+    expect(cards.find((c) => c.worktreeName === "stale-behind")!.lane).toBe("stale");
+  });
+});

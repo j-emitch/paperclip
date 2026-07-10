@@ -64,7 +64,9 @@ function tipActive(lastCommitAt: string | null, nowMs: number): boolean {
 function laneOfWorktree(s: WorktreeSignal, nowMs: number): LaneDecision {
   const dirty = (s.dirtyFileCount ?? 0) > 0;
   const active = tipActive(s.lastCommitAt, nowMs);
-  const behindHeavy = (s.behind ?? 0) > BEHIND_WARN;
+  // COS-8e/K7: behind-heavy promotes to needs_attention only while the tree is
+  // ACTIVE — a stale behind tree is just stale (see contracts/triage.ts).
+  const behindHeavy = (s.behind ?? 0) > BEHIND_WARN && active;
 
   // 0. Degraded scan — every git read failed (budget exhausted before this
   // tree, or a corrupt/vanishing worktree). A tree the scan could not SEE must
@@ -142,7 +144,8 @@ function cardOfBranch(s: BranchSignal, nowMs: number, headReviews: readonly Head
   if (s.branch === null) return null; // detached rows belong to worktree cards
   if (TRUNK_NAMES.has(s.branch)) return null; // the trunk is not "work in flight"
   const active = tipActive(s.lastCommitAt, nowMs);
-  const behindHeavy = (s.behind ?? 0) > BEHIND_WARN;
+  // Same K7 rule as laneOfWorktree: behind-heavy alerts only while active.
+  const behindHeavy = (s.behind ?? 0) > BEHIND_WARN && active;
   const conflicts = s.conflictsWithTrunk === true;
   let decision: LaneDecision;
   if (conflicts || behindHeavy) {

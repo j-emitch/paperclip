@@ -67,3 +67,16 @@ describe("UI severity twin parity (Home count ≡ Branch·PR band invariant)", (
     }
   });
 });
+
+describe("COS-8e/K7 — alert-noise severity decisions", () => {
+  it("stale + unmerged_orphan are LOW (cleanup queue, not daily alerts)", () => {
+    expect(BRANCH_STATUS_SEVERITY.stale).toBe("low");
+    expect(BRANCH_STATUS_SEVERITY.unmerged_orphan).toBe("low");
+    expect(isAttentionSeverity(BRANCH_STATUS_SEVERITY.stale)).toBe(false);
+  });
+  it("dirty stays MEDIUM and conflicting stays the only HIGH", () => {
+    expect(BRANCH_STATUS_SEVERITY.dirty).toBe("medium");
+    const highs = Object.entries(BRANCH_STATUS_SEVERITY).filter(([, sev]) => sev === "high");
+    expect(highs).toEqual([["conflicting", "high"]]);
+  });
+});

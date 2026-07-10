@@ -29,14 +29,14 @@ async function run(opts: Partial<GitFixtureOpts> & { handler: Handler }) {
 }
 
 /** A standard one-branch (cos/COS-1, one dirty worktree, ahead 2 / behind 7) repo. */
-function happyHandler(over: Partial<{ revList: string; mergeTree: string; dirty: string; trunkResolves: boolean }> = {}): Handler {
+function happyHandler(over: Partial<{ revList: string; mergeTree: string; dirty: string; trunkResolves: boolean; tipDate: string }> = {}): Handler {
   const trunkResolves = over.trunkResolves ?? true;
   return (_repo, args) => {
     switch (args[0]) {
       case "rev-parse":
         return trunkResolves && args.includes("origin/main^{commit}") ? OK("trunksha") : FAIL("fatal: Needed a single revision", 128);
       case "for-each-ref":
-        return OK(forEachRef([["cos/COS-1", "abc1234", STALE_DATE]]));
+        return OK(forEachRef([["cos/COS-1", "abc1234", over.tipDate ?? STALE_DATE]]));
       case "worktree":
         return OK(worktreeList([worktreeBlock("/wt/cos", "abc1234", "cos/COS-1")]));
       case "merge-base":
@@ -73,7 +73,19 @@ describe("BranchSource — happy path", () => {
     expect(b.worktrees[0]!.dirtyFileCount).toBe(3);
     expect(b.conflictsWithTrunk).toBe(false); // clean merge-tree
     expect(b.recentCommits[0]!.stat).toEqual({ filesChanged: 3, insertions: 40, deletions: 5 });
-    expect(b.statuses).toEqual(expect.arrayContaining(["behind", "stale", "dirty"]));
+    // K7 (COS-8e): this branch is STALE (20d > STALE_WARN), so `behind` does
+    // NOT fire — a stale behind branch is cleanup, not a rebase-now alert.
+    expect(b.statuses).toEqual(expect.arrayContaining(["stale", "dirty"]));
+    expect(b.statuses).not.toContain("behind");
+  });
+
+  it("K7: behind fires only while the branch is ACTIVE (fresh tip + behind-heavy)", async () => {
+    const fresh = new Date(NOW - 2 * 86_400_000).toISOString();
+    const { branches } = await run({ handler: happyHandler({ tipDate: fresh }) });
+    const b = branches[0]!;
+    expect(b.staleDays).toBeLessThanOrEqual(14);
+    expect(b.statuses).toContain("behind");
+    expect(b.statuses).not.toContain("stale");
   });
 
   it("predicts a conflict from merge-tree markers", async () => {

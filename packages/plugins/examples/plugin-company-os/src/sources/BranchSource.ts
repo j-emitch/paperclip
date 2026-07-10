@@ -170,13 +170,18 @@ async function collectRepo(
     works.push(await buildBranchWork(repo.repo, null, wt.head ?? "", null, [wt], trunk, ctx, nowMs, overBudget, errors));
   }
 
-  // Conflict pass: only ahead-AND-behind branches with a merge-base, most-behind
-  // first, capped at MAX_CONFLICT_CHECKS. Everything else keeps its provisional
-  // value (false for ahead-only/behind-only/in-sync, null otherwise).
+  // Conflict pass: only ahead-AND-behind branches with a merge-base, capped at
+  // MAX_CONFLICT_CHECKS. Ordering is dirty-first then most-RECENT-tip-first
+  // (COS-8e/K7): the old most-behind-first spent the cap on the STALEST
+  // branches while the ones someone is actively working on stayed blind.
+  // Everything else keeps its provisional value (false for ahead-only/
+  // behind-only/in-sync, null otherwise).
   if (trunk.state === "ok" && trunk.ref) {
+    const tip = (w: BranchWork) => (w.lastCommitAt ? Date.parse(w.lastCommitAt) : 0);
+    const isDirty = (w: BranchWork) => w.worktrees.some((wt) => (wt.dirtyFileCount ?? 0) > 0);
     const pending = works
       .filter((w) => w.comparison === "ok" && w.mergeBase !== null && (w.ahead ?? 0) > 0 && (w.behind ?? 0) > 0 && !w.degraded)
-      .sort((a, b) => (b.behind ?? 0) - (a.behind ?? 0));
+      .sort((a, b) => Number(isDirty(b)) - Number(isDirty(a)) || tip(b) - tip(a));
     let checks = 0;
     let capped = false;
     for (const w of pending) {
@@ -453,7 +458,10 @@ function computeStatuses(w: BranchWork): BranchStatus[] {
   const ok = w.comparison === "ok";
   const dirty = w.worktrees.some((wt) => (wt.dirtyFileCount ?? 0) > 0);
   if (ok && w.conflictsWithTrunk === true) s.push("conflicting");
-  if (ok && w.behind !== null && w.behind > BEHIND_WARN) s.push("behind");
+  // COS-8e/K7: behind flags only while the branch is ACTIVE (tip within
+  // STALE_WARN) — an active behind-heavy branch needs a rebase NOW; a stale
+  // behind branch is just stale (see contracts/triage.ts).
+  if (ok && w.behind !== null && w.behind > BEHIND_WARN && w.staleDays <= STALE_WARN) s.push("behind");
   if (w.staleDays > STALE_WARN) s.push("stale");
   if (dirty) s.push("dirty");
   if (ok && w.ahead === 0 && w.behind !== null && w.behind > 0 && w.staleDays > STALE_WARN) s.push("unmerged_orphan");

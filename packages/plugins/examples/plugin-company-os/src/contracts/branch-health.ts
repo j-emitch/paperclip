@@ -17,17 +17,20 @@ import type { BranchStatus, HealthSeverity } from "./vocab.js";
 
 /**
  * Per-status severity. A branch's severity is the WORST of its statuses. Conflicts
- * are the only "high" (a conflicting branch blocks a merge); behind/stale/dirty/
- * unmerged-orphan are "medium" (need a look); the unevaluated/comparison-unavailable
- * flags are "low" (informational — we couldn't measure, not that it's bad); a clean
- * ahead branch is pure "info". Unchanged from the pre-5e `deriveOrientation` map.
+ * are the only "high" (a conflicting branch blocks a merge); behind (now fired only
+ * while ACTIVE — see contracts/triage.ts) and dirty are "medium" (need a look);
+ * stale/unmerged-orphan are "low" as of COS-8e (cleanup-queue items — the K7
+ * alert-noise decision: dozens of old tips flooding the attention band drowned the
+ * real alerts); the unevaluated/comparison-unavailable flags are "low"
+ * (informational — we couldn't measure, not that it's bad); a clean ahead branch
+ * is pure "info". Threshold values + the K7 rationale live in contracts/triage.ts.
  */
 export const BRANCH_STATUS_SEVERITY: Record<BranchStatus, HealthSeverity> = {
   conflicting: "high",
   behind: "medium",
-  stale: "medium",
+  stale: "low",
   dirty: "medium",
-  unmerged_orphan: "medium",
+  unmerged_orphan: "low",
   orphaned_worktree: "low",
   comparison_unavailable: "low",
   conflict_not_evaluated: "low",

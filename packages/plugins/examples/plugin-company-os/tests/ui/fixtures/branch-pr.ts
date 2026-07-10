@@ -226,8 +226,10 @@ export function goldenGitState(): GitStateV1 {
                 conflictsWithTrunk: null,
                 lastCommitAt: "2026-06-11T12:00:00Z",
                 staleDays: 15,
+                // K7 (COS-8e): stale is LOW — this branch is a cleanup-queue item,
+                // no longer in the attention band.
                 statuses: ["comparison_unavailable", "stale"],
-                attentionSeverity: "medium",
+                attentionSeverity: "low",
                 recentCommits: [],
                 pullRequests: [],
               },

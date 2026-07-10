@@ -12,7 +12,7 @@
  */
 
 import type { ReactNode } from "react";
-import type { BranchPrV1, GitStateV1, ProjectGitSectionV1, RepoGitStateV1 } from "../../contracts/index.js";
+import type { BranchGitV1, BranchPrV1, GitStateV1, ProjectGitSectionV1, RepoGitStateV1 } from "../../contracts/index.js";
 import { statusColors, tokens } from "../tokens.js";
 import { Dot, Pill, RepoBadge } from "../shared/badges.js";
 import { CalmNote } from "../shared/feedback.js";
@@ -452,6 +452,7 @@ function RepoSection({
         {available && repo.trunk.state === "missing" ? (
           <span style={{ fontSize: 11, color: statusColors.cached }}>no trunk resolved</span>
         ) : null}
+        <ConflictCoverage branches={branches} />
       </div>
 
       {!available ? (
@@ -481,6 +482,27 @@ function RepoSection({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * COS-8e/K7: conflict-prediction coverage — evaluated / eligible (ahead AND
+ * behind) branches. A budget-capped scan must not read as calm: under-100%
+ * renders in the cached (amber) tone. Hidden only when NOTHING is eligible.
+ */
+function ConflictCoverage({ branches }: { branches: readonly BranchGitV1[] }) {
+  const eligible = branches.filter((b) => b.comparison === "ok" && (b.ahead ?? 0) > 0 && (b.behind ?? 0) > 0);
+  if (eligible.length === 0) return null;
+  const covered = eligible.filter((b) => b.conflictsWithTrunk !== null).length;
+  const pct = Math.round((covered / eligible.length) * 100);
+  const full = covered === eligible.length;
+  return (
+    <span
+      style={{ fontSize: 11, color: full ? tokens.muted : statusColors.cached }}
+      title={`conflict prediction evaluated ${covered} of ${eligible.length} ahead-and-behind branches this derive (cost-capped; dirty + recently-active first)`}
+    >
+      conflict prediction {covered}/{eligible.length} ({pct}%)
+    </span>
   );
 }
 
