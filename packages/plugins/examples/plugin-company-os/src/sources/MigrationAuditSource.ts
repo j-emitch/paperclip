@@ -202,9 +202,13 @@ export const migrationAuditSource: WorkSignalSource = {
         }
         const parsed = parseMigrationAudit(text);
         if (parsed === null) {
-          // Degrade, emit NOTHING for this file — last-good merge is the fold's job.
-          errors.push(signalError("parse_error", `unparseable migration audit: ${file.relPath}`));
+          // Degrade, emit NOTHING for this file — last-good merge is the fold's
+          // job. ONE error per target (the newest failure); older failures of
+          // the same target are probed silently in case a parseable one exists.
           const m = /audit-([a-z]+)/.exec(file.relPath.split("/").pop() ?? "");
+          if (!m || !corruptTargets.has(m[1])) {
+            errors.push(signalError("parse_error", `unparseable migration audit: ${file.relPath}`));
+          }
           if (m && !seenTargets.has(m[1])) corruptTargets.add(m[1]);
           continue;
         }
