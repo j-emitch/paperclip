@@ -492,16 +492,22 @@ function RepoSection({
  */
 function ConflictCoverage({ branches }: { branches: readonly BranchGitV1[] }) {
   const eligible = branches.filter((b) => b.comparison === "ok" && (b.ahead ?? 0) > 0 && (b.behind ?? 0) > 0);
-  if (eligible.length === 0) return null;
+  // Budget-capped/failed comparisons have UNKNOWN eligibility — excluding them
+  // from the denominator read as 100% while capped (codex COS-8-ops P1; the
+  // exact silent-calm K7's amber exists to prevent). They render as "unread"
+  // and force the amber tone.
+  const unread = branches.filter((b) => b.comparison !== "ok").length;
+  if (eligible.length === 0 && unread === 0) return null;
   const covered = eligible.filter((b) => b.conflictsWithTrunk !== null).length;
-  const pct = Math.round((covered / eligible.length) * 100);
-  const full = covered === eligible.length;
+  const pct = eligible.length === 0 ? 0 : Math.round((covered / eligible.length) * 100);
+  const full = covered === eligible.length && unread === 0;
   return (
     <span
       style={{ fontSize: 11, color: full ? tokens.muted : statusColors.cached }}
-      title={`conflict prediction evaluated ${covered} of ${eligible.length} ahead-and-behind branches this derive (cost-capped; dirty + recently-active first)`}
+      title={`conflict prediction evaluated ${covered} of ${eligible.length} ahead-and-behind branches this derive (cost-capped; dirty + recently-active first)${unread > 0 ? `; ${unread} branches' comparisons were budget-capped/unreadable — their eligibility is unknown` : ""}`}
     >
       conflict prediction {covered}/{eligible.length} ({pct}%)
+      {unread > 0 ? ` · ${unread} unread` : ""}
     </span>
   );
 }

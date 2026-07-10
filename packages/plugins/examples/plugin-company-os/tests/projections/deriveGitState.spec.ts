@@ -320,6 +320,22 @@ describe("COS-8b — recently-landed lane fold", () => {
     expect(Object.keys(gs.prRollups)).toEqual([]);
   });
 
+  it("rollup cache persists ONLY cache-worthy entries — deferred/failed rollups are omitted so they refetch (starvation fix)", () => {
+    const gs = deriveGitState(
+      bundleOf([
+        repoGitSignal("juice-bar"),
+        prWork(11, "b/fresh", "sha-11", { ciState: "pass", prMergeable: "mergeable", prRollupFresh: true, mtime: "2026-07-01T00:00:00Z" }),
+        prWork(12, "b/deferred", "sha-12", { ciState: "unknown", prMergeable: "unknown", prRollupFresh: false, mtime: "2026-07-01T00:00:00Z" }),
+        prWork(13, "b/stale-fallback", "sha-13", { ciState: "pass", prMergeable: "mergeable", prRollupFresh: false, mtime: "2026-07-01T00:00:00Z" }),
+      ]),
+      NOW,
+      TAX,
+    );
+    // 11 persisted; 12 (deferred) and 13 (stale fallback shown under a NEW key) omitted.
+    expect(Object.keys(gs.prRollups).sort()).toEqual(["juice-bar#11"]);
+    expect(gs.prRollups["juice-bar#11"]).toMatchObject({ ciState: "pass", headSha: "sha-11" });
+  });
+
   it("a pre-8b cached payload (no landedPullRequests key) parses via the zod default", () => {
     const gs = deriveGitState(bundleOf([repoGitSignal("juice-bar")]), NOW, TAX);
     const legacy = JSON.parse(JSON.stringify(gs)) as Record<string, unknown>;

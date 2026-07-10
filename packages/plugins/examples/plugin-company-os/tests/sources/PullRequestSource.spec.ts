@@ -176,6 +176,58 @@ describe("COS-11.gh-fields rollup — bounded fetch + cache-by-change", () => {
     expect(w[0]).toMatchObject({ ciState: "pass", prMergeable: "mergeable" });
   });
 
+  it("a cached PENDING ciState is NOT a cache hit — statusCheckRollup is commit-level, so CI finishing changes neither key field (refetch)", async () => {
+    let views = 0;
+    const base = ctxWithGh(
+      () => proc.ok(prJson([openPr(6)])),
+      () => {
+        views++;
+        return proc.ok(rollupJson({ statusCheckRollup: [{ __typename: "CheckRun", status: "COMPLETED", conclusion: "SUCCESS" }], mergeable: "MERGEABLE" }));
+      },
+    );
+    const ctx = {
+      ...base,
+      prior: {
+        prRollups: {
+          "juice-bar#6": { repoKey: "juice-bar", prNumber: 6, headSha: "sha-6", updatedAt: "2026-07-08T00:06:00Z", ciState: "pending" as const, mergeableState: "mergeable" as const },
+        },
+      },
+    };
+    const w = (await pullRequestSource.collect(ctx)).signals.filter(isWorkSignal);
+    expect(views).toBe(1); // unchanged (sha+updatedAt match) but pending → refetched
+    expect(w[0]).toMatchObject({ ciState: "pass", prRollupFresh: true });
+  });
+
+  it("cache-worthiness: live fetch + terminal cache hit are fresh; deferred/failed fallbacks are NOT", async () => {
+    // Terminal cache hit → fresh.
+    const hit = ctxWithGh(() => proc.ok(prJson([openPr(2)])));
+    const hitCtx = {
+      ...hit,
+      prior: {
+        prRollups: {
+          "juice-bar#2": { repoKey: "juice-bar", prNumber: 2, headSha: "sha-2", updatedAt: "2026-07-08T00:02:00Z", ciState: "pass" as const, mergeableState: "mergeable" as const },
+        },
+      },
+    };
+    const wHit = (await pullRequestSource.collect(hitCtx)).signals.filter(isWorkSignal);
+    expect(wHit[0]).toMatchObject({ prRollupFresh: true });
+    // Failed fetch with a stale fallback → displayed but NOT cache-worthy.
+    const fail = ctxWithGh(
+      () => proc.ok(prJson([openPr(7, { headRefOid: "sha-NEW" })])),
+      () => proc.fail(1, "boom"),
+    );
+    const failCtx = {
+      ...fail,
+      prior: {
+        prRollups: {
+          "juice-bar#7": { repoKey: "juice-bar", prNumber: 7, headSha: "sha-7", updatedAt: "OLD", ciState: "pass" as const, mergeableState: "mergeable" as const },
+        },
+      },
+    };
+    const wFail = (await pullRequestSource.collect(failCtx)).signals.filter(isWorkSignal);
+    expect(wFail[0]).toMatchObject({ ciState: "pass", prRollupFresh: false }); // stale shown, never re-persisted
+  });
+
   it("rate limit → gh_rate_limited error, fetching STOPS, stale cache/unknown used", async () => {
     let views = 0;
     const base = ctxWithGh(

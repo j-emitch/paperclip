@@ -120,6 +120,14 @@ export interface WorkSignal extends SignalProvenance {
   readonly ciState?: PrCiState;
   /** PR mergeability (`gh pr view --json mergeable`) -- PR sources only. */
   readonly prMergeable?: PrMergeableState;
+  /**
+   * True when this PR's rollup values are CACHE-WORTHY: a live fetch this
+   * derive, or a still-valid cache hit. False = deferred/failed/stale-fallback
+   * — the projection must NOT persist those under the current (headSha,
+   * updatedAt) key, else the entry reads "unchanged" forever and the rollup
+   * STARVES (codex COS-8-ops P1). In-process only, never persisted itself.
+   */
+  readonly prRollupFresh?: boolean;
   /** PR review decision (`gh pr list --json reviewDecision`, COS-8a) -- PR sources only. */
   readonly prReviewDecision?: PrReviewDecision;
   /** Set when `ticketId` is null — why this work couldn't be classified. */

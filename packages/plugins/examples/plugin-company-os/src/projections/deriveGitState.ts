@@ -152,10 +152,20 @@ export function deriveGitState(bundle: SignalBundle, nowMs: number, taxonomy: Pr
   // The COS-11.gh-fields rollup cache: rebuilt from THIS derive's open PRs (a
   // closed PR drops out with its signal), persisted so the next derive's
   // PullRequestSource (via ctx.prior) re-fetches only changed PRs.
+  // ONLY cache-worthy rollups persist (codex COS-8-ops P1): a deferred/failed/
+  // stale-fallback value written under the CURRENT (headSha, updatedAt) key
+  // would read "unchanged" next tick and never refetch — starvation. Omission
+  // = uncached = the next derive fetches it.
+  const freshRollupKeys = new Set<string>();
+  for (const w of signals.filter(isWorkSignal)) {
+    if (typeof w.prNumber === "number" && w.prRollupFresh === true) freshRollupKeys.add(prRollupKey(w.repo, w.prNumber));
+  }
   const prRollups: Record<string, PrRollupCacheEntryV1> = {};
   for (const [repoKey, prs] of prsByRepo) {
     for (const pr of prs) {
-      prRollups[prRollupKey(repoKey, pr.prNumber)] = {
+      const key = prRollupKey(repoKey, pr.prNumber);
+      if (!freshRollupKeys.has(key)) continue;
+      prRollups[key] = {
         repoKey,
         prNumber: pr.prNumber,
         headSha: pr.headSha,

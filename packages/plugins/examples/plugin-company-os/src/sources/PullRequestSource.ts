@@ -52,6 +52,8 @@ const LANDED_LIST_LIMIT = 50;
 interface ResolvedRollup {
   readonly ciState: PrCiState;
   readonly mergeableState: PrMergeableState;
+  /** Cache-worthy (live fetch or valid cache hit) — see WorkSignal.prRollupFresh. */
+  readonly fresh: boolean;
 }
 
 function isRateLimit(stderr: string): boolean {
@@ -79,13 +81,25 @@ async function resolveRollups(
     const cached = cache[`${repoKey}#${pr.number}`];
     const unchanged =
       cached !== undefined && cached.headSha === (pr.headRefOid || null) && cached.updatedAt === (pr.updatedAt || null);
-    if (unchanged) {
-      out.set(pr.number, { ciState: cached.ciState, mergeableState: cached.mergeableState });
+    // Cache hit requires TERMINAL values (codex COS-8-ops P1): statusCheckRollup
+    // is COMMIT-level — CI finishing changes neither headSha nor updatedAt, so a
+    // cached "pending"/"unknown" would otherwise read stale forever. In-flight or
+    // unresolved values always refetch (bounded by MAX_ROLLUP_FETCHES).
+    const terminal =
+      cached !== undefined &&
+      cached.ciState !== "pending" &&
+      cached.ciState !== "unknown" &&
+      cached.mergeableState !== "unknown";
+    if (unchanged && terminal) {
+      out.set(pr.number, { ciState: cached.ciState, mergeableState: cached.mergeableState, fresh: true });
       continue;
     }
+    // Fallback for deferred/failed fetches: display the last-known values but
+    // mark them NOT cache-worthy — persisting them under the CURRENT key would
+    // starve the refetch (codex COS-8-ops P1 rollup starvation).
     const stale: ResolvedRollup = cached
-      ? { ciState: cached.ciState, mergeableState: cached.mergeableState }
-      : { ciState: "unknown", mergeableState: "unknown" };
+      ? { ciState: cached.ciState, mergeableState: cached.mergeableState, fresh: false }
+      : { ciState: "unknown", mergeableState: "unknown", fresh: false };
 
     if (rateLimited || fetches >= MAX_ROLLUP_FETCHES) {
       out.set(pr.number, stale);
@@ -111,7 +125,7 @@ async function resolveRollups(
       out.set(pr.number, stale);
       continue;
     }
-    out.set(pr.number, rollup);
+    out.set(pr.number, { ...rollup, fresh: true });
   }
   return out;
 }
@@ -233,6 +247,7 @@ function prSignals(repo: RepoRoot, pr: GhPr, rollup?: ResolvedRollup): WorkSigna
     mtime: pr.updatedAt || undefined,
     ciState: rollup?.ciState ?? "unknown",
     prMergeable: rollup?.mergeableState ?? "unknown",
+    prRollupFresh: rollup?.fresh ?? false,
     prReviewDecision: pr.reviewDecision,
   } as const satisfies Partial<WorkSignal>;
 
