@@ -154,3 +154,40 @@ describe("DocsSource", () => {
     expect(batch.repoFreshness[0]!.freshness).toBe("live"); // truncation is non-degraded
   });
 });
+
+describe("DocsSource — C1 §2.3 spine fields", () => {
+  it("lifts owner/lastUpdated/statusVerifiedAt/description from the frontmatter head", async () => {
+    const files: FixtureFs = {
+      company: {
+        "specs/full.md": {
+          content:
+            "---\ntitle: Full Spec\nstatus: active\nowner: joe\nlast_updated: 2026-07-01\nstatus_verified_at: 2026-07-02\ndescription: The one-line summary.\n---\n# H1\n\nBody paragraph here.",
+        },
+        // No description/summary → the first body paragraph is the fallback; `date` backs last_updated.
+        "specs/fallback.md": { content: "---\ntitle: Fallback\nstatus: draft\ndate: 2026-06-30\n---\n# Heading\n\nFirst real paragraph of the body.\n\nSecond." },
+        // No frontmatter at all → all four are null except description (body paragraph).
+        "specs/bare.md": { content: "# Bare\n\nJust a body." },
+      },
+    };
+    const { collect } = run(files, []);
+    const docs = (await collect()).signals.filter(isDocSignal) as DocSignal[];
+    const byPath = (p: string) => docs.find((d) => d.relPath === p)!;
+
+    const full = byPath("specs/full.md");
+    expect(full.owner).toBe("joe");
+    expect(full.lastUpdated).toBe("2026-07-01");
+    expect(full.statusVerifiedAt).toBe("2026-07-02");
+    expect(full.description).toBe("The one-line summary.");
+
+    const fb = byPath("specs/fallback.md");
+    expect(fb.owner).toBeNull();
+    expect(fb.lastUpdated).toBe("2026-06-30"); // `date` fallback
+    expect(fb.statusVerifiedAt).toBeNull();
+    expect(fb.description).toBe("First real paragraph of the body.");
+
+    const bare = byPath("specs/bare.md");
+    expect(bare.owner).toBeNull();
+    expect(bare.lastUpdated).toBeNull();
+    expect(bare.description).toBe("Just a body.");
+  });
+});

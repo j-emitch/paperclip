@@ -27,7 +27,9 @@ import {
   type Expect,
 } from "./vocab.js";
 
-export const DOC_INDEX_SCHEMA_VERSION = 1 as const;
+// v2: C1 §2.3 spine fields (owner/lastUpdated/statusVerifiedAt/description) —
+// the bump discards v1 cache rows via the version-gated read (no failed parses).
+export const DOC_INDEX_SCHEMA_VERSION = 2 as const;
 
 /** `DocsSource` index-time caps (spec §5.4/§12). */
 export const DOC_FRONTMATTER_SCAN_BYTES = 4096 as const;
@@ -56,6 +58,11 @@ export const docEntryV1Schema = z.object({
   provenance: docProvenanceSchema,
   title: z.string().nullable(),
   status: z.string().nullable(),
+  /** C1 (§2.3 spine): owner / last-updated / verification-evidence / description. */
+  owner: z.string().nullable(),
+  lastUpdated: z.string().nullable(),
+  statusVerifiedAt: z.string().nullable(),
+  description: z.string().nullable(),
   mtime: z.string().min(1),
 });
 export type DocEntryV1 = z.infer<typeof docEntryV1Schema>;

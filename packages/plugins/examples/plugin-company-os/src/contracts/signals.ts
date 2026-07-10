@@ -468,6 +468,11 @@ export interface DocSignal extends SignalProvenance {
   readonly branch: string | null; // the checkout's branch
   readonly title: string | null; // frontmatter title, else first H1 within the scanned head, else null
   readonly status: string | null; // from frontmatter, when present
+  // --- C1 (the §2.3 frontmatter spine) — the operational fields the standard prescribes ---
+  readonly owner: string | null; // frontmatter `owner`
+  readonly lastUpdated: string | null; // frontmatter `last_updated` ?? `date`
+  readonly statusVerifiedAt: string | null; // frontmatter `status_verified_at` (evidence, not assertion)
+  readonly description: string | null; // frontmatter description/summary ?? first body paragraph (≤280)
   /**
    * Family prefix resolved from the frontmatter `id`/`ticket` or the filename
    * ticket (COS-5). null when no ticket id is derivable (many handoffs/backlog

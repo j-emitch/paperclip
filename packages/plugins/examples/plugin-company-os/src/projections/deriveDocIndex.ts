@@ -66,8 +66,31 @@ export function deriveDocIndex(bundle: SignalBundle, nowMs: number, taxonomy: Pr
         provenance: d.checkoutId === "main" ? "main" : "worktree",
         title: d.title,
         status: d.status,
+        owner: d.owner,
+        lastUpdated: d.lastUpdated,
+        statusVerifiedAt: d.statusVerifiedAt,
+        description: d.description,
         mtime: d.mtime,
       },
+    });
+  }
+
+  // C1: status without status_verified_at = ASSERTED, not evidenced. One rolled-up
+  // info diagnostic per repo (info tier — rail-only, never tints; a per-doc row
+  // would flood the rail with the whole legacy corpus).
+  const unverifiedByRepo = new Map<string, number>();
+  for (const d of signals.filter(isDocSignal)) {
+    if (d.status !== null && d.statusVerifiedAt === null) {
+      unverifiedByRepo.set(d.repo, (unverifiedByRepo.get(d.repo) ?? 0) + 1);
+    }
+  }
+  for (const [repo, count] of [...unverifiedByRepo.entries()].sort()) {
+    diagnostics.push({
+      level: "info",
+      code: "status_unverified",
+      message: `${count} doc${count === 1 ? "" : "s"} carry status: without status_verified_at`,
+      repo,
+      source: "doc-index",
     });
   }
 
@@ -86,6 +109,11 @@ export function deriveDocIndex(bundle: SignalBundle, nowMs: number, taxonomy: Pr
         provenance: "main",
         title: a.title,
         status: a.status,
+        // ArtifactSignal carries no §2.3 head fields — nulls, honestly absent.
+        owner: null,
+        lastUpdated: null,
+        statusVerifiedAt: null,
+        description: null,
         mtime: a.mtime ?? isoFrom(nowMs),
       },
     });

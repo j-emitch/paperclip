@@ -33,6 +33,10 @@ function mainDoc(repoKey: string, relPath: string, title: string | null, status:
     provenance: "main",
     title,
     status,
+    owner: null,
+    lastUpdated: null,
+    statusVerifiedAt: null,
+    description: null,
     mtime,
   };
 }
@@ -59,6 +63,10 @@ function worktreeDoc(
     provenance: "worktree",
     title,
     status,
+    owner: null,
+    lastUpdated: null,
+    statusVerifiedAt: null,
+    description: null,
     mtime,
   };
 }

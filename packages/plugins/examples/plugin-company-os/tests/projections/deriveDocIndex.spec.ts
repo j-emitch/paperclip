@@ -65,3 +65,44 @@ describe("deriveDocIndex", () => {
     expect(di.groups.find((g) => g.group.key === "paperclip")!.types).toEqual([]);
   });
 });
+
+describe("deriveDocIndex — C1 §2.3 spine", () => {
+  it("threads owner/lastUpdated/statusVerifiedAt/description into entries (artifact path = honest nulls)", () => {
+    const di = deriveDocIndex(
+      bundleOf([
+        docSignal("specs/x.md", { repo: "company", docType: "spec", status: "active", owner: "joe", lastUpdated: "2026-07-01", statusVerifiedAt: "2026-07-02", description: "One-liner." }),
+        artifact("reports/reviews/r.md", { repo: "company", artifactType: "cannons" }),
+      ]),
+      NOW,
+      TAX,
+    );
+    const spec = docsIn(di, "company", "spec").find((d) => d.relPath === "specs/x.md")!;
+    expect(spec.owner).toBe("joe");
+    expect(spec.lastUpdated).toBe("2026-07-01");
+    expect(spec.statusVerifiedAt).toBe("2026-07-02");
+    expect(spec.description).toBe("One-liner.");
+    const review = docsIn(di, "company", "review").find((d) => d.relPath === "reports/reviews/r.md")!;
+    expect(review.owner).toBeNull();
+    expect(review.description).toBeNull();
+    expect(() => parseDocIndexV1(di)).not.toThrow(); // v2 schema round-trip
+  });
+
+  it("rolls status-without-verification into ONE info diagnostic per repo (never per-doc flood)", () => {
+    const di = deriveDocIndex(
+      bundleOf([
+        docSignal("specs/a.md", { repo: "company", status: "active" }), // unverified
+        docSignal("specs/b.md", { repo: "company", status: "shipped" }), // unverified
+        docSignal("specs/c.md", { repo: "company", status: "shipped", statusVerifiedAt: "2026-07-01" }), // verified
+        docSignal("specs/d.md", { repo: "juice-bar", status: "draft" }), // unverified, other repo
+        docSignal("specs/e.md", { repo: "juice-bar" }), // no status at all — not counted
+      ]),
+      NOW,
+      TAX,
+    );
+    const unverified = di.diagnostics.filter((d) => d.code === "status_unverified");
+    expect(unverified).toHaveLength(2); // one per repo
+    expect(unverified.every((d) => d.level === "info")).toBe(true); // info tier — rail-only, never tints
+    expect(unverified.find((d) => d.repo === "company")?.message).toContain("2 docs");
+    expect(unverified.find((d) => d.repo === "juice-bar")?.message).toContain("1 doc ");
+  });
+});
