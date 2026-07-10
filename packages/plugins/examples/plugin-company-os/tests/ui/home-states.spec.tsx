@@ -131,3 +131,10 @@ describe("Home diagnostics strip (B2)", () => {
     expect(html).toContain("No derive diagnostics");
   });
 });
+
+describe("Home surface freshness (B4)", () => {
+  it("renders the shared SurfaceFreshnessBadge in the Orientation header", () => {
+    const html = renderToStaticMarkup(<HomeView orientation={goldenOrientation()} now={HOME_NOW} />);
+    expect(html).toMatch(/Orientation is (live|stale)/);
+  });
+});

@@ -16,6 +16,7 @@ import { tokens } from "../tokens.js";
 import { Pill } from "../shared/badges.js";
 import { withAlpha } from "../shared/color.js";
 import { CockpitSurfaceStyles } from "../shared/surface-styles.js";
+import { StaleSourcePills, SurfaceFreshnessBadge } from "../shared/freshness.js";
 import { InboxIcon, ClockIcon, CheckIcon, AlertIcon, TeachingIcon } from "../icons.js";
 import { relativeTime } from "../shared/time.js";
 import { TeachingFilters } from "./TeachingFilters.js";
@@ -48,7 +49,6 @@ export interface TeachingViewProps {
 
 export function TeachingView({ overview, filter, onFilterChange, now, isMobile = false }: TeachingViewProps) {
   const view = buildTeachingView(overview, filter);
-  const stale = overview.sources.filter((s) => s.freshness !== "live");
   const published = overview.unitCounts.publishState.published;
   const pctPublished = view.total === 0 ? 0 : Math.round((published / view.total) * 100);
 
@@ -62,16 +62,10 @@ export function TeachingView({ overview, filter, onFilterChange, now, isMobile =
         <span style={{ fontSize: 12.5, color: tokens.muted }}>
           {view.total} unit{view.total === 1 ? "" : "s"} · {pctPublished}% published
         </span>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {stale.map((s) => (
-            <Pill
-              key={`${s.source}:${s.repo}`}
-              label={`${s.source} stale`}
-              tone={tokens.muted}
-              withDot
-              title={s.message ?? `${s.source} · ${s.repo} is ${s.freshness}`}
-            />
-          ))}
+        {/* B4: the shared surface-freshness treatment (was a bespoke stale-pill loop). */}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <SurfaceFreshnessBadge noun="Teaching" derivedAt={overview.derivedAt} sources={overview.sources} now={now} />
+          <StaleSourcePills sources={overview.sources} />
         </div>
       </header>
 

@@ -12,8 +12,8 @@ import type { SkillsCatalogV1 } from "../../contracts/index.js";
 import { tokens } from "../tokens.js";
 import { CockpitSurfaceStyles } from "../shared/surface-styles.js";
 import { CockpitMotionStyles } from "../shared/cockpit-motion.js";
-import { ClockIcon, SearchIcon } from "../icons.js";
-import { relativeTime } from "../shared/time.js";
+import { SurfaceFreshnessBadge } from "../shared/freshness.js";
+import { SearchIcon } from "../icons.js";
 import { SkillTree, type SkillSelection } from "./SkillTree.js";
 
 export interface SkillsViewProps {
@@ -44,7 +44,6 @@ export function SkillsView({
 }: SkillsViewProps) {
   const total = catalog.total;
   const searching = query.trim() !== "";
-  const derivedAge = relativeTime(catalog.derivedAt, now);
   const showViewerOnly = isMobile && selectedSkillId !== null;
 
   return (
@@ -58,14 +57,11 @@ export function SkillsView({
           <span style={{ fontSize: 12.5, color: tokens.muted }}>
             {searching ? `${total} of ${totalUnfiltered}` : `${total} skill${total === 1 ? "" : "s"}`}
           </span>
-          {derivedAge ? (
-            <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: tokens.muted }}>
-              <span aria-hidden="true" style={{ display: "inline-flex" }}>
-                <ClockIcon size={12} />
-              </span>
-              as of {derivedAge}
-            </span>
-          ) : null}
+          {/* B4: the shared surface-freshness badge (was a hand-rolled "as of" clock).
+              The skills catalog carries no per-source freshness rows — age-only badge. */}
+          <span style={{ marginLeft: "auto", display: "inline-flex" }}>
+            <SurfaceFreshnessBadge noun="Skills" derivedAt={catalog.derivedAt} sources={[]} now={now} />
+          </span>
         </header>
       ) : null}
 

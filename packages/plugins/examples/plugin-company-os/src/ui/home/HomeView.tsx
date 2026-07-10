@@ -14,9 +14,8 @@ import type { BriefingCardV1, DeepLink, OrientationV1 } from "../../contracts/in
 import type { CompanyOsTabKey } from "../tabs.js";
 import { tokens } from "../tokens.js";
 import { CockpitSurfaceStyles } from "../shared/surface-styles.js";
-import { StaleSourcePills } from "../shared/freshness.js";
-import { ClockIcon, CloseIcon } from "../icons.js";
-import { relativeTime } from "../shared/time.js";
+import { StaleSourcePills, SurfaceFreshnessBadge } from "../shared/freshness.js";
+import { CloseIcon } from "../icons.js";
 import { CockpitMotionStyles } from "../shared/cockpit-motion.js";
 import { DiagnosticsStrip } from "../shared/diagnostics-strip.js";
 import { MetricsStrip } from "./MetricsStrip.js";
@@ -54,8 +53,6 @@ export function HomeView({
   onCloseDrawer,
   drawerRef,
 }: HomeViewProps) {
-  const derivedAge = relativeTime(orientation.derivedAt, now);
-
   const snapshot = (
     <Panel index={0} title="Snapshot" isMobile={isMobile}>
       <MetricsStrip metrics={orientation.metrics} isMobile={isMobile} onNavigateTab={onNavigateTab} />
@@ -113,14 +110,8 @@ export function HomeView({
       <div aria-hidden={drawer != null || undefined} style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
         <header style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 650, color: tokens.fg }}>Orientation</h2>
-          {derivedAge ? (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: tokens.muted }}>
-              <span aria-hidden="true" style={{ display: "inline-flex" }}>
-                <ClockIcon size={12} />
-              </span>
-              as of {derivedAge}
-            </span>
-          ) : null}
+          {/* B4: the shared surface-freshness badge (was a hand-rolled "as of" clock). */}
+          <SurfaceFreshnessBadge noun="Orientation" derivedAt={orientation.derivedAt} sources={orientation.sources} now={now} />
           <StaleSourcePills sources={orientation.sources} />
         </header>
 

@@ -15,6 +15,7 @@ import { Pill } from "../shared/badges.js";
 import { CalmNote } from "../shared/feedback.js";
 import { CockpitSurfaceStyles } from "../shared/surface-styles.js";
 import { CockpitMotionStyles } from "../shared/cockpit-motion.js";
+import { StaleSourcePills, SurfaceFreshnessBadge } from "../shared/freshness.js";
 import { VERDICT_LABELS, VERDICT_TONES } from "../shared/verdict-labels.js";
 import { AgentConstellation } from "./AgentConstellation.js";
 import { AgentCard } from "./AgentCard.js";
@@ -44,6 +45,14 @@ export function AgentsView({ system, now, isMobile = false, selectedAgentKey = n
 
       <Reveal delayMs={0}>
         <Masthead vitals={vm.vitals} isMobile={isMobile} />
+      </Reveal>
+
+      {/* B4: the shared surface-freshness treatment every live tab carries. */}
+      <Reveal delayMs={30}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <SurfaceFreshnessBadge noun="Agents" derivedAt={system.derivedAt} sources={system.sources} now={now} />
+          <StaleSourcePills sources={system.sources} />
+        </div>
       </Reveal>
 
       {vm.hasAnyData ? (

@@ -99,3 +99,10 @@ describe("render-slot flag-off byte-identity (COS-2f)", () => {
     expect(slot).not.toContain("arrives in"); // not the placeholder
   });
 });
+
+describe("Teaching surface freshness (B4)", () => {
+  it("renders the shared SurfaceFreshnessBadge instead of the bespoke stale-pill loop", () => {
+    const html = view(populated());
+    expect(html).toMatch(/Teaching is (live|stale)/);
+  });
+});

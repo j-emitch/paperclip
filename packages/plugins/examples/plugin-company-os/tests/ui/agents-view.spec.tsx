@@ -83,3 +83,10 @@ describe("AgentsView — zero-state", () => {
     expect(html).toContain("No duty overlaps");
   });
 });
+
+describe("Agents surface freshness (B4)", () => {
+  it("renders the shared SurfaceFreshnessBadge (the tab previously had NO freshness treatment)", () => {
+    const html = render();
+    expect(html).toMatch(/Agents is (live|stale)/);
+  });
+});
