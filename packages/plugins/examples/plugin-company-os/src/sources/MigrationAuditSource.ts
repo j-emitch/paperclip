@@ -188,6 +188,11 @@ export const migrationAuditSource: WorkSignalSource = {
       // (codex COS-11 P1 on the row-8 story).
       const corruptTargets = new Set<string>();
       for (const file of sorted) {
+        // Once a target has a parsed row, its OLDER files are superseded — skip
+        // by filename-lifted target so they neither cost reads nor spray
+        // parse_error diagnostics (pre-grant-era audits fail the strict parser).
+        const fnameTarget = /audit-([a-z]+)/.exec(file.relPath.split("/").pop() ?? "")?.[1];
+        if (fnameTarget && seenTargets.has(fnameTarget)) continue;
         let text: string;
         try {
           text = await ctx.fs.readText(MIGRATION_AUDIT_REPO, file.relPath);
