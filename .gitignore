@@ -60,3 +60,8 @@ tests/release-smoke/playwright-report/
 .superpowers/
 .claude/worktrees/
 .herenow
+
+# Cannons/review reports are DISK-ONLY (INFRA-13) — the pre-push gate reads them by sha8;
+# committing one mints a new sha and re-trips the gate. Parity with company/JB/arc.
+reports/review-cannons/
+reports/reviews/
