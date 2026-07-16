@@ -105,4 +105,18 @@ describe("deriveDocIndex — C1 §2.3 spine", () => {
     expect(unverified.find((d) => d.repo === "company")?.message).toContain("2 docs");
     expect(unverified.find((d) => d.repo === "juice-bar")?.message).toContain("1 doc ");
   });
+
+  it("status_unverified counts CANON once — worktree copies never inflate it (inline-lane fold)", () => {
+    const di = deriveDocIndex(
+      bundleOf([
+        docSignal("specs/a.md", { repo: "company", status: "active" }),
+        docSignal("specs/a.md", { docId: "wt1", checkoutId: "worktree:x", checkoutKey: "company::wt::x", repo: "company", status: "active" }),
+        docSignal("specs/a.md", { docId: "wt2", checkoutId: "worktree:y", checkoutKey: "company::wt::y", repo: "company", status: "active" }),
+      ]),
+      NOW,
+      TAX,
+    );
+    const d = di.diagnostics.find((x) => x.code === "status_unverified" && x.repo === "company");
+    expect(d?.message).toContain("1 doc ");
+  });
 });

@@ -80,6 +80,7 @@ export function deriveDocIndex(bundle: SignalBundle, nowMs: number, taxonomy: Pr
   // would flood the rail with the whole legacy corpus).
   const unverifiedByRepo = new Map<string, number>();
   for (const d of signals.filter(isDocSignal)) {
+    if (d.checkoutId !== "main") continue; // count canon once — never per worktree copy
     if (d.status !== null && d.statusVerifiedAt === null) {
       unverifiedByRepo.set(d.repo, (unverifiedByRepo.get(d.repo) ?? 0) + 1);
     }

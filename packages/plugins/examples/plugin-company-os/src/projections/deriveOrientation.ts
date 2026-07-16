@@ -171,6 +171,7 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
   const tbdByTicket = new Map<string, WorkSignal>();
   for (const w of work) {
     if (w.ticketId === null || w.state !== "next_up") continue;
+    if (workByTicket.has(w.ticketId)) continue; // already moving (in-progress/shipped) — TBD is QUEUED only
     const prev = tbdByTicket.get(w.ticketId);
     if (!prev || (w.mtime ?? "") > (prev.mtime ?? "")) tbdByTicket.set(w.ticketId, w);
   }

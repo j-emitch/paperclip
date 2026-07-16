@@ -217,4 +217,17 @@ describe("deriveOrientation — C3 (TBD lane + shipped-this-week + plan gaps)", 
     );
     expect(o.metrics.planGaps).toBe(1);
   });
+
+  it("a ticket already moving never double-lists in the TBD lane (inline-lane fold)", () => {
+    const o = deriveOrientation(
+      bundleOf([
+        work("SSF-04", "next_up", "spec_frontmatter", { repo: "juice-bar", title: "Spec says queued" }),
+        work("SSF-04", "in_progress", "branch_path", { repo: "juice-bar", title: "Git says moving" }),
+      ]),
+      NOW,
+      TAX,
+    );
+    expect(o.tbdWork).toEqual([]);
+    expect(o.recentWork.some((w) => w.title === "Git says moving")).toBe(true);
+  });
 });
