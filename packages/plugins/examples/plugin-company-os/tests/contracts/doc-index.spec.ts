@@ -95,7 +95,7 @@ describe("DocIndexV1", () => {
   });
 
   it("exposes the index-time cap constants", () => {
-    expect(DOC_FRONTMATTER_SCAN_BYTES).toBe(4096);
+    expect(DOC_FRONTMATTER_SCAN_BYTES).toBe(8192); // WF-09 shared-parser head-budget parity (codex order-0 fold)
     expect(MAX_DOCS_PER_REPO).toBe(600);
   });
 });

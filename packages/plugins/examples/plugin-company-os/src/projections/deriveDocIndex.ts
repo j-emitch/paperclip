@@ -66,10 +66,13 @@ export function deriveDocIndex(bundle: SignalBundle, nowMs: number, taxonomy: Pr
         provenance: d.checkoutId === "main" ? "main" : "worktree",
         title: d.title,
         status: d.status,
-        owner: d.owner,
-        lastUpdated: d.lastUpdated,
-        statusVerifiedAt: d.statusVerifiedAt,
-        description: d.description,
+        // `?? null` coalesces PRE-v2 cached source slices (a scoped refresh can
+        // rehydrate signals persisted before these fields existed — undefined
+        // would abort the whole v2 projection write at the zod gate).
+        owner: d.owner ?? null,
+        lastUpdated: d.lastUpdated ?? null,
+        statusVerifiedAt: d.statusVerifiedAt ?? null,
+        description: d.description ?? null,
         mtime: d.mtime,
       },
     });
@@ -97,6 +100,10 @@ export function deriveDocIndex(bundle: SignalBundle, nowMs: number, taxonomy: Pr
 
   for (const a of signals.filter(isArtifactSignal)) {
     const docId = makeDocId(a.repo, "main", a.relPath);
+    // The artifact entry wins the dedup, but it carries no §2.3 head fields —
+    // PRESERVE the richer DocSignal spine when one indexed the same file (codex
+    // order-0 P1: hard-nulling stripped every main spec/handoff of its v2 fields).
+    const prior = byId.get(docId)?.entry;
     byId.set(docId, {
       type: classifyArtifactToDocIndexType(a.relPath),
       entry: {
@@ -108,14 +115,13 @@ export function deriveDocIndex(bundle: SignalBundle, nowMs: number, taxonomy: Pr
         worktreeName: null,
         branch: null,
         provenance: "main",
-        title: a.title,
-        status: a.status,
-        // ArtifactSignal carries no §2.3 head fields — nulls, honestly absent.
-        owner: null,
-        lastUpdated: null,
-        statusVerifiedAt: null,
-        description: null,
-        mtime: a.mtime ?? isoFrom(nowMs),
+        title: a.title ?? prior?.title ?? null,
+        status: a.status ?? prior?.status ?? null,
+        owner: prior?.owner ?? null,
+        lastUpdated: prior?.lastUpdated ?? null,
+        statusVerifiedAt: prior?.statusVerifiedAt ?? null,
+        description: prior?.description ?? null,
+        mtime: a.mtime ?? prior?.mtime ?? isoFrom(nowMs),
       },
     });
   }

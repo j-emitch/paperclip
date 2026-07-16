@@ -191,3 +191,18 @@ describe("DocsSource — C1 §2.3 spine fields", () => {
     expect(bare.description).toBe("Just a body.");
   });
 });
+
+describe("DocsSource — codex order-0 fold: prefix: frontmatter attribution", () => {
+  it("attributes a doc via canonical `prefix:` when no id/ticket/filename ticket exists", async () => {
+    const files: FixtureFs = {
+      company: {
+        "specs/OFFICE-MANAGEMENT-SPEC.md": { content: "---\ntitle: OM\nprefix: OM\n---\n# OM" },
+        "specs/bad-prefix.md": { content: "---\ntitle: X\nprefix: not-a-prefix\n---\n# X" },
+      },
+    };
+    const { collect } = run(files, []);
+    const docs = (await collect()).signals.filter(isDocSignal) as DocSignal[];
+    expect(docs.find((d) => d.relPath.includes("OFFICE"))?.prefix).toBe("OM");
+    expect(docs.find((d) => d.relPath.includes("bad-prefix"))?.prefix).toBeNull(); // shape-gated
+  });
+});

@@ -120,3 +120,29 @@ describe("deriveDocIndex — C1 §2.3 spine", () => {
     expect(d?.message).toContain("1 doc ");
   });
 });
+
+describe("deriveDocIndex — codex order-0 folds", () => {
+  it("the artifact dedup-winner PRESERVES the DocSignal's §2.3 spine fields", () => {
+    const di = deriveDocIndex(
+      bundleOf([
+        docSignal("specs/x.md", { repo: "company", docType: "spec", owner: "joe", lastUpdated: "2026-07-01", description: "Rich." }),
+        artifact("specs/x.md", { repo: "company", artifactType: "spec" }),
+      ]),
+      NOW,
+      TAX,
+    );
+    const entry = di.groups.flatMap((g) => g.types).flatMap((t) => t.docs).find((d) => d.relPath === "specs/x.md")!;
+    expect(entry.owner).toBe("joe");
+    expect(entry.lastUpdated).toBe("2026-07-01");
+    expect(entry.description).toBe("Rich.");
+  });
+
+  it("coalesces pre-v2 cached DocSignals (undefined spine fields) instead of aborting the write", () => {
+    const legacy = docSignal("specs/old.md", { repo: "company" }) as unknown as Record<string, unknown>;
+    delete legacy.owner; delete legacy.lastUpdated; delete legacy.statusVerifiedAt; delete legacy.description;
+    const di = deriveDocIndex(bundleOf([legacy as never]), NOW, TAX);
+    expect(() => parseDocIndexV1(di)).not.toThrow();
+    const entry = di.groups.flatMap((g) => g.types).flatMap((t) => t.docs)[0]!;
+    expect(entry.owner).toBeNull();
+  });
+});

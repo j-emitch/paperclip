@@ -32,7 +32,9 @@ import {
 export const DOC_INDEX_SCHEMA_VERSION = 2 as const;
 
 /** `DocsSource` index-time caps (spec §5.4/§12). */
-export const DOC_FRONTMATTER_SCAN_BYTES = 4096 as const;
+// 8192 = parity with the WF-09 shared parser's head budget (codex order-0 P1:
+// a block closing past 4KB indexed in workflow-metadata but field-less here).
+export const DOC_FRONTMATTER_SCAN_BYTES = 8192 as const;
 export const MAX_DOCS_PER_REPO = 600 as const;
 
 export const docIndexTypeSchema = z.enum(DOC_INDEX_TYPES);

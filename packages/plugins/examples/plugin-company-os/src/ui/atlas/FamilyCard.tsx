@@ -56,7 +56,9 @@ export function FamilyCard({
   const summaryAria =
     `${family.prefix} ${family.name} — ${family.builtSummary}` +
     (activeBuilds > 0 ? `, ${activeBuilds} in flight` : "") +
-    (family.tickets.length > 0 ? `, ${family.tickets.length} ticket${family.tickets.length === 1 ? "" : "s"}` : "");
+    (family.tickets.length > 0 ? `, ${family.tickets.length} ticket${family.tickets.length === 1 ? "" : "s"}` : "") +
+    (family.description ? `. ${family.description}` : "") +
+    (docChips.length > 0 ? `. Doc health: ${docChips.map((c) => c.label).join(", ")}` : "");
 
   return (
     <details

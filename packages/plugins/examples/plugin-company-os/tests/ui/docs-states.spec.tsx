@@ -115,3 +115,13 @@ describe("Docs C4 — surface badge + row status/owner badges", () => {
     expect(html).toContain("joe");
   });
 });
+
+describe("Docs C4 — diagnostics strip (codex order-0 fold)", () => {
+  it("renders index diagnostics through the shared strip (was invisible)", () => {
+    const idx = { ...goldenDocIndex(), diagnostics: [{ level: "info" as const, code: "status_unverified", message: "3 docs carry status: without status_verified_at", repo: "company", source: "doc-index" }] };
+    const html = renderToStaticMarkup(
+      <DocsView docIndex={idx} selectedDocId={null} onSelect={() => {}} now={DOCS_NOW} viewer={null} />,
+    );
+    expect(html).toContain("status_unverified");
+  });
+});

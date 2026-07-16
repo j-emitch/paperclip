@@ -315,11 +315,14 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
 
   // C3: plan gaps — registered families with a MAIN-checkout spec doc but no plan
   // doc (the same hasSpec && !hasPlan rule the Atlas lifecycle uses).
+  // ANY checkout counts (main or worktree) — the SAME rule the Atlas lifecycle
+  // uses, so Home's gap count can never contradict the family card it links to
+  // (codex order-0 P1: a worktree-only plan read as a gap here but "authored" there).
   const registeredPrefixes = new Set(signals.filter(isTaxonomySignal).map((s) => s.prefix));
   const specPrefixes = new Set<string>();
   const planPrefixes = new Set<string>();
   for (const d of signals.filter(isDocSignal)) {
-    if (d.checkoutId !== "main" || d.prefix === null) continue;
+    if (d.prefix === null) continue;
     if (d.docType === "spec") specPrefixes.add(d.prefix);
     if (d.docType === "plan") planPrefixes.add(d.prefix);
   }

@@ -15,6 +15,7 @@ import { tokens } from "../tokens.js";
 import { CockpitSurfaceStyles } from "../shared/surface-styles.js";
 import { CockpitMotionStyles } from "../shared/cockpit-motion.js";
 import { StaleSourcePills, SurfaceFreshnessBadge } from "../shared/freshness.js";
+import { DiagnosticsStrip } from "../shared/diagnostics-strip.js";
 import { DocTree, type DocSelection } from "./DocTree.js";
 
 export interface DocsViewProps {
@@ -63,6 +64,10 @@ export function DocsView({ docIndex, selectedDocId, onSelect, now, isMobile = fa
       ) : null}
 
       {!showViewerOnly && facetBar ? <div style={{ minWidth: 0 }}>{facetBar}</div> : null}
+
+      {/* codex order-0 P1: status_unverified / truncation / unresolved-repo were
+          invisible — the shared strip (B2 frame) surfaces them; calm line when clean. */}
+      {!showViewerOnly ? <DiagnosticsStrip diagnostics={docIndex.diagnostics} /> : null}
 
       {isMobile ? (
         showViewerOnly ? (

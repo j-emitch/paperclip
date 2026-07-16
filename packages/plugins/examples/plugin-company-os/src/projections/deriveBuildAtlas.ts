@@ -186,7 +186,7 @@ function buildFamily(
     specUpdatedAt: docTouchedAt(spec),
     planStatus: plan?.status ?? null,
     planUpdatedAt: docTouchedAt(plan),
-    description: spec?.description ?? plan?.description ?? null,
+    description: spec?.description ?? plan?.description ?? null, // ?? also coalesces pre-v2 cached signals' undefined
     builtPct: total === 0 ? 0 : Math.round((shipped / total) * 100),
     builtSummary: builtSummary(isRolling, builds),
     builds,
@@ -475,7 +475,7 @@ function newestDocOfType(docs: readonly DocSignal[], docType: "spec" | "plan"): 
 /** A doc's last-touch stamp: frontmatter `last_updated` (?? `date`) wins over mtime. */
 function docTouchedAt(doc: DocSignal | null | undefined): string | null {
   if (!doc) return null;
-  return doc.lastUpdated ?? doc.mtime;
+  return doc.lastUpdated ?? doc.mtime ?? null; // pre-v2 cached signals may lack lastUpdated entirely
 }
 
 /** Group a family's work signals into one build per ticket, furthest-right state wins. */

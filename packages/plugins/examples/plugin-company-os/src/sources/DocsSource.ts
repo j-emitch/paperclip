@@ -113,7 +113,11 @@ async function scanCheckout(
     // lifecycle fold can attribute this doc without re-reading. Frontmatter
     // `id`/`ticket` wins; else the filename ticket (`…-COS-0-plan.md`).
     const ticketId = fm.frontmatter?.id ?? fm.frontmatter?.ticket ?? ticketFromFilename(file.relPath);
-    const prefix = ticketId ? prefixOf(ticketId) : null;
+    // codex order-0 P1: 12 live JB specs carry ONLY `prefix:` frontmatter (no id/
+    // ticket, un-ticket-shaped filenames) — honor it, else their C2 metadata and
+    // C3 plan-gap inputs silently vanish. Shape-gated to an UPPERCASE registry key.
+    const fmPrefix = fm.frontmatter?.prefix;
+    const prefix = (ticketId ? prefixOf(ticketId) : null) ?? (fmPrefix && /^[A-Z]+$/.test(fmPrefix) ? fmPrefix : null);
     docs.push({
       kind: "doc",
       source: DOCS_SOURCE_ID,

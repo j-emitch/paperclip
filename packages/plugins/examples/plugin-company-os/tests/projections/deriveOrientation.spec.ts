@@ -209,7 +209,7 @@ describe("deriveOrientation — C3 (TBD lane + shipped-this-week + plan gaps)", 
         docSignal("docs/superpowers/plans/COS-plan.md", { docType: "plan", prefix: "COS" }),
         docSignal("specs/MTP.md", { docType: "spec", prefix: "MTP" }), // spec, no plan → the gap
         docSignal("specs/XYZ.md", { docType: "spec", prefix: "XYZ" }), // unregistered → not counted
-        // A worktree spec never creates a gap on its own (in-flight draft, not canon).
+        // Any-checkout counts (Atlas-lifecycle parity) — COS has a plan, so its worktree spec adds no gap.
         docSignal("specs/COS.md", { docId: "wt", checkoutId: "worktree:aaa", checkoutKey: "company::wt::aaa", docType: "spec", prefix: "COS" }),
       ]),
       NOW,
