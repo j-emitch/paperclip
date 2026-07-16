@@ -14,8 +14,7 @@ import type { DocIndexV1 } from "../../contracts/index.js";
 import { tokens } from "../tokens.js";
 import { CockpitSurfaceStyles } from "../shared/surface-styles.js";
 import { CockpitMotionStyles } from "../shared/cockpit-motion.js";
-import { ClockIcon } from "../icons.js";
-import { relativeTime } from "../shared/time.js";
+import { StaleSourcePills, SurfaceFreshnessBadge } from "../shared/freshness.js";
 import { DocTree, type DocSelection } from "./DocTree.js";
 
 export interface DocsViewProps {
@@ -42,7 +41,6 @@ function totalDocs(docIndex: DocIndexV1): number {
 
 export function DocsView({ docIndex, selectedDocId, onSelect, now, isMobile = false, viewer, facetBar, hasRouteIssue = false }: DocsViewProps) {
   const total = totalDocs(docIndex);
-  const derivedAge = relativeTime(docIndex.derivedAt, now);
   const showViewerOnly = isMobile && (selectedDocId !== null || hasRouteIssue);
 
   return (
@@ -56,14 +54,11 @@ export function DocsView({ docIndex, selectedDocId, onSelect, now, isMobile = fa
           <span style={{ fontSize: 12.5, color: tokens.muted }}>
             {total} document{total === 1 ? "" : "s"}
           </span>
-          {derivedAge ? (
-            <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: tokens.muted }}>
-              <span aria-hidden="true" style={{ display: "inline-flex" }}>
-                <ClockIcon size={12} />
-              </span>
-              as of {derivedAge}
-            </span>
-          ) : null}
+          {/* C4: the shared surface-freshness treatment (was a hand-rolled "as of" clock). */}
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <SurfaceFreshnessBadge noun="Docs" derivedAt={docIndex.derivedAt} sources={docIndex.sources} now={now} />
+            <StaleSourcePills sources={docIndex.sources} />
+          </div>
         </header>
       ) : null}
 

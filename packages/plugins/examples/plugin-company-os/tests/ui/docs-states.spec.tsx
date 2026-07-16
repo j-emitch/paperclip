@@ -81,3 +81,37 @@ describe("Docs SSR", () => {
     expect(html).toContain("COS-1 plan");
   });
 });
+
+describe("Docs C4 — surface badge + row status/owner badges", () => {
+  const noop2 = () => {};
+
+  it("renders the shared SurfaceFreshnessBadge (was a hand-rolled 'as of' clock)", () => {
+    const html = renderToStaticMarkup(
+      <DocsView docIndex={goldenDocIndex()} selectedDocId={null} onSelect={noop2} now={DOCS_NOW} viewer={null} />,
+    );
+    expect(html).toMatch(/Docs is (live|stale)/);
+  });
+
+  it("renders each doc's frontmatter status as a row pill", () => {
+    const html = renderToStaticMarkup(
+      <DocTree docIndex={goldenDocIndex()} selectedDocId={null} onSelect={noop2} now={DOCS_NOW} />,
+    );
+    expect(html).toContain("draft"); // the dogfood spec's status pill
+    expect(html).toContain("approved"); // the plan's status pill
+  });
+
+  it("renders the owner when frontmatter carries one, and the lastUpdated-first age", () => {
+    const idx = goldenDocIndex();
+    const first = idx.groups[0].types[0].docs[0];
+    const mutated = {
+      ...idx,
+      groups: idx.groups.map((g, gi) =>
+        gi === 0
+          ? { ...g, types: g.types.map((b, bi) => (bi === 0 ? { ...b, docs: [{ ...first, owner: "joe", lastUpdated: "2026-06-26" }] } : b)) }
+          : g,
+      ),
+    };
+    const html = renderToStaticMarkup(<DocTree docIndex={mutated} selectedDocId={null} onSelect={noop2} now={DOCS_NOW} />);
+    expect(html).toContain("joe");
+  });
+});

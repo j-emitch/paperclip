@@ -24,7 +24,7 @@ import {
   type DocTypeBucketV1,
 } from "../contracts/doc-index.js";
 import { DOC_INDEX_TYPES, type DocIndexType } from "../contracts/vocab.js";
-import { isoFrom } from "./_shared.js";
+import { aggregateSourceFreshness, isoFrom } from "./_shared.js";
 
 interface IndexedDoc {
   readonly entry: DocEntryV1;
@@ -164,6 +164,7 @@ export function deriveDocIndex(bundle: SignalBundle, nowMs: number, taxonomy: Pr
   return {
     schemaVersion: DOC_INDEX_SCHEMA_VERSION,
     derivedAt: isoFrom(nowMs),
+    sources: aggregateSourceFreshness(bundle),
     taxonomy,
     groups,
     diagnostics,

@@ -15,7 +15,7 @@
  */
 
 import { z } from "@paperclipai/plugin-sdk";
-import { diagnosticSchema } from "./diagnostics.js";
+import { sourceFreshnessSchema, diagnosticSchema } from "./diagnostics.js";
 import { projectGroupV1Schema, projectTaxonomyV1Schema } from "./projects.js";
 import {
   DOC_INDEX_TYPES,
@@ -82,6 +82,8 @@ export type DocProjectSectionV1 = z.infer<typeof docProjectSectionV1Schema>;
 export const docIndexV1Schema = z.object({
   schemaVersion: z.literal(DOC_INDEX_SCHEMA_VERSION),
   derivedAt: z.string().min(1),
+  /** C4: per-(source,repo) freshness — folded into the SAME v2 bump as the C1 fields. */
+  sources: z.array(sourceFreshnessSchema),
   /** Embedded so the UI renders headers without a 2nd fetch. */
   taxonomy: projectTaxonomyV1Schema,
   /** Project → type → doc, in taxonomy order. */

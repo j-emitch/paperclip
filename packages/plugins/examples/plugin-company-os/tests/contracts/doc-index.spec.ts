@@ -14,6 +14,7 @@ const GROUP = { key: "company", displayName: "Company", kind: "company" as const
 const MINIMAL = {
   schemaVersion: DOC_INDEX_SCHEMA_VERSION,
   derivedAt: "2026-06-23T00:00:00.000Z",
+  sources: [],
   taxonomy: TAXONOMY,
   groups: [],
   diagnostics: [],

@@ -79,6 +79,7 @@ export function goldenDocIndex(): DocIndexV1 {
   return parseDocIndexV1({
     schemaVersion: DOC_INDEX_SCHEMA_VERSION,
     derivedAt: "2026-06-26T17:56:00Z",
+    sources: [{ source: "docs", repo: "company", freshness: "live", lastOkAt: "2026-06-26T17:56:00Z", errorCount: 0, message: null }],
     taxonomy: TAX,
     groups: [
       {
@@ -111,6 +112,7 @@ export function emptyDocIndex(): DocIndexV1 {
   return parseDocIndexV1({
     schemaVersion: DOC_INDEX_SCHEMA_VERSION,
     derivedAt: "2026-06-26T17:56:00Z",
+    sources: [],
     taxonomy: TAX,
     groups: [],
     diagnostics: [],

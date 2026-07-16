@@ -10,6 +10,7 @@
 import type { DocEntryV1, DocIndexV1, DocProjectSectionV1 } from "../../contracts/index.js";
 import type { DocIndexType } from "../../contracts/vocab.js";
 import { tokens } from "../tokens.js";
+import { Pill } from "../shared/badges.js";
 import { Dot } from "../shared/badges.js";
 import { CalmNote } from "../shared/feedback.js";
 import { ProjectSection } from "../shared/ProjectSection.js";
@@ -130,7 +131,7 @@ function DocRow({
   onSelect: (selection: DocSelection) => void;
   now: number;
 }) {
-  const age = relativeTime(entry.mtime, now);
+  const age = relativeTime(entry.lastUpdated ?? entry.mtime, now);
   // Two-line: the TITLE owns its own line (so a long worktree provenance badge
   // never squeezes it to "COS-…"), with the provenance + mtime on a calm meta line.
   return (
@@ -172,6 +173,13 @@ function DocRow({
       </span>
       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, width: "100%" }}>
         <ProvenanceBadge entry={entry} />
+        {/* C4 (§2.3 spine): the doc's lifecycle status + owner, straight from frontmatter. */}
+        {entry.status ? <Pill label={entry.status} tone={tokens.muted} style={{ flex: "0 0 auto" }} /> : null}
+        {entry.owner ? (
+          <span style={{ fontSize: 10.5, color: tokens.muted, fontFamily: tokens.mono, whiteSpace: "nowrap", flex: "0 0 auto" }}>
+            {entry.owner}
+          </span>
+        ) : null}
         <span style={{ flex: 1 }} />
         {age ? (
           <span style={{ fontSize: 11, color: tokens.muted, whiteSpace: "nowrap", flex: "0 0 auto", fontVariantNumeric: "tabular-nums" }}>
