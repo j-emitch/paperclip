@@ -1,6 +1,7 @@
 /**
- * `MetricsStrip` — the Home vitals bar: five current-snapshot counts (open PRs,
- * in-progress, alerts, branches needing attention, dirty worktrees). Tabular-nums
+ * `MetricsStrip` — the Home vitals bar: seven current-snapshot counts (open PRs,
+ * in-progress, alerts, branches at risk, dirty worktrees, shipped-this-week,
+ * plan gaps — C3). Tabular-nums
  * so the digits don't jitter; attention metrics tint when non-zero (color AND a
  * "needs attention" dot — never color alone). Tiles that have a natural
  * destination navigate there; "alerts" is summarized on this same page so it's a
@@ -29,6 +30,9 @@ const TILES: readonly TileSpec[] = [
   { key: "branchesNeedingAttention", label: "Branches at risk", tone: statusColors.stale, attention: true, to: "branch-pr" },
   { key: "dirtyWorktrees", label: "Dirty worktrees", tone: statusColors.cached, attention: true, to: "branch-pr" },
   { key: "alerts", label: "Alerts", tone: statusColors.danger, attention: true },
+  // C3: momentum + the plan-gap debt — the two counts Joe asked the snapshot to carry.
+  { key: "shippedThisWeek", label: "Shipped this week", tone: statusColors.ship, attention: false, to: "atlas" },
+  { key: "planGaps", label: "Plan gaps", tone: statusColors.revise, attention: true, to: "atlas" },
 ];
 
 export interface MetricsStripProps {
@@ -44,7 +48,7 @@ export function MetricsStrip({ metrics, isMobile = false, onNavigateTab }: Metri
       aria-label="Current snapshot"
       style={{
         display: "grid",
-        gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(5, 1fr)",
+        gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(auto-fit, minmax(140px, 1fr))",
         gap: isMobile ? 8 : 10,
       }}
     >

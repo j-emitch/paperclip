@@ -10,6 +10,9 @@
 
 import type { SignalBundle } from "../contracts/WorkSignalSource.js";
 import {
+  isDocSignal,
+  isTaxonomySignal,
+  isLandedPrSignal,
   isArtifactSignal,
   isBranchSignal,
   isProtectionSignal,
@@ -164,6 +167,26 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
     const prev = workByTicket.get(w.ticketId);
     if (!prev || (w.mtime ?? "") > (prev.mtime ?? "")) workByTicket.set(w.ticketId, w);
   }
+  // C3: the TBD lane — queued next_up work, deduped by ticket, newest first.
+  const tbdByTicket = new Map<string, WorkSignal>();
+  for (const w of work) {
+    if (w.ticketId === null || w.state !== "next_up") continue;
+    const prev = tbdByTicket.get(w.ticketId);
+    if (!prev || (w.mtime ?? "") > (prev.mtime ?? "")) tbdByTicket.set(w.ticketId, w);
+  }
+  const tbdWork: RecentWorkV1[] = [...tbdByTicket.values()]
+    .sort((a, b) => (b.mtime ?? "").localeCompare(a.mtime ?? ""))
+    .slice(0, HOME_RECENT_WORK_LIMIT)
+    .map((w) => ({
+      projectKey: proj(w.repo),
+      system: w.prefix ?? "General",
+      kind: workKind(w),
+      title: w.title ?? w.ticketId ?? w.evidence,
+      status: w.state,
+      updatedAt: w.mtime ?? isoFrom(nowMs),
+      deepLink: { tab: "board", workId: w.ticketId ?? w.evidence },
+    }));
+
   const recentWork: RecentWorkV1[] = [...workByTicket.values()]
     .sort((a, b) => (b.mtime ?? "").localeCompare(a.mtime ?? ""))
     .slice(0, HOME_RECENT_WORK_LIMIT)
@@ -280,6 +303,30 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
   let dirtyWorktrees = 0;
   for (const b of branches) for (const wt of b.worktrees) if ((wt.dirtyFileCount ?? 0) > 0) dirtyWorktrees++;
 
+  // C3: momentum — distinct PRs landed in the last 7 days (repo-local numbers,
+  // so key by repo#number like openPrs).
+  const weekAgoMs = nowMs - 7 * 86_400_000;
+  const landedThisWeek = new Set<string>();
+  for (const lp of signals.filter(isLandedPrSignal)) {
+    const at = Date.parse(lp.landedAt);
+    if (Number.isFinite(at) && at >= weekAgoMs) landedThisWeek.add(`${lp.repo}#${lp.prNumber}`);
+  }
+
+  // C3: plan gaps — registered families with a MAIN-checkout spec doc but no plan
+  // doc (the same hasSpec && !hasPlan rule the Atlas lifecycle uses).
+  const registeredPrefixes = new Set(signals.filter(isTaxonomySignal).map((s) => s.prefix));
+  const specPrefixes = new Set<string>();
+  const planPrefixes = new Set<string>();
+  for (const d of signals.filter(isDocSignal)) {
+    if (d.checkoutId !== "main" || d.prefix === null) continue;
+    if (d.docType === "spec") specPrefixes.add(d.prefix);
+    if (d.docType === "plan") planPrefixes.add(d.prefix);
+  }
+  let planGaps = 0;
+  for (const prefix of registeredPrefixes) {
+    if (specPrefixes.has(prefix) && !planPrefixes.has(prefix)) planGaps++;
+  }
+
   const sources = aggregateSourceFreshness(bundle);
   return {
     schemaVersion: ORIENTATION_SCHEMA_VERSION,
@@ -292,10 +339,13 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
       alerts: alerts.length,
       branchesNeedingAttention: branchHealth.length,
       dirtyWorktrees,
+      shippedThisWeek: landedThisWeek.size,
+      planGaps,
     },
     branchHealth,
     recentCommits,
     recentWork,
+    tbdWork,
     alerts,
     sources,
     // Fold the per-repo git-header diagnostics (git budget exceeded / read failed)

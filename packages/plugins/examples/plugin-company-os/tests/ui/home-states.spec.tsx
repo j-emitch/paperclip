@@ -138,3 +138,23 @@ describe("Home surface freshness (B4)", () => {
     expect(html).toMatch(/Orientation is (live|stale)/);
   });
 });
+
+describe("Home C3 — TBD lane + 7-tile snapshot", () => {
+  it("renders the TBD lane with its queued item from the golden orientation", () => {
+    const html = renderToStaticMarkup(<HomeView orientation={goldenOrientation()} now={HOME_NOW} />);
+    expect(html).toContain("TBD · queued");
+    expect(html).toContain("OM-15 office pay-rate settings UI");
+  });
+
+  it("shows the TBD 0-state (show the 0, never hide the lane)", () => {
+    const html = renderToStaticMarkup(<HomeView orientation={emptyOrientation()} now={HOME_NOW} />);
+    expect(html).toContain("TBD · queued");
+    expect(html).toContain("Nothing queued");
+  });
+
+  it("renders the two new snapshot tiles", () => {
+    const html = renderToStaticMarkup(<HomeView orientation={goldenOrientation()} now={HOME_NOW} />);
+    expect(html).toContain("Shipped this week");
+    expect(html).toContain("Plan gaps");
+  });
+});

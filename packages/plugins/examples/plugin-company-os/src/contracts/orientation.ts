@@ -34,7 +34,8 @@ import {
   type RoutineVerdict,
 } from "./vocab.js";
 
-export const ORIENTATION_SCHEMA_VERSION = 2 as const;
+// v3: C3 — metrics += shippedThisWeek/planGaps; orientation += tbdWork (the TBD lane).
+export const ORIENTATION_SCHEMA_VERSION = 3 as const;
 
 /** Home glance caps (spec §5.3). */
 export const HOME_RECENT_COMMITS_LIMIT = 20 as const;
@@ -114,6 +115,10 @@ export const metricsStripV1Schema = z.object({
   alerts: z.number().int().nonnegative(),
   branchesNeedingAttention: z.number().int().nonnegative(),
   dirtyWorktrees: z.number().int().nonnegative(),
+  /** C3: distinct PRs landed in the last 7 days (the momentum tile). */
+  shippedThisWeek: z.number().int().nonnegative(),
+  /** C3: registered families with a spec but NO plan (the Atlas plan-gap, as a count). */
+  planGaps: z.number().int().nonnegative(),
 });
 export type MetricsStripV1 = z.infer<typeof metricsStripV1Schema>;
 
@@ -175,6 +180,8 @@ export const orientationV1Schema = z.object({
   branchHealth: z.array(branchHealthEntryV1Schema),
   recentCommits: z.array(commitGlanceV1Schema),
   recentWork: z.array(recentWorkV1Schema),
+  /** C3: the TBD lane — queued `next_up` work (previously dropped from Home entirely). */
+  tbdWork: z.array(recentWorkV1Schema),
   alerts: z.array(orientationAlertV1Schema),
   sources: z.array(sourceFreshnessSchema),
   diagnostics: z.array(diagnosticSchema),

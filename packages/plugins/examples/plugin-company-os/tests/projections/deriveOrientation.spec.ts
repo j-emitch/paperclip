@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { deriveOrientation } from "../../src/projections/deriveOrientation.js";
 import { parseOrientationV1 } from "../../src/contracts/orientation.js";
-import { NOW, artifact, branchSignal, bundleOf, repoGitSignal, routine, work } from "../fixtures/signals.js";
+import { NOW, artifact, branchSignal, bundleOf, docSignal, landedPr, repoGitSignal, routine, taxon, work } from "../fixtures/signals.js";
 import { taxonomyFixture } from "../fixtures/taxonomy.js";
 
 const TAX = taxonomyFixture();
@@ -166,5 +166,55 @@ describe("COS-8a — Home's branch health folds PR-action statuses (one-ladder r
       taxonomyFixture(),
     );
     expect(o.branchHealth.find((b) => b.branch === "claude/COS-2/y")).toBeUndefined();
+  });
+});
+
+describe("deriveOrientation — C3 (TBD lane + shipped-this-week + plan gaps)", () => {
+  const TAX = taxonomyFixture();
+
+  it("surfaces next_up work in tbdWork (no longer dropped) and keeps it out of recentWork", () => {
+    const o = deriveOrientation(
+      bundleOf([
+        work("OM-15", "next_up", "spec_frontmatter", { repo: "juice-bar", title: "Pay-rate UI" }),
+        work("SSF-04", "in_progress", "branch_path", { repo: "juice-bar" }),
+      ]),
+      NOW,
+      TAX,
+    );
+    expect(o.tbdWork.map((w) => w.title)).toEqual(["Pay-rate UI"]);
+    expect(o.tbdWork[0]?.status).toBe("next_up");
+    expect(o.recentWork.some((w) => w.title === "Pay-rate UI")).toBe(false);
+    expect(() => parseOrientationV1(o)).not.toThrow(); // v3 round-trip
+  });
+
+  it("counts distinct PRs landed within 7d — repo-scoped keys, old PRs excluded", () => {
+    const o = deriveOrientation(
+      bundleOf([
+        landedPr(12), // 1d ago (builder default)
+        landedPr(12, { repo: "paperclip" }), // same number, other repo — distinct
+        landedPr(9, { landedAt: new Date(NOW - 9 * 86_400_000).toISOString() }), // 9d — out of window
+      ]),
+      NOW,
+      TAX,
+    );
+    expect(o.metrics.shippedThisWeek).toBe(2);
+  });
+
+  it("counts plan gaps only for REGISTERED families with a main spec and no plan", () => {
+    const o = deriveOrientation(
+      bundleOf([
+        taxon("COS", "Company OS", "JB", "Company-OS"),
+        taxon("MTP", "Coaching", "JB", "Coaching"),
+        docSignal("specs/COS.md", { docType: "spec", prefix: "COS" }),
+        docSignal("docs/superpowers/plans/COS-plan.md", { docType: "plan", prefix: "COS" }),
+        docSignal("specs/MTP.md", { docType: "spec", prefix: "MTP" }), // spec, no plan → the gap
+        docSignal("specs/XYZ.md", { docType: "spec", prefix: "XYZ" }), // unregistered → not counted
+        // A worktree spec never creates a gap on its own (in-flight draft, not canon).
+        docSignal("specs/COS.md", { docId: "wt", checkoutId: "worktree:aaa", checkoutKey: "company::wt::aaa", docType: "spec", prefix: "COS" }),
+      ]),
+      NOW,
+      TAX,
+    );
+    expect(o.metrics.planGaps).toBe(1);
   });
 });

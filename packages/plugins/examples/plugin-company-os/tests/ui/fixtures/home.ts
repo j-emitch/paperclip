@@ -41,7 +41,7 @@ export function goldenOrientation(): OrientationV1 {
         relPath: "reports/routines/codebase-health/2026-06-24.md",
       },
     ],
-    metrics: { openPrs: 3, inProgress: 5, alerts: 2, branchesNeedingAttention: 2, dirtyWorktrees: 1 },
+    metrics: { openPrs: 3, inProgress: 5, alerts: 2, branchesNeedingAttention: 2, dirtyWorktrees: 1, shippedThisWeek: 4, planGaps: 1 },
     branchHealth: [
       {
         projectKey: "juice-bar",
@@ -102,6 +102,17 @@ export function goldenOrientation(): OrientationV1 {
         deepLink: { tab: "docs", docId: "[\"company\",\"main\",\"docs/superpowers/plans/2026-06-25-COS-1.md\"]" },
       },
     ],
+    tbdWork: [
+      {
+        projectKey: "juice-bar",
+        system: "OM",
+        kind: "ticket",
+        title: "OM-15 office pay-rate settings UI",
+        status: "next_up",
+        updatedAt: "2026-06-24T09:00:00Z",
+        deepLink: { tab: "board", workId: "OM-15" },
+      },
+    ],
     alerts: [
       {
         id: "branch:juice-bar:claude/SSF-04/reconciliation-rehaul",
@@ -137,10 +148,11 @@ export function emptyOrientation(): OrientationV1 {
     derivedAt: "2026-06-26T17:56:00Z",
     taxonomy: taxonomyFixture(),
     briefing: [],
-    metrics: { openPrs: 0, inProgress: 0, alerts: 0, branchesNeedingAttention: 0, dirtyWorktrees: 0 },
+    metrics: { openPrs: 0, inProgress: 0, alerts: 0, branchesNeedingAttention: 0, dirtyWorktrees: 0, shippedThisWeek: 0, planGaps: 0 },
     branchHealth: [],
     recentCommits: [],
     recentWork: [],
+    tbdWork: [],
     alerts: [],
     sources: [],
     diagnostics: [],

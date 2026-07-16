@@ -16,29 +16,54 @@ import { RECENT_WORK_KIND_LABELS, RECENT_WORK_KIND_TONES, groupByProject } from 
 
 export interface CrossSessionWorkProps {
   recentWork: readonly RecentWorkV1[];
+  /** C3: the TBD lane — queued next_up work (its own divider-separated block). */
+  tbdWork?: readonly RecentWorkV1[];
   taxonomy: ProjectTaxonomyV1;
   now: number;
   isMobile?: boolean;
   onFollow?: (link: DeepLink) => void;
 }
 
-export function CrossSessionWork({ recentWork, taxonomy, now, isMobile = false, onFollow }: CrossSessionWorkProps) {
+export function CrossSessionWork({ recentWork, tbdWork = [], taxonomy, now, isMobile = false, onFollow }: CrossSessionWorkProps) {
   const grouped = groupByProject(taxonomy, recentWork);
-  if (grouped.length === 0) {
-    return <CalmNote>No cross-session work has moved recently.</CalmNote>;
-  }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {grouped.map(({ group, items }) => (
-        <ProjectSection key={group.key} group={group} count={items.length} compact>
-          {[...items]
-            .sort((a, b) => safeTime(b.updatedAt) - safeTime(a.updatedAt))
-            .map((item, i) => (
-              <WorkRow key={`${item.kind}:${item.title}:${i}`} item={item} now={now} isMobile={isMobile} onFollow={onFollow} />
-            ))}
-        </ProjectSection>
-      ))}
+      {grouped.length === 0 ? (
+        <CalmNote>No cross-session work has moved recently.</CalmNote>
+      ) : (
+        grouped.map(({ group, items }) => (
+          <ProjectSection key={group.key} group={group} count={items.length} compact>
+            {[...items]
+              .sort((a, b) => safeTime(b.updatedAt) - safeTime(a.updatedAt))
+              .map((item, i) => (
+                <WorkRow key={`${item.kind}:${item.title}:${i}`} item={item} now={now} isMobile={isMobile} onFollow={onFollow} />
+              ))}
+          </ProjectSection>
+        ))
+      )}
+      <TbdLane tbdWork={tbdWork} now={now} isMobile={isMobile} onFollow={onFollow} />
     </div>
+  );
+}
+
+/** C3: the TBD lane — what's QUEUED (next_up), shown with its 0-count (show the 0). */
+function TbdLane({ tbdWork, now, isMobile, onFollow }: { tbdWork: readonly RecentWorkV1[]; now: number; isMobile: boolean; onFollow?: (link: DeepLink) => void }) {
+  return (
+    <section aria-label="TBD — queued work" style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: `1px solid ${tokens.border}`, paddingTop: 12 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+        <h4 style={{ margin: 0, fontSize: 11.5, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: tokens.muted }}>TBD · queued</h4>
+        <span style={{ fontSize: 12, color: tokens.muted, fontVariantNumeric: "tabular-nums" }}>{tbdWork.length}</span>
+      </div>
+      {tbdWork.length === 0 ? (
+        <p style={{ margin: 0, fontSize: 12.5, color: tokens.muted }}>Nothing queued — the TBD lane is clear.</p>
+      ) : (
+        [...tbdWork]
+          .sort((a, b) => safeTime(b.updatedAt) - safeTime(a.updatedAt))
+          .map((item, i) => (
+            <WorkRow key={`tbd:${item.kind}:${item.title}:${i}`} item={item} now={now} isMobile={isMobile} onFollow={onFollow} />
+          ))
+      )}
+    </section>
   );
 }
 

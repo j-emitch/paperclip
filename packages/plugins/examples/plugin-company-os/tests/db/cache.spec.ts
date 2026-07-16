@@ -109,14 +109,14 @@ describe("cache — projection write/read round-trip + version gate", () => {
     expect(agentSystem?.agents).toEqual([]);
   });
 
-  it("writes COS-1R routine and orientation snapshots at schema version 2", async () => {
+  it("writes routine (v2) and orientation (v3 — C3) snapshots at their live schema versions", async () => {
     const db = new FakeDb();
     await acquired(db, "A");
     await writeProjections(db, CO, projections, "A");
     expect(db.routine.get(CO)?.schemaVersion).toBe(2);
-    expect(db.orientation.get(CO)?.schemaVersion).toBe(2);
+    expect(db.orientation.get(CO)?.schemaVersion).toBe(3);
     expect((await readRoutineHealth(db, CO))?.schemaVersion).toBe(2);
-    expect((await readOrientation(db, CO))?.schemaVersion).toBe(2);
+    expect((await readOrientation(db, CO))?.schemaVersion).toBe(3);
   });
 
   it("rejects pre-COS-1R routine and orientation rows until re-derived", async () => {

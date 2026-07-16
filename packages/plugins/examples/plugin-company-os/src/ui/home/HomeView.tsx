@@ -83,7 +83,7 @@ export function HomeView({
       isMobile={isMobile}
       action={orientation.recentWork.length > 0 ? <SeeAll label="Atlas" onClick={() => onNavigateTab?.("atlas")} /> : undefined}
     >
-      <CrossSessionWork recentWork={orientation.recentWork} taxonomy={orientation.taxonomy} now={now} isMobile={isMobile} onFollow={onFollow} />
+      <CrossSessionWork recentWork={orientation.recentWork} tbdWork={orientation.tbdWork} taxonomy={orientation.taxonomy} now={now} isMobile={isMobile} onFollow={onFollow} />
     </Panel>
   );
   const commits = (
