@@ -74,7 +74,11 @@ export const artifactSource: WorkSignalSource = {
   id: ARTIFACT_SOURCE_ID,
   collect(ctx: CollectionContext): Promise<SignalBatch> {
     return collectPerRepo(ARTIFACT_SOURCE_ID, ctx, async (repo, c): Promise<RepoReadResult> => {
-      const files = await c.fs.list(repo.repo, [...ARTIFACT_GLOBS], { exclude: [TICKET_EXCLUDE_DIR] });
+      // `archive` (bare dir name, any depth) mirrors the DocsSource prune — without
+      // it, archived reports/specs re-enter the doc index through the artifact fold
+      // (100 of company's 117 archived docs overlapped here) and split main vs
+      // worktree behavior. Routine-health and Atlas read CURRENT artifacts only.
+      const files = await c.fs.list(repo.repo, [...ARTIFACT_GLOBS], { exclude: [TICKET_EXCLUDE_DIR, "archive"] });
       const signals: Signal[] = [];
       const errors: SignalError[] = [];
       const seen = new Set<string>();

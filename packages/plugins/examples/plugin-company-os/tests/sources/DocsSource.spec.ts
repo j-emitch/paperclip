@@ -26,8 +26,11 @@ function fixtureFiles(): FixtureFs {
       // Archived docs — pruned by bare dir NAME at any depth (WF-09 convention;
       // the mass that was starving the MAX_DOCS_PER_REPO budget).
       "reports/handoffs/archive/consumed.md": { content: "# consumed handoff" },
-      "archive/context-decisions/rollup-handoffs/old.md": { content: "# rollup" },
+      // FIRST-segment archive (glob-matching path — codex P2: the prior row here
+      // didn't match any glob, so it exercised nothing).
+      "archive/handoffs/old.md": { content: "# archived handoff rollup" },
       "backlog/archive/done.md": { content: "# done backlog" },
+      "decisions/archive/superseded.md": { content: "# superseded decision" },
     },
     "company::wt::aaa": {
       "specs/main.md": { content: "---\ntitle: Worktree Spec\n---\n# Body" },
@@ -182,6 +185,25 @@ describe("DocsSource", () => {
     expect(docs).toHaveLength(MAX_DOCS_PER_REPO);
     expect(batch.repoFreshness[0]!.errors.some((e) => e.code === "truncated")).toBe(true);
     expect(batch.repoFreshness[0]!.freshness).toBe("live"); // truncation is non-degraded
+  });
+
+  it("archived mass no longer consumes the shared budget (the live starvation failure)", async () => {
+    // The July 2026 live failure: >600 archived handoffs across main + worktrees
+    // burned the SHARED budget before live docs were reached, truncating the index.
+    // A mutation that filters archives only AFTER budget spend stays red here.
+    const files: Record<string, { content: string }> = {};
+    for (let i = 0; i < MAX_DOCS_PER_REPO + 20; i++) {
+      files[`reports/handoffs/archive/consumed-${i}.md`] = { content: `# consumed ${i}` };
+    }
+    files["specs/live-spec.md"] = { content: "---\ntitle: Live\n---\n# Live" };
+    files["company/reports/handoffs/live-handoff.md"] = { content: "# Live handoff" };
+    const wtFiles: Record<string, { content: string }> = { "specs/wt-live.md": { content: "# WT live" } };
+    const { collect } = run({ company: files, "company::wt::aaa": wtFiles }, [WT_AAA]);
+    const batch = await collect();
+    const docs = batch.signals.filter(isDocSignal) as DocSignal[];
+    // Every live doc (main AND worktree) survives, nothing is truncated.
+    expect(docs.map((d) => d.relPath).sort()).toEqual(["company/reports/handoffs/live-handoff.md", "specs/live-spec.md", "specs/wt-live.md"]);
+    expect(batch.repoFreshness[0]!.errors.some((e) => e.code === "truncated")).toBe(false);
   });
 });
 

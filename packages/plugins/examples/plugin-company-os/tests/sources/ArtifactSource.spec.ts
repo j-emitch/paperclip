@@ -31,6 +31,25 @@ describe("ArtifactSource", () => {
     });
   });
 
+  it("prunes archive/ dirs — archived artifacts must not re-enter the doc index (codex P1)", async () => {
+    // DocsSource prunes archives, but deriveDocIndex folds EVERY ArtifactSignal
+    // back in — without the matching prune here, 100 of company's 117 archived
+    // docs stayed visible on main while their worktree copies vanished.
+    const ctx = makeFixtureContext({
+      repos: [{ repo: "company", available: true }],
+      files: {
+        company: {
+          "reports/handoffs/archive/consumed.md": { content: `---\ntype: handoff\n---\n` },
+          "specs/archive/retired.md": { content: `---\ntype: spec\n---\n` },
+          "reports/reviews/archive/old-review.md": { content: `---\ntype: cannons-report\n---\n` },
+          "reports/handoffs/live.md": { content: `---\ntype: handoff\n---\n` },
+        },
+      },
+    });
+    const arts = (await artifactSource.collect(ctx)).signals.filter(isArtifactSignal);
+    expect(arts.map((a) => a.relPath)).toEqual(["reports/handoffs/live.md"]);
+  });
+
   it("falls back to a path heuristic when frontmatter lacks a type", async () => {
     const ctx = makeFixtureContext({
       repos: [{ repo: "juice-bar", available: true }],
