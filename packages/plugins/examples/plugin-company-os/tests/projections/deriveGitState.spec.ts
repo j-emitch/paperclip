@@ -127,6 +127,23 @@ describe("deriveGitState — PR + review join (COS-5e)", () => {
     expect(() => parseGitStateV1(gs)).not.toThrow();
   });
 
+  it("ignores a non-pull-request-source signal carrying a stale prNumber (codex R3 pin)", () => {
+    // Legacy cached slices from other sources can carry long-merged prNumber
+    // fields — the source gate must keep them off branch rows AND orphans.
+    const gs = deriveGitState(
+      bundleOf([
+        repoGitSignal("juice-bar"),
+        branchSignal("claude/COS-1/x", { repo: "juice-bar", headSha: "deadbeef" }),
+        prWork(77, "claude/COS-1/x", "deadbeef", { source: "spec-backlog" }),
+      ]),
+      NOW,
+      TAX,
+    );
+    const repo = jbRepo(gs);
+    expect(repo.branches[0]!.pullRequests).toHaveLength(0);
+    expect(repo.orphanPullRequests).toHaveLength(0);
+  });
+
   it("dedups a multi-ticket PR into one row with merged ticketIds", () => {
     const gs = deriveGitState(
       bundleOf([
