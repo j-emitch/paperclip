@@ -89,7 +89,7 @@ describe("Docs C4 — surface badge + row status/owner badges", () => {
     const html = renderToStaticMarkup(
       <DocsView docIndex={goldenDocIndex()} selectedDocId={null} onSelect={noop2} now={DOCS_NOW} viewer={null} />,
     );
-    expect(html).toMatch(/Docs is (live|stale)/);
+    expect(html).toContain("Docs is live"); // golden derive is 4min old vs the 5min threshold
   });
 
   it("renders each doc's frontmatter status as a row pill", () => {

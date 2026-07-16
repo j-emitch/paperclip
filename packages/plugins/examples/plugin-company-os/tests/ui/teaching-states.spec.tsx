@@ -103,7 +103,7 @@ describe("render-slot flag-off byte-identity (COS-2f)", () => {
 describe("Teaching surface freshness (B4)", () => {
   it("renders the shared SurfaceFreshnessBadge instead of the bespoke stale-pill loop", () => {
     const html = view(populated());
-    expect(html).toMatch(/Teaching is (live|stale)/);
+    expect(html).toContain("Teaching is stale"); // populated() rides emptyTeachingOverview's epoch derivedAt
   });
 });
 

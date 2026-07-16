@@ -310,7 +310,7 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
   const landedThisWeek = new Set<string>();
   for (const lp of signals.filter(isLandedPrSignal)) {
     const at = Date.parse(lp.landedAt);
-    if (Number.isFinite(at) && at >= weekAgoMs) landedThisWeek.add(`${lp.repo}#${lp.prNumber}`);
+    if (Number.isFinite(at) && at >= weekAgoMs && at <= nowMs) landedThisWeek.add(`${lp.repo}#${lp.prNumber}`);
   }
 
   // C3: plan gaps — registered families with a MAIN-checkout spec doc but no plan

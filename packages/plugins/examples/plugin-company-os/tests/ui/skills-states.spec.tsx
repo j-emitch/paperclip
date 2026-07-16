@@ -40,7 +40,7 @@ function render(c: SkillsCatalogV1): string {
 describe("Skills surface (B4)", () => {
   it("renders the shared SurfaceFreshnessBadge (was a hand-rolled 'as of' clock)", () => {
     const html = render(catalog());
-    expect(html).toMatch(/Skills is (live|stale)/);
+    expect(html).toContain("Skills is live"); // derivedAt === NOW in the fixture
   });
 
   it("shows the 0-count header for an empty catalog", () => {

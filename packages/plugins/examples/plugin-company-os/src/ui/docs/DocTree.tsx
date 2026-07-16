@@ -176,7 +176,10 @@ function DocRow({
         {/* C4 (§2.3 spine): the doc's lifecycle status + owner, straight from frontmatter. */}
         {entry.status ? <Pill label={entry.status} tone={tokens.muted} style={{ flex: "0 0 auto" }} /> : null}
         {entry.owner ? (
-          <span style={{ fontSize: 10.5, color: tokens.muted, fontFamily: tokens.mono, whiteSpace: "nowrap", flex: "0 0 auto" }}>
+          <span
+            title={entry.owner}
+            style={{ minWidth: 0, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", fontSize: 10.5, color: tokens.muted, fontFamily: tokens.mono, whiteSpace: "nowrap", flex: "0 1 auto" }}
+          >
             {entry.owner}
           </span>
         ) : null}
