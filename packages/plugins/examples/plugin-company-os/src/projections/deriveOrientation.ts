@@ -23,6 +23,7 @@ import {
   type WorkSignal,
 } from "../contracts/signals.js";
 import { GATES_SOURCE_IDS } from "../contracts/gates.js";
+import { PULL_REQUEST_SOURCE_ID } from "../sources/PullRequestSource.js";
 import type { Diagnostic } from "../contracts/diagnostics.js";
 import type { ProjectTaxonomyV1 } from "../contracts/projects.js";
 import { repoBadge } from "../contracts/grouping.js";
@@ -295,10 +296,14 @@ export function deriveOrientation(bundle: SignalBundle, nowMs: number, taxonomy:
   // --- Metrics (current snapshot, directly from signals) ---
   // PR numbers are repo-local, so key the open-PR set by repo#number — else
   // juice-bar#12 and paperclip#12 collapse to one (codex A P1).
+  // ONLY the pull-request source may feed this metric — it lists `--state open`
+  // from gh, so its signals ARE the open set. Any-work-signal-with-a-prNumber
+  // counted every spec/backlog doc whose frontmatter cites its (long-merged) PR,
+  // inflating "Open PRs" to 227 against a gh ground truth of ~26 (Joe 2026-07-16).
   const openPrs = new Set<string>();
   const inProgress = new Set<string>();
   for (const w of work) {
-    if (typeof w.prNumber === "number" && w.state !== "shipped") openPrs.add(`${w.repo}#${w.prNumber}`);
+    if (w.source === PULL_REQUEST_SOURCE_ID && typeof w.prNumber === "number") openPrs.add(`${w.repo}#${w.prNumber}`);
     if (w.state === "in_progress" && w.ticketId) inProgress.add(w.ticketId);
   }
   let dirtyWorktrees = 0;
