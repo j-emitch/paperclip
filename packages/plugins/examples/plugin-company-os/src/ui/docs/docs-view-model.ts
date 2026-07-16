@@ -12,11 +12,12 @@ import { statusColors, tokens } from "../tokens.js";
 import { baseName } from "../shared/document-text.js";
 
 /** Bucket headers (plural) in the order they render within a project. */
-export const DOC_TYPE_ORDER: readonly DocIndexType[] = ["spec", "plan", "handoff", "backlog", "review"];
+export const DOC_TYPE_ORDER: readonly DocIndexType[] = ["spec", "plan", "decision", "handoff", "backlog", "review"];
 
 export const DOC_TYPE_LABELS: Record<DocIndexType, string> = {
   spec: "Specs",
   plan: "Plans",
+  decision: "Decisions",
   handoff: "Handoffs",
   backlog: "Backlog",
   review: "Reviews",
@@ -26,6 +27,7 @@ export const DOC_TYPE_LABELS: Record<DocIndexType, string> = {
 export const DOC_TYPE_LABEL_SINGULAR: Record<DocIndexType, string> = {
   spec: "Spec",
   plan: "Plan",
+  decision: "Decision",
   handoff: "Handoff",
   backlog: "Backlog",
   review: "Review",
@@ -34,6 +36,7 @@ export const DOC_TYPE_LABEL_SINGULAR: Record<DocIndexType, string> = {
 export const DOC_TYPE_TONES: Record<DocIndexType, string> = {
   spec: statusColors.proceed,
   plan: statusColors.reviewUnknown,
+  decision: statusColors.revise, // amber — a ruling surface awaiting/holding ratification
   handoff: tokens.accent,
   backlog: tokens.muted,
   review: statusColors.ship,

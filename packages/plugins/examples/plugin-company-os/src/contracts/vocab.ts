@@ -340,7 +340,7 @@ export const DOC_GIT_READ_STATUSES = ["ok", "not_indexed", "checkout_gone", "git
 export type DocGitReadStatus = (typeof DOC_GIT_READ_STATUSES)[number];
 
 /** The doc kinds `DocsSource` emits (spec §5.4). The doc INDEX widens this with `"review"`. */
-export const DOC_TYPES = ["spec", "plan", "handoff", "backlog"] as const;
+export const DOC_TYPES = ["spec", "plan", "decision", "handoff", "backlog"] as const;
 export type DocType = (typeof DOC_TYPES)[number];
 
 /**
@@ -349,7 +349,7 @@ export type DocType = (typeof DOC_TYPES)[number];
  * Spelled out (not a spread) so the literal tuple type is preserved for the
  * drift guard in `doc-index.ts`.
  */
-export const DOC_INDEX_TYPES = ["spec", "plan", "handoff", "backlog", "review"] as const;
+export const DOC_INDEX_TYPES = ["spec", "plan", "decision", "handoff", "backlog", "review"] as const;
 export type DocIndexType = (typeof DOC_INDEX_TYPES)[number];
 
 /** A doc's checkout provenance for the Docs tree badge (spec §5.4/§6.3). */

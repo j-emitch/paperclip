@@ -366,6 +366,7 @@ export function classifyDocPath(relPath: string): DocType {
   if (/(^|\/)handoffs\//.test(relPath)) return "handoff";
   if (/(^|\/)backlog\//.test(relPath)) return "backlog";
   if (/(^|\/)plans\//.test(relPath)) return "plan";
+  if (/(^|\/)decisions\//.test(relPath)) return "decision";
   return "spec";
 }
 

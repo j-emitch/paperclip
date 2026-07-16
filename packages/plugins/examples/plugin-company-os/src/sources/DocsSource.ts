@@ -40,6 +40,9 @@ const DOC_GLOBS = [
   "docs/superpowers/plans/**/*.md",
   "**/handoffs/**/*.md",
   "backlog/**/*.md",
+  // Decision docs (company/decisions, per-repo decisions/) — the ratification
+  // surface class; a cos-link to an omnibus decision must resolve in the index.
+  "decisions/**/*.md",
 ] as const;
 
 /**

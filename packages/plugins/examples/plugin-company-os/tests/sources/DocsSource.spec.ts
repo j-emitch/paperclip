@@ -15,6 +15,9 @@ function fixtureFiles(): FixtureFs {
       "docs/superpowers/plans/2026-06-25-p.md": { content: "---\ntitle: A Plan\n---\n# Plan body" },
       "company/reports/handoffs/h.md": { content: "# A Handoff" },
       "backlog/b.md": { content: "# Backlog item" },
+      // Decision docs — the ratification surface (a cos-link to an omnibus
+      // decision must resolve in the index).
+      "decisions/2026-07-16-workflow-v3-amendment-omnibus.md": { content: "---\ntitle: WF v3 Omnibus\nstatus: pending-joe\n---\n# Omnibus" },
       // A handoff UNDER .claude/worktrees — must be pruned from the MAIN scan (it
       // belongs to the worktree checkout, never checkoutId:"main").
       ".claude/worktrees/cos-COS-1/handoffs/leak.md": { content: "# leak" },
@@ -113,6 +116,10 @@ describe("DocsSource", () => {
     expect(byPath("company/reports/handoffs/h.md").docType).toBe("handoff");
     expect(byPath("company/reports/handoffs/h.md").title).toBe("A Handoff"); // first H1 (no frontmatter)
     expect(byPath("backlog/b.md").docType).toBe("backlog");
+    const omnibus = byPath("decisions/2026-07-16-workflow-v3-amendment-omnibus.md");
+    expect(omnibus.docType).toBe("decision");
+    expect(omnibus.title).toBe("WF v3 Omnibus");
+    expect(omnibus.status).toBe("pending-joe");
   });
 
   it("resolves DocSignal.prefix + verified (COS-5) from frontmatter id / filename / *_verified", async () => {
