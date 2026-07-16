@@ -32,7 +32,8 @@ import {
 } from "./vocab.js";
 
 /** Bump only on a breaking shape change; the cache row carries it and stale versions re-derive. */
-export const BUILD_ATLAS_SCHEMA_VERSION = 1 as const;
+// v2: C2 §2.3 spine fields on FamilyV1 (specStatus/specUpdatedAt/planUpdatedAt/description).
+export const BUILD_ATLAS_SCHEMA_VERSION = 2 as const;
 
 // ---------------------------------------------------------------------------
 // Atlas-local closed vocabularies (agent-system.ts precedent — kept out of the
@@ -151,6 +152,18 @@ export const familyV1Schema = z.object({
   /** True for rolling programs (INFRA/PULSE/RE/…) — built bar reads "· live", not a fixed %. */
   isRolling: z.boolean(),
   lifecycle: lifecycleV1Schema,
+  /**
+   * C2 (§2.3 spine): the family's canonical spec/plan doc metadata — status +
+   * last-touch dates (frontmatter `last_updated` ?? file mtime) + the spec's
+   * one-line description. Resolved from the NEWEST main-checkout doc of each
+   * type; null when the family has no such doc. Drives the description line,
+   * the stale-spec chip, and the shipped-build-vs-active-plan lag chip.
+   */
+  specStatus: z.string().nullable(),
+  specUpdatedAt: z.string().nullable(),
+  planStatus: z.string().nullable(),
+  planUpdatedAt: z.string().nullable(),
+  description: z.string().nullable(),
   /** 0–100 completion of the family's builds — the built BAR (independent of the stepper). */
   builtPct: z.number().int().min(0).max(100),
   /** Human built summary ("3 shipped · 1 in progress", or "N shipped · live" for rolling). */

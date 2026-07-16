@@ -39,7 +39,7 @@ export function goldenAtlas(): BuildAtlasV1 {
         taxon("LDI", "Data Ingest", "ARC", "Pipeline"),
 
         // Lifecycle docs — COS spec+plan verified (Plan done); MTP spec-only (plan gap).
-        docSignal("specs/COS.md", { docType: "spec", prefix: "COS", verified: true }),
+        docSignal("specs/COS.md", { docType: "spec", prefix: "COS", verified: true, status: "active", lastUpdated: "2026-06-22", description: "The daily-driver Company OS cockpit." }),
         docSignal("docs/superpowers/plans/COS-plan.md", { docType: "plan", prefix: "COS", verified: true }),
         docSignal("specs/MTP.md", { docType: "spec", prefix: "MTP", verified: true }),
 

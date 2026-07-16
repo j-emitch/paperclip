@@ -393,3 +393,62 @@ describe("deriveBuildAtlas (5c — LYC three-tier routing)", () => {
     expect(() => parseBuildAtlasV1(atlasOf())).not.toThrow();
   });
 });
+
+describe("deriveBuildAtlas — C2 §2.3 doc metadata on families", () => {
+  const fam = (bundle: Parameters<typeof deriveBuildAtlas>[0]) =>
+    deriveBuildAtlas(bundle, NOW).families.find((f) => f.prefix === "COS")!;
+
+  it("lifts spec/plan status + last-touch + description onto the family", () => {
+    const f = fam(
+      bundleOf([
+        taxon("COS", "Company OS", "JB", "Company-OS"),
+        docSignal("specs/COS.md", { docType: "spec", prefix: "COS", status: "active", lastUpdated: "2026-06-20", description: "The cockpit." }),
+        docSignal("docs/superpowers/plans/COS-plan.md", { docType: "plan", prefix: "COS", status: "draft", lastUpdated: "2026-06-21" }),
+      ]),
+    );
+    expect(f.specStatus).toBe("active");
+    expect(f.specUpdatedAt).toBe("2026-06-20");
+    expect(f.planStatus).toBe("draft");
+    expect(f.planUpdatedAt).toBe("2026-06-21");
+    expect(f.description).toBe("The cockpit.");
+  });
+
+  it("a MAIN-checkout doc wins over a newer worktree copy; newest main wins among mains", () => {
+    const f = fam(
+      bundleOf([
+        taxon("COS", "Company OS", "JB", "Company-OS"),
+        docSignal("specs/COS.md", { docType: "spec", prefix: "COS", status: "shipped", lastUpdated: "2026-06-10" }),
+        docSignal("specs/COS-v2.md", { docType: "spec", prefix: "COS", status: "active", lastUpdated: "2026-06-15" }),
+        docSignal("specs/COS.md", { docId: "wt-copy", checkoutId: "worktree:aaa", checkoutKey: "company::wt::aaa", docType: "spec", prefix: "COS", status: "draft", lastUpdated: "2026-06-30" }),
+      ]),
+    );
+    expect(f.specStatus).toBe("active"); // newest MAIN (06-15), not the 06-30 worktree draft
+    expect(f.specUpdatedAt).toBe("2026-06-15");
+  });
+
+  it("no docs → honest nulls; mtime backs a missing last_updated", () => {
+    const bare = fam(bundleOf([taxon("COS", "Company OS", "JB", "Company-OS")]));
+    expect(bare.specStatus).toBeNull();
+    expect(bare.specUpdatedAt).toBeNull();
+    expect(bare.description).toBeNull();
+
+    const mtimeOnly = fam(
+      bundleOf([
+        taxon("COS", "Company OS", "JB", "Company-OS"),
+        docSignal("specs/COS.md", { docType: "spec", prefix: "COS", mtime: "2026-06-18T09:00:00.000Z" }),
+      ]),
+    );
+    expect(mtimeOnly.specUpdatedAt).toBe("2026-06-18T09:00:00.000Z");
+  });
+
+  it("the v2 atlas still validates against the persisted contract", () => {
+    const atlas = deriveBuildAtlas(
+      bundleOf([
+        taxon("COS", "Company OS", "JB", "Company-OS"),
+        docSignal("specs/COS.md", { docType: "spec", prefix: "COS", status: "active", description: "d" }),
+      ]),
+      NOW,
+    );
+    expect(() => parseBuildAtlasV1(atlas)).not.toThrow();
+  });
+});

@@ -17,7 +17,7 @@ import { LifecycleStepper } from "../../src/ui/atlas/LifecycleStepper.js";
 import { SurfaceEmpty, SurfaceError, SurfaceLoading } from "../../src/ui/shared/surface-state.js";
 import { AtlasIcon } from "../../src/ui/icons.js";
 import { COCKPIT_MOTION_STYLE_ID } from "../../src/ui/shared/cockpit-motion.js";
-import { buildAtlasView, findFamilyForWork, sortDiagnostics } from "../../src/ui/atlas/atlas-view-model.js";
+import { buildAtlasView, familyDocChips, findFamilyForWork, sortDiagnostics } from "../../src/ui/atlas/atlas-view-model.js";
 import type { AtlasDiagnosticV1, LifecycleV1 } from "../../src/contracts/build-atlas.js";
 import { goldenAtlas, ATLAS_NOW } from "./fixtures/atlas.js";
 
@@ -338,5 +338,34 @@ describe("Atlas masthead diagnostics tint (B11)", () => {
 
   it("a warn diagnostic tints", () => {
     expect(buildAtlasView(goldenAtlas()).vitals.diagnosticsTinted).toBe(true); // golden has 3 warns
+  });
+});
+
+describe("FamilyCard — C2 doc metadata (description + doc-health chips)", () => {
+  it("familyDocChips flags a stale spec and a shipped-build-with-active-plan lag", () => {
+    const base = goldenAtlas().families.find((f) => f.prefix === "COS")!;
+    const now = Date.parse("2026-06-23T12:00:00.000Z");
+    // Golden COS (spec touched 06-22, plan status null) is chip-CLEAN.
+    expect(familyDocChips(base, now)).toEqual([]);
+    // 31-day-old spec → stale chip.
+    const stale = { ...base, specUpdatedAt: "2026-05-20" };
+    expect(familyDocChips(stale, now).map((c) => c.kind)).toContain("stale_spec");
+    // Shipped build + plan still "active" → lag chip; terminal "shipped" is clean.
+    const lag = { ...base, planStatus: "active" };
+    expect(familyDocChips(lag, now).map((c) => c.kind)).toContain("plan_status_lag");
+    expect(familyDocChips({ ...base, planStatus: "shipped" }, now)).toEqual([]);
+  });
+
+  it("renders the spec description on the collapsed card", () => {
+    const html = render();
+    expect(html).toContain("The daily-driver Company OS cockpit."); // golden COS spec description
+  });
+
+  it("renders the lag chip when a shipped family's plan is still active", () => {
+    const atlas = goldenAtlas();
+    const cos = atlas.families.find((f) => f.prefix === "COS")!;
+    const mutated = { ...atlas, families: atlas.families.map((f) => (f.prefix === "COS" ? { ...cos, planStatus: "active" } : f)) };
+    const html = render({ atlas: mutated });
+    expect(html).toContain("plan still");
   });
 });

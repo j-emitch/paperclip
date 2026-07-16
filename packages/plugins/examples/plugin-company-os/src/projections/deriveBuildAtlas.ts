@@ -164,6 +164,11 @@ function buildFamily(
   const shipped = builds.filter((b) => b.state === "shipped").length;
   const total = builds.length;
   const repos = distinctRepos(work);
+  // C2 (§2.3 spine): the family's canonical spec/plan doc metadata — newest
+  // MAIN-checkout doc of each type wins (worktree copies are in-flight drafts,
+  // not canon; used only when no main copy exists at all).
+  const spec = newestDocOfType(docs, "spec");
+  const plan = newestDocOfType(docs, "plan");
   return {
     prefix: taxon.prefix,
     name: taxon.family,
@@ -177,6 +182,11 @@ function buildFamily(
     // Lifecycle reads the RESOLVED build states (not raw signals) so a reverted
     // ship never counts as shipped in the stepper — one resolution point.
     lifecycle: deriveLifecycle(taxon.prefix, docs, builds.map((b) => b.state)),
+    specStatus: spec?.status ?? null,
+    specUpdatedAt: docTouchedAt(spec),
+    planStatus: plan?.status ?? null,
+    planUpdatedAt: docTouchedAt(plan),
+    description: spec?.description ?? plan?.description ?? null,
     builtPct: total === 0 ? 0 : Math.round((shipped / total) * 100),
     builtSummary: builtSummary(isRolling, builds),
     builds,
@@ -437,12 +447,35 @@ function buildMetaFamily(tickets: readonly TicketRefV1[]): FamilyV1 {
     // a completion path, and builtPct stays 0 (nothing to "build"). The summary
     // carries the real signal (routine + unrouted counts).
     lifecycle: { spec: "done", plan: "done", build: "active", prod: "active", planState: "ok" },
+    specStatus: null,
+    specUpdatedAt: null,
+    planStatus: null,
+    planUpdatedAt: null,
+    description: null,
     builtPct: 0,
     builtSummary: `${routines} routine${routines === 1 ? "" : "s"} · ${ops} unrouted`,
     builds: [],
     tickets: sorted,
     lineageTags: [],
   };
+}
+
+/** Newest doc of a type — main-checkout copies win; worktree-only is a fallback. */
+function newestDocOfType(docs: readonly DocSignal[], docType: "spec" | "plan"): DocSignal | null {
+  const ofType = docs.filter((d) => d.docType === docType);
+  const main = ofType.filter((d) => d.checkoutId === "main");
+  const pool = main.length > 0 ? main : ofType;
+  let newest: DocSignal | null = null;
+  for (const d of pool) {
+    if (newest === null || docTouchedAt(d)! > docTouchedAt(newest)!) newest = d;
+  }
+  return newest;
+}
+
+/** A doc's last-touch stamp: frontmatter `last_updated` (?? `date`) wins over mtime. */
+function docTouchedAt(doc: DocSignal | null | undefined): string | null {
+  if (!doc) return null;
+  return doc.lastUpdated ?? doc.mtime;
 }
 
 /** Group a family's work signals into one build per ticket, furthest-right state wins. */

@@ -199,3 +199,41 @@ export function findFamilyForWork(atlas: BuildAtlasV1, workId: string): string |
   if (prefix !== undefined && atlas.families.some((f) => f.prefix === prefix)) return prefix;
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// C2 — family doc-health chips (§2.3 spine, "now with teeth")
+// ---------------------------------------------------------------------------
+
+/** A spec untouched this long (vs frontmatter last_updated ?? mtime) reads as stale. */
+export const STALE_SPEC_DAYS = 30;
+
+export interface FamilyDocChip {
+  readonly kind: "stale_spec" | "plan_status_lag";
+  readonly label: string;
+}
+
+/** WF-06 terminal statuses — a doc in these states is DONE, not lagging. */
+const TERMINAL_DOC_STATUSES = new Set(["shipped", "archived"]);
+
+/**
+ * Doc-health chips for one family card:
+ *  - `stale_spec` — the spec doc hasn't been touched in STALE_SPEC_DAYS.
+ *  - `plan_status_lag` — the family has a SHIPPED build but its plan frontmatter
+ *    still carries a non-terminal status (the "shipped build must never show a
+ *    still-active plan" ruling — §10-atomicity with teeth).
+ */
+export function familyDocChips(family: FamilyV1, now: number): FamilyDocChip[] {
+  const chips: FamilyDocChip[] = [];
+  if (family.specUpdatedAt !== null) {
+    const ageMs = now - Date.parse(family.specUpdatedAt);
+    const days = Math.floor(ageMs / 86_400_000);
+    if (Number.isFinite(days) && days >= STALE_SPEC_DAYS) {
+      chips.push({ kind: "stale_spec", label: `spec stale · ${days}d` });
+    }
+  }
+  const hasShipped = family.builds.some((b) => b.state === "shipped");
+  if (hasShipped && family.planStatus !== null && !TERMINAL_DOC_STATUSES.has(family.planStatus.toLowerCase())) {
+    chips.push({ kind: "plan_status_lag", label: `plan still "${family.planStatus}"` });
+  }
+  return chips;
+}

@@ -24,6 +24,11 @@ function validAtlas(over: Partial<BuildAtlasV1> = {}): BuildAtlasV1 {
         isGeneric: false,
         isRolling: false,
         lifecycle: { spec: "done", plan: "active", build: "active", prod: "todo", planState: "authored" },
+        specStatus: "shipped",
+        specUpdatedAt: "2026-06-20",
+        planStatus: "active",
+        planUpdatedAt: "2026-06-22",
+        description: "The daily-driver cockpit.",
         builtPct: 50,
         builtSummary: "1/2 shipped",
         builds: [],
@@ -63,7 +68,7 @@ describe("BuildAtlasV1 contract", () => {
   it("rejects a wrong schemaVersion", () => {
     const bad = validAtlas();
     // @ts-expect-error: deliberately wrong literal
-    bad.schemaVersion = 2;
+    bad.schemaVersion = 99;
     expect(safeParseBuildAtlasV1(bad).success).toBe(false);
   });
 

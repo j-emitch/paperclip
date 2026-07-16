@@ -20,7 +20,7 @@ import { Dot, Pill, RepoBadge } from "../shared/badges.js";
 import { CalmNote } from "../shared/feedback.js";
 import { CaretIcon, ExternalLinkIcon } from "../icons.js";
 import { LifecycleStepper } from "./LifecycleStepper.js";
-import { relativeTime } from "./atlas-view-model.js";
+import { familyDocChips, relativeTime } from "./atlas-view-model.js";
 
 /** Compact human labels for the build's work-state (the chip's state tag). */
 const STATE_LABELS: Record<BuildV1["state"], string> = {
@@ -52,6 +52,7 @@ export function FamilyCard({
   }, [focused]);
 
   const activeBuilds = family.builds.filter((b) => b.state === "in_progress" || b.state === "in_review").length;
+  const docChips = familyDocChips(family, now);
   const summaryAria =
     `${family.prefix} ${family.name} — ${family.builtSummary}` +
     (activeBuilds > 0 ? `, ${activeBuilds} in flight` : "") +
@@ -106,6 +107,25 @@ export function FamilyCard({
           </span>
         </div>
 
+        {/* C2: the spec's one-line description — the card answers "what IS this
+            family" without expanding (falls back silently when the doc has none). */}
+        {family.description ? (
+          <p
+            style={{
+              margin: 0,
+              fontSize: 12,
+              color: tokens.muted,
+              lineHeight: 1.45,
+              display: "-webkit-box",
+              WebkitBoxOrient: "vertical",
+              WebkitLineClamp: 2,
+              overflow: "hidden",
+            }}
+          >
+            {family.description}
+          </p>
+        ) : null}
+
         {/* Status row — lifecycle stepper + built bar. */}
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
           <LifecycleStepper lifecycle={family.lifecycle} isRolling={family.isRolling} size="compact" />
@@ -113,6 +133,16 @@ export function FamilyCard({
             <BuiltBar family={family} />
           </span>
         </div>
+
+        {/* C2: doc-health chips — spec staleness + the shipped-build-vs-active-plan
+            lag (the "docs must move with the build" ruling). Absent when clean. */}
+        {docChips.length > 0 ? (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {docChips.map((chip) => (
+              <Pill key={chip.kind} label={chip.label} tone={statusColors.revise} soft withDot />
+            ))}
+          </div>
+        ) : null}
       </summary>
 
       {/* Expanded body — builds, tickets, lineage. */}
