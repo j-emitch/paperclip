@@ -193,7 +193,7 @@ export function Docs({ companyId }: { companyId: string | null }) {
       <SurfaceEmpty
         icon={<DocIcon size={24} />}
         title="No documents indexed yet"
-        body="The cockpit indexes specs, plans, handoffs, and reviews across every checkout. They appear here on the next derive."
+        body="The cockpit indexes specs, plans, decisions, handoffs, backlog, and reviews across every checkout. They appear here on the next derive."
         onRefresh={companyId ? refresh : undefined}
       />
     );

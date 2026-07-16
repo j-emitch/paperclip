@@ -42,6 +42,7 @@ import {
   type PrRollupCacheEntryV1,
 } from "../contracts/git-state.js";
 import { aggregateSourceFreshness, diagnosticsFromFreshness, isoFrom } from "./_shared.js";
+import { PULL_REQUEST_SOURCE_ID } from "../sources/PullRequestSource.js";
 
 export function deriveGitState(bundle: SignalBundle, nowMs: number, taxonomy: ProjectTaxonomyV1): GitStateV1 {
   const signals = bundle.batches.flatMap((b) => b.signals);
@@ -51,7 +52,12 @@ export function deriveGitState(bundle: SignalBundle, nowMs: number, taxonomy: Pr
   // these too; here they enrich each branch row with its open-PR lifecycle + joined
   // review state (COS-5e). A PR signal is a work signal carrying a prNumber; a
   // multi-ticket PR fans into several signals, so the collector dedups by number.
-  const prSignals = signals.filter(isWorkSignal).filter((w) => typeof w.prNumber === "number");
+  // Gate on the pull-request SOURCE, not just prNumber presence — legacy cached
+  // slices from other sources can carry stale prNumber fields and pollute the
+  // branch rows with long-merged PRs (same class as Home's 227-vs-26 openPrs).
+  const prSignals = signals
+    .filter(isWorkSignal)
+    .filter((w) => w.source === PULL_REQUEST_SOURCE_ID && typeof w.prNumber === "number");
   const reviews = signals.filter(isReviewSignal);
   // COS-8b: recently-landed PRs are a DISTINCT signal kind (inert to the board /
   // Atlas work folds); this projection is their only consumer.

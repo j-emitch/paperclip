@@ -68,6 +68,25 @@ describe("deriveOrientation", () => {
     expect(o.metrics.dirtyWorktrees).toBe(1);
   });
 
+  it("openPrs counts ONLY pull-request-source signals, deduped by repo#number (codex R2)", () => {
+    const o = deriveOrientation(
+      bundleOf([
+        // Two tickets fanning out of ONE open PR — one PR, not two.
+        work("COS-8", "in_review", "branch_path", { repo: "paperclip", source: "pull-request", prNumber: 12 }),
+        work("COS-9", "in_review", "branch_path", { repo: "paperclip", source: "pull-request", prNumber: 12 }),
+        // Same number, DIFFERENT repo — a distinct PR.
+        work("OB-01", "in_review", "branch_path", { repo: "juice-bar", source: "pull-request", prNumber: 12 }),
+        // A spec/backlog (or legacy cached) signal citing its long-merged PR in
+        // frontmatter must NOT count — the 227-vs-26 inflation class.
+        work("OB-02", "in_progress", "spec_frontmatter", { repo: "juice-bar", source: "spec-backlog", prNumber: 99 }),
+        work("OB-03", "next_up", "spec_frontmatter", { repo: "juice-bar", source: "git-work", prNumber: 100 }),
+      ]),
+      NOW,
+      TAX,
+    );
+    expect(o.metrics.openPrs).toBe(2);
+  });
+
   it("flags alert-worthy branches with severity + project tag + a source deep-link (info excluded)", () => {
     const o = deriveOrientation(
       bundleOf([

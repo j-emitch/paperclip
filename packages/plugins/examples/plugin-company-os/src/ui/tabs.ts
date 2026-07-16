@@ -49,7 +49,7 @@ export const COMPANY_OS_TABS: readonly CompanyOsTab[] = [
   {
     key: "docs",
     label: "Docs",
-    description: "Specs, plans, handoffs, backlog, and review reports — from every branch and worktree, rendered in place.",
+    description: "Specs, plans, decisions, handoffs, backlog, and review reports — from every branch and worktree, rendered in place.",
     liveIn: "COS-1g",
   },
   {

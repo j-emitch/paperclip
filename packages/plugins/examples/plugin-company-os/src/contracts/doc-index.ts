@@ -35,7 +35,12 @@ export const DOC_INDEX_SCHEMA_VERSION = 2 as const;
 // 8192 = parity with the WF-09 shared parser's head budget (codex order-0 P1:
 // a block closing past 4KB indexed in workflow-metadata but field-less here).
 export const DOC_FRONTMATTER_SCAN_BYTES = 8192 as const;
-export const MAX_DOCS_PER_REPO = 600 as const;
+// A runaway bound, NOT a working ceiling: the budget is SHARED across main +
+// every worktree (each a near-full copy of ~160 live docs on company), so 600
+// truncated live docs mid-worktree even after the archive prune (codex R2 P1).
+// ~1,600 live today across ~10 checkouts; 2400 leaves growth headroom while
+// still bounding a pathological repo. Head-only reads keep the cost linear.
+export const MAX_DOCS_PER_REPO = 2400 as const;
 
 export const docIndexTypeSchema = z.enum(DOC_INDEX_TYPES);
 export const docProvenanceSchema = z.enum(DOC_PROVENANCES);

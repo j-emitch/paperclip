@@ -363,10 +363,13 @@ export function parseBranchCommits(stdout: string): CommitRef[] {
  * (`docs/superpowers/plans/`); everything else is a spec.
  */
 export function classifyDocPath(relPath: string): DocType {
+  // Root-anchored decisions FIRST: the decisions glob is root-anchored, so
+  // `decisions/plans/x.md` is a decision, while `docs/superpowers/plans/…`
+  // containing a /decisions/ segment stays a plan (codex R2 P2).
+  if (/^decisions\//.test(relPath)) return "decision";
   if (/(^|\/)handoffs\//.test(relPath)) return "handoff";
   if (/(^|\/)backlog\//.test(relPath)) return "backlog";
   if (/(^|\/)plans\//.test(relPath)) return "plan";
-  if (/(^|\/)decisions\//.test(relPath)) return "decision";
   return "spec";
 }
 

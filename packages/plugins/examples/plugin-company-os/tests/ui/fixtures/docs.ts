@@ -92,6 +92,7 @@ export function goldenDocIndex(): DocIndexV1 {
           bucket("plan", [
             worktreeDoc("company", "a1e4d26", "cos-COS-1", "docs/COS-1", "docs/superpowers/plans/2026-06-25-COS-1-daily-driver-cockpit-plan.md", "COS-1 daily-driver cockpit plan", "approved", "2026-06-25T20:00:00Z"),
           ]),
+          bucket("decision", [mainDoc("company", "decisions/2026-07-16-workflow-v3-amendment-omnibus.md", "Workflow-v3 amendment omnibus", "pending-joe", "2026-06-26T09:00:00Z")]),
           bucket("handoff", [mainDoc("company", "reports/handoffs/2026-06-24-cos-1-spec-shipped.md", "COS-1 spec shipped — plan resume", null, "2026-06-24T22:00:00Z")]),
           bucket("review", [mainDoc("company", "reports/reviews/2026-06-22-cos-0.md", "COS-0 review report", null, "2026-06-22T12:00:00Z")]),
         ],

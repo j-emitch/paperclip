@@ -18,6 +18,10 @@ function fixtureFiles(): FixtureFs {
       // Decision docs — the ratification surface (a cos-link to an omnibus
       // decision must resolve in the index).
       "decisions/2026-07-16-workflow-v3-amendment-omnibus.md": { content: "---\ntitle: WF v3 Omnibus\nstatus: pending-joe\n---\n# Omnibus" },
+      // Overlap precedence (codex R2): root-anchored decisions/ wins over a
+      // nested plans/ segment; a /decisions/ segment inside plans stays a plan.
+      "decisions/plans/rollout.md": { content: "# rollout decision" },
+      "docs/superpowers/plans/decisions/inner.md": { content: "# still a plan" },
       // A handoff UNDER .claude/worktrees — must be pruned from the MAIN scan (it
       // belongs to the worktree checkout, never checkoutId:"main").
       ".claude/worktrees/cos-COS-1/handoffs/leak.md": { content: "# leak" },
@@ -123,6 +127,10 @@ describe("DocsSource", () => {
     expect(omnibus.docType).toBe("decision");
     expect(omnibus.title).toBe("WF v3 Omnibus");
     expect(omnibus.status).toBe("pending-joe");
+    // Overlap precedence: root-anchored decisions/ beats a nested plans/ segment
+    // and vice-versa (mutating the anchor or the order turns one of these red).
+    expect(byPath("decisions/plans/rollout.md").docType).toBe("decision");
+    expect(byPath("docs/superpowers/plans/decisions/inner.md").docType).toBe("plan");
   });
 
   it("resolves DocSignal.prefix + verified (COS-5) from frontmatter id / filename / *_verified", async () => {
