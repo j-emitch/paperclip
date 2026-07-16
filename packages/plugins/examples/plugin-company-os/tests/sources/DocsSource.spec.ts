@@ -20,10 +20,19 @@ function fixtureFiles(): FixtureFs {
       ".claude/worktrees/cos-COS-1/handoffs/leak.md": { content: "# leak" },
       // The interim review mirror — must be excluded.
       "docs/review/cos-1/handoffs/mirror.md": { content: "# mirror" },
+      // Archived docs — pruned by bare dir NAME at any depth (WF-09 convention;
+      // the mass that was starving the MAX_DOCS_PER_REPO budget).
+      "reports/handoffs/archive/consumed.md": { content: "# consumed handoff" },
+      "archive/context-decisions/rollup-handoffs/old.md": { content: "# rollup" },
+      "backlog/archive/done.md": { content: "# done backlog" },
     },
     "company::wt::aaa": {
       "specs/main.md": { content: "---\ntitle: Worktree Spec\n---\n# Body" },
       "handoffs/wt-handoff.md": { content: "# Worktree Handoff" },
+      // Worktrees carry the same repo tree — their archives are pruned too.
+      "reports/handoffs/archive/wt-consumed.md": { content: "# wt consumed" },
+      // Dependency dirs: the root-wildcard handoffs glob must not index these.
+      "node_modules/some-pkg/handoffs/pkg.md": { content: "# pkg noise" },
     },
     "company::wt::bbb": {
       "specs/oor.md": { content: "# Out-of-root Spec" },
@@ -77,6 +86,20 @@ describe("DocsSource", () => {
     expect(docs.some((d) => d.checkoutId === "main" && d.relPath.includes("docs/review"))).toBe(false);
     // The worktree's OWN handoff is found under the worktree checkout.
     expect(docs.some((d) => d.checkoutId === "worktree:aaa" && d.relPath === "handoffs/wt-handoff.md")).toBe(true);
+  });
+
+  it("prunes archive/ dirs by bare name at any depth, on main AND worktree scans", async () => {
+    const { collect } = run(fixtureFiles());
+    const docs = (await collect()).signals.filter(isDocSignal) as DocSignal[];
+    // Main: consumed handoffs, the context-decisions rollup, archived backlog — all pruned.
+    expect(docs.some((d) => d.relPath.split("/").includes("archive"))).toBe(false);
+    // Worktree: same prune (previously worktrees scanned with NO exclude at all).
+    expect(docs.some((d) => d.checkoutId === "worktree:aaa" && d.relPath.includes("archive"))).toBe(false);
+    // Dependency dirs never feed the root-wildcard handoffs glob.
+    expect(docs.some((d) => d.relPath.includes("node_modules"))).toBe(false);
+    // The prune is by DIRECTORY name — live docs adjacent to archives still index.
+    expect(docs.some((d) => d.checkoutId === "main" && d.relPath === "company/reports/handoffs/h.md")).toBe(true);
+    expect(docs.some((d) => d.checkoutId === "main" && d.relPath === "backlog/b.md")).toBe(true);
   });
 
   it("classifies doc types by precedence + reads title from the frontmatter head", async () => {

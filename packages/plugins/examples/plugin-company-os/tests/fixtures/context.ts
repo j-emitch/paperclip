@@ -126,7 +126,19 @@ function makeFs(files: FixtureFs): WorkspaceReader {
     async list(repo, globs, opts) {
       const repoFiles = files[repo] ?? {};
       const exclude = opts?.exclude ?? [];
-      const excluded = (rel: string) => exclude.some((e) => rel === e || rel.startsWith(`${e}/`));
+      // Mirror the REAL walker's prune rule (makeCollectionContext.walk): a
+      // directory is pruned when its rel path OR its bare name is in the set —
+      // so a file is excluded when ANY ancestor dir matches by path or by name
+      // (`archive` prunes `reports/handoffs/archive/x.md` at depth). Prefix-only
+      // matching here silently diverged from live behavior for name excludes.
+      const excluded = (rel: string) => {
+        const segs = rel.split("/");
+        for (let i = 0; i < segs.length - 1; i++) {
+          if (exclude.includes(segs[i])) return true;
+          if (exclude.includes(segs.slice(0, i + 1).join("/"))) return true;
+        }
+        return false;
+      };
       return Object.keys(repoFiles)
         .filter((rel) => matchesAnyGlob(rel, globs) && !excluded(rel))
         .sort()

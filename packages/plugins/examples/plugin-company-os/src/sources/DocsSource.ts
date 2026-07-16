@@ -48,7 +48,19 @@ const DOC_GLOBS = [
  * worktree doc as `checkoutId:"main"`), and the `docs/review/` interim mirror is
  * excluded so it never renders beside its canonical worktree doc (§5.4/§13.4).
  */
-const MAIN_EXCLUDE = [".claude/worktrees", "docs/review", ".git", "node_modules", "dist", "build"] as const;
+const MAIN_EXCLUDE = [".claude/worktrees", "docs/review", "archive", ".git", "node_modules", "dist", "build"] as const;
+
+/**
+ * Walk-time prune for WORKTREE scans. `archive` (matched by bare dir name at any
+ * depth, per the walker's prune rule) keeps consumed history — `reports/handoffs/
+ * archive/`, `archive/context-decisions/`, `backlog/archive/` — out of the index:
+ * the WF-09 metadata-index convention ("Archived (`/archive/`) docs excluded"),
+ * and the mass that was burning the MAX_DOCS_PER_REPO budget and starving LIVE
+ * docs behind a `doc_index_truncated` diagnostic. The dependency-dir entries are
+ * defense-in-depth only — the walker's default `ignoreDirs` already prunes them
+ * (`build` is the one not in that default list).
+ */
+const WORKTREE_EXCLUDE = ["archive", ".git", "node_modules", "dist", "build"] as const;
 
 export const docsSource: WorkSignalSource = {
   id: DOCS_SOURCE_ID,
@@ -68,9 +80,10 @@ export const docsSource: WorkSignalSource = {
       const budget = { remaining: MAX_DOCS_PER_REPO };
       // Main checkout — keyed by the repoKey, walk-time-pruned of worktrees + the review mirror.
       signals.push(...(await scanCheckout(c, repo.repo, repo.repo, "main", null, null, MAIN_EXCLUDE, errors, budget)));
-      // Each worktree — its own root is the base, so no exclude is needed.
+      // Each worktree — its own root is the base (no worktree/review-mirror prune
+      // needed), but archives + dependency dirs are pruned same as main.
       for (const wt of worktreesByRepo.get(repo.repo) ?? []) {
-        signals.push(...(await scanCheckout(c, repo.repo, wt.key, wt.checkoutId, wt.name, wt.branch, undefined, errors, budget)));
+        signals.push(...(await scanCheckout(c, repo.repo, wt.key, wt.checkoutId, wt.name, wt.branch, WORKTREE_EXCLUDE, errors, budget)));
       }
       return { signals, errors };
     });
