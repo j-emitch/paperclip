@@ -57,7 +57,7 @@ const manifest: PaperclipPluginManifestV1 = {
         type: "array",
         title: "Repository roots",
         description:
-          "Absolute paths to the product repos the cockpit reads (read-only): e.g. /Users/joseph/projects/juice-bar, /Users/joseph/projects/arc-scraper, /Users/joseph/projects/company, /Users/joseph/projects/paperclip/paperclip.",
+          "Absolute paths to the product repos the cockpit reads (read-only), one per repo root, e.g. /path/to/juice-bar or /path/to/company.",
         items: { type: "string" },
         default: [],
       },
