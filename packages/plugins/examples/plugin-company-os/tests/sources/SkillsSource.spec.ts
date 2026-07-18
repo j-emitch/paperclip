@@ -8,6 +8,12 @@ import type { SignalBundle } from "../../src/contracts/WorkSignalSource.js";
 
 const SKILL_MD = (name: string, desc: string) => `---\nname: ${name}\ndescription: ${desc}\n---\n# ${name}\n\nbody…`;
 
+// NOTE: post-WF-12, worker.ts no longer creates a company out-of-repo design root —
+// design skills are git-tracked in config/skills and classified in-repo via
+// config/skills-collections.json (see the "design classification from the tracked
+// manifest" block below). DESIGN_ROOT is retained to exercise SkillsSource's GENERIC
+// out-of-repo skillRoot scanning (the same code path plugin roots use), not the
+// company production model.
 const DESIGN_ROOT: SkillRootRef = { key: "skillroot:company:skills", origin: "company", collection: "design" };
 const PLUGIN_ROOT: SkillRootRef = { key: "skillroot:plugins:cache", origin: "plugins", collection: null };
 
@@ -57,6 +63,69 @@ describe("SkillsSource — company origin", () => {
     const company = batch.repoFreshness.find((r) => r.repo === "company");
     expect(company?.freshness).toBe("live");
     expect(skills(batch.signals).map((s) => s.collection).sort()).toEqual(["core", "core"]);
+  });
+});
+
+// WF-12 production model: all company skills live in config/skills; the tracked
+// skills-collections.json classifies which are the "design" collection. No out-of-repo
+// ~/.agents root — this is the P0 fix (materialized design skills were double-indexed
+// once as core from config/skills + once as design from ~/.agents).
+const COMPANY_MANIFEST_FILES: FixtureFs = {
+  company: {
+    "config/skills-collections.json": { content: JSON.stringify({ design: ["animate", "polish"] }) },
+    "config/skills/review-cannons/SKILL.md": { content: SKILL_MD("review-cannons", "14-pass pre-push review") },
+    "config/skills/animate/SKILL.md": { content: SKILL_MD("animate", "Add purposeful motion") },
+    "config/skills/polish/SKILL.md": { content: SKILL_MD("polish", "Final quality pass") },
+  },
+};
+
+describe("SkillsSource — WF-12 design classification from the tracked manifest", () => {
+  it("classifies config/skills design-vs-core from skills-collections.json, no out-of-repo root", async () => {
+    const ctx = makeFixtureContext({ files: COMPANY_MANIFEST_FILES }); // NO skillRoots — design is in-repo now
+    const batch = await skillsSource.collect(ctx);
+    const found = skills(batch.signals);
+    const byName = new Map(found.map((s) => [s.name, s]));
+
+    expect(found).toHaveLength(3);
+    // house-authored → core; manifest-listed → design; ALL read from the company repo.
+    expect(byName.get("review-cannons")).toMatchObject({ origin: "company", collection: "core", checkoutKey: "company", repo: "company" });
+    expect(byName.get("animate")).toMatchObject({ origin: "company", collection: "design", checkoutKey: "company", repo: "company" });
+    expect(byName.get("polish")).toMatchObject({ origin: "company", collection: "design", checkoutKey: "company" });
+    // each skill appears exactly ONCE — the P0 double-index is gone.
+    expect(found.filter((s) => s.name === "animate")).toHaveLength(1);
+    // manifest read succeeded → company slice carries no diagnostic.
+    expect(batch.repoFreshness.find((r) => r.repo === "company")?.errors ?? []).toHaveLength(0);
+  });
+
+  it("surfaces a non-degraded drift diagnostic when the manifest lists an absent skill", async () => {
+    const files: FixtureFs = {
+      company: {
+        ...COMPANY_MANIFEST_FILES.company,
+        "config/skills-collections.json": { content: JSON.stringify({ design: ["animate", "ghost-skill"] }) },
+      },
+    };
+    const ctx = makeFixtureContext({ files });
+    const batch = await skillsSource.collect(ctx);
+    const company = batch.repoFreshness.find((r) => r.repo === "company");
+    expect(company?.freshness).toBe("live"); // drift is non-degraded — never blanks the tab
+    const drift = (company?.errors ?? []).find((e) => e.message.includes("ghost-skill"));
+    expect(drift?.code).toBe("not_found");
+  });
+
+  it("fails SOFT (all core) with a non-degraded diagnostic when the manifest is absent/malformed", async () => {
+    const files: FixtureFs = {
+      company: {
+        "config/skills/review-cannons/SKILL.md": { content: SKILL_MD("review-cannons", "x") },
+        "config/skills/animate/SKILL.md": { content: SKILL_MD("animate", "y") },
+      },
+    }; // no config/skills-collections.json
+    const ctx = makeFixtureContext({ files });
+    const batch = await skillsSource.collect(ctx);
+    const found = skills(batch.signals);
+    expect(found.map((s) => s.collection).sort()).toEqual(["core", "core"]); // no design → all core, no crash
+    const company = batch.repoFreshness.find((r) => r.repo === "company");
+    expect(company?.freshness).toBe("live"); // non-degraded fallback
+    expect((company?.errors ?? []).some((e) => e.code === "parse_error")).toBe(true);
   });
 });
 

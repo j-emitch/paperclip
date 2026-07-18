@@ -3,12 +3,13 @@
  * DISTINCT kind — never an `ArtifactSignal`/`DocSignal`, so skills can't leak into
  * the Board/Docs folds) for every SKILL.md across two origins:
  *
- *   - `company` — the curated "ours" skills. The `config/skills/**` real skill
- *     dirs are read from the `company` repo; the DESIGN skills are read from an
- *     extra `origin:"company", collection:"design"` root (`~/.agents/skills`) —
- *     their `config/skills/*` entries are symlinks up to `$HOME` and the workspace
- *     walk never follows symlinks, so they MUST be read at their real out-of-repo
- *     path via a contained read-key (`ctx.skillRoots`). Collection = "core" | "design".
+ *   - `company` — the curated "ours" skills, all read from the `config/skills/**`
+ *     real skill dirs in the `company` repo. Collection = "core" for house-authored
+ *     skills, "design" for the marketplace design skills WF-12 git-tracked in-repo
+ *     (classified via `config/skills-collections.json` — see `loadDesignSlugs`). The
+ *     old out-of-repo `~/.agents/skills` design root was dropped: post-materialization
+ *     it duplicated every design skill (real in-repo copy + out-of-repo copy under
+ *     different skillIds) and was wrong on a fresh Mac where `~/.agents` is absent.
  *
  *   - `plugins` — installed marketplace/plugin skills read from optional, contained
  *     `ctx.skillRoots` read-keys (e.g. `~/.claude/plugins/cache`, `~/.codex/plugins/cache`).
@@ -35,8 +36,11 @@ export const SKILLS_SOURCE_ID = "skills";
 /** The repo key the "ours" core skills live in (`config/skills/**`). */
 export const COMPANY_REPO_KEY = "company";
 
-/** The in-repo core skills glob (design skills come from an out-of-repo `skillRoots` entry). */
+/** The in-repo skills glob — ALL company skills (house-authored + WF-12 design) live here. */
 const COMPANY_CORE_GLOBS = ["config/skills/**/SKILL.md"] as const;
+
+/** Tracked design-collection manifest (WF-12): which `config/skills` slugs are the "design" collection. */
+const SKILL_COLLECTIONS_PATH = "config/skills-collections.json";
 
 /** Extra roots (design + plugin caches) are scanned recursively for any nested SKILL.md. */
 const ROOT_SKILL_GLOBS = ["**/SKILL.md"] as const;
@@ -73,9 +77,22 @@ export const skillsSource: WorkSignalSource = {
           signalError("repo_unavailable", `repo ${COMPANY_REPO_KEY} is ${companyRepo ? "not available this run" : "not configured"}`),
         ]);
       } else {
-        const { produced, errors } = await scanKey(ctx, COMPANY_REPO_KEY, COMPANY_CORE_GLOBS, "company", () => "core", COMPANY_REPO_KEY);
+        // WF-12: all company skills live in config/skills; classify design-vs-core
+        // from the tracked manifest (no out-of-repo ~/.agents dependency).
+        const { design, error: manifestErr } = await loadDesignSlugs(ctx);
+        if (manifestErr) addErrors(COMPANY_REPO_KEY, [manifestErr]);
+        const coreCollectionOf = (relPath: string): string => (design.has(skillSlug(relPath)) ? "design" : "core");
+        const { produced, errors } = await scanKey(ctx, COMPANY_REPO_KEY, COMPANY_CORE_GLOBS, "company", coreCollectionOf, COMPANY_REPO_KEY);
         signals.push(...produced);
         addErrors(COMPANY_REPO_KEY, errors);
+        // Drift guard: a manifest slug with no discovered SKILL.md means the list is stale.
+        const discovered = new Set(produced.map((s) => s.slug));
+        const missing = [...design].filter((slug) => !discovered.has(slug));
+        if (missing.length > 0) {
+          addErrors(COMPANY_REPO_KEY, [
+            signalError("not_found", `${SKILL_COLLECTIONS_PATH} lists ${missing.length} design skill(s) with no config/skills/<slug>/SKILL.md: ${missing.join(", ")}`, false),
+          ]);
+        }
       }
     }
 
@@ -103,6 +120,31 @@ export const skillsSource: WorkSignalSource = {
 /** A ref with a fixed collection uses it verbatim; otherwise derive the plugin slug per-skill. */
 function collectionResolver(ref: SkillRootRef): (relPath: string) => string {
   return ref.collection !== null ? () => ref.collection as string : pluginCollection;
+}
+
+/**
+ * Load the design-collection slugs from the tracked `config/skills-collections.json`.
+ * WF-12 materialized the marketplace design skills into `config/skills`, so they now
+ * index as company skills; this manifest is the single source of truth for which are
+ * the "design" collection. Missing/malformed fails SOFT — every company skill
+ * classifies as "core" (no duplication, just a flattened grouping) with a
+ * non-degraded diagnostic so the regression is visible on the freshness line.
+ */
+async function loadDesignSlugs(ctx: CollectionContext): Promise<{ design: Set<string>; error: SignalError | null }> {
+  try {
+    const raw = await ctx.fs.readText(COMPANY_REPO_KEY, SKILL_COLLECTIONS_PATH);
+    const parsed: unknown = JSON.parse(raw);
+    const list =
+      parsed !== null && typeof parsed === "object" && Array.isArray((parsed as { design?: unknown }).design)
+        ? (parsed as { design: unknown[] }).design.filter((x): x is string => typeof x === "string")
+        : [];
+    return { design: new Set(list), error: null };
+  } catch (err) {
+    return {
+      design: new Set(),
+      error: signalError("parse_error", `${SKILL_COLLECTIONS_PATH} unreadable/malformed (design skills fall back to "core"): ${String(err)}`, false),
+    };
+  }
 }
 
 /** Build a `RepoFreshness` row for a scanned read-key (live unless a read degraded it). */
