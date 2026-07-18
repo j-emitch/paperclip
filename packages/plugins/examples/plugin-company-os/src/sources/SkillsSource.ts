@@ -53,13 +53,11 @@ export const skillsSource: WorkSignalSource = {
     const fullSweep = ctx.scopeRepo === null;
     const companyScope = fullSweep || ctx.scopeRepo === COMPANY_REPO_KEY;
 
-    // Read errors accumulate per LOGICAL slice repo. Company CORE (`config/skills/**`)
-    // and the company DESIGN root (`~/.agents/skills`) are read from DIFFERENT keys but
-    // belong to the SAME `company` slice, so a scoped `company` refresh collects, merges,
-    // and persists them together. The scoped merge + `replaceSourceVersions` key by
-    // `repo`; a design skill tagged with its read-key (`skillroot:company:*`) instead of
-    // the `company` slice is silently dropped on a scoped refresh, leaving stale last-good
-    // (codex A/B P1). Plugin roots are their own slice and full-sweep only.
+    // Read errors accumulate per LOGICAL slice repo. All company skills (house-authored
+    // "core" + the 21 WF-12-materialized "design", classified via
+    // `config/skills-collections.json`) are read from the single `company` key in one
+    // scan, so a scoped `company` refresh collects, merges, and persists them together.
+    // Plugin roots are their own slice and full-sweep only.
     const errorsByRepo = new Map<string, SignalError[]>();
     const addErrors = (repo: string, errs: readonly SignalError[]): void => {
       const acc = errorsByRepo.get(repo) ?? [];
@@ -131,20 +129,32 @@ function collectionResolver(ref: SkillRootRef): (relPath: string) => string {
  * non-degraded diagnostic so the regression is visible on the freshness line.
  */
 async function loadDesignSlugs(ctx: CollectionContext): Promise<{ design: Set<string>; error: SignalError | null }> {
+  const empty = new Set<string>();
+  let raw: string;
   try {
-    const raw = await ctx.fs.readText(COMPANY_REPO_KEY, SKILL_COLLECTIONS_PATH);
-    const parsed: unknown = JSON.parse(raw);
-    const list =
-      parsed !== null && typeof parsed === "object" && Array.isArray((parsed as { design?: unknown }).design)
-        ? (parsed as { design: unknown[] }).design.filter((x): x is string => typeof x === "string")
-        : [];
-    return { design: new Set(list), error: null };
+    raw = await ctx.fs.readText(COMPANY_REPO_KEY, SKILL_COLLECTIONS_PATH);
   } catch (err) {
-    return {
-      design: new Set(),
-      error: signalError("parse_error", `${SKILL_COLLECTIONS_PATH} unreadable/malformed (design skills fall back to "core"): ${String(err)}`, false),
-    };
+    return { design: empty, error: signalError("not_found", `${SKILL_COLLECTIONS_PATH} unreadable (design skills fall back to "core"): ${String(err)}`, false) };
   }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return { design: empty, error: signalError("parse_error", `${SKILL_COLLECTIONS_PATH} is not valid JSON (design skills fall back to "core"): ${String(err)}`, false) };
+  }
+  // Valid JSON but wrong shape (no `design` array) must NOT silently classify every
+  // skill as core — surface it, same as an unreadable manifest.
+  const arr = parsed !== null && typeof parsed === "object" ? (parsed as { design?: unknown }).design : undefined;
+  if (!Array.isArray(arr)) {
+    return { design: empty, error: signalError("parse_error", `${SKILL_COLLECTIONS_PATH} has no "design" array (design skills fall back to "core")`, false) };
+  }
+  const list = arr.filter((x): x is string => typeof x === "string");
+  const dropped = arr.length - list.length;
+  const error =
+    dropped > 0
+      ? signalError("parse_error", `${SKILL_COLLECTIONS_PATH} "design" dropped ${dropped} non-string entr${dropped === 1 ? "y" : "ies"}`, false)
+      : null;
+  return { design: new Set(list), error };
 }
 
 /** Build a `RepoFreshness` row for a scanned read-key (live unless a read degraded it). */

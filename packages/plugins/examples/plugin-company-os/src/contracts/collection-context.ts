@@ -205,10 +205,11 @@ export interface CollectionContext {
   readonly worktrees: readonly WorktreeCheckout[];
   /**
    * Optional extra contained READ-ROOTS (each `key` is already resolvable in `fs`)
-   * OUTSIDE the workspace that `SkillsSource` scans for SKILL.md files: the
-   * company design skills at `~/.agents/skills` (origin "company") and installed-
-   * plugin caches like `~/.claude/plugins/cache` (origin "plugins"). Every OTHER
-   * source ignores them. Empty/undefined = workspace `config/skills` only.
+   * OUTSIDE the workspace that `SkillsSource` scans for SKILL.md files: installed
+   * plugin caches like `~/.claude/plugins/cache` (origin "plugins"). Post-WF-12 the
+   * company design skills are read IN-repo from `config/skills` (no `~/.agents`
+   * root). Every OTHER source ignores these. Empty/undefined = workspace
+   * `config/skills` only.
    * PF-8-style contained keys — the abs path never leaks; reads stay containment-
    * checked exactly like worktrees.
    */

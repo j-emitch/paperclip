@@ -115,6 +115,19 @@ const plugin = definePlugin({
         ...pluginPaths.map((absPath) => ({ absPath, origin: "plugins" as const, collection: null })),
       ];
 
+      // Guard: never let a configured skillRoot re-add the company design root
+      // (~/.agents/skills). WF-12 reads the 21 design skills in-repo via SkillsSource +
+      // config/skills-collections.json; scanning ~/.agents here too would re-mint each
+      // under a plugin skillId and re-create the double-index this fix removed (codex
+      // re-review P1). Best-effort canonical; null (absent on a fresh Mac) disables it.
+      const agentsSkillsCanonical = ((): string | null => {
+        try {
+          return realpathSync.native(path.join(homedir(), ".agents", "skills"));
+        } catch {
+          return null;
+        }
+      })();
+
       const seen = new Set<string>();
       const out: SkillRootInput[] = [];
       for (const spec of specs) {
@@ -140,6 +153,7 @@ const plugin = definePlugin({
         } catch {
           continue;
         }
+        if (agentsSkillsCanonical !== null && canonical === agentsSkillsCanonical) continue; // never re-add the removed company design root
         const base = path.basename(canonical) || spec.origin;
         const digest = createHash("sha256").update(canonical).digest("hex").slice(0, 16);
         const key = `skillroot:${spec.origin}:${base}-${digest}`;

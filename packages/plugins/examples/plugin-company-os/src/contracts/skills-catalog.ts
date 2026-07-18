@@ -4,9 +4,10 @@
  * collection → skill** tree.
  *
  * Two origins, deliberately ordered so the "ours" set is the star:
- *   - `company` — the curated skills that live IN the workspace (`config/skills/**`
- *     real skills + `.agents/skills/**` design skills, both inside the `company`
- *     repo). These are the primary surface.
+ *   - `company` — the curated skills that live IN the workspace (`config/skills/**`:
+ *     house-authored + the 21 WF-12-materialized design skills, all real in-repo dirs;
+ *     the design collection is classified via `config/skills-collections.json`). The
+ *     primary surface.
  *   - `plugins` — installed marketplace/plugin skills read from optional, contained
  *     `skillRoots` (e.g. `~/.claude/plugins/cache`). A separate, secondary
  *     sub-section; calmly empty (show-0) when no plugin roots are configured/present.
@@ -38,10 +39,10 @@ export const skillOriginSchema = z.enum(SKILL_ORIGINS);
 /**
  * An extra contained read-root the `SkillsSource` scans, beyond the `company`
  * repo's own `config/skills`. Two shapes:
- *   - company/design: the design skills live OUTSIDE the workspace at
- *     `~/.agents/skills` (the `config/skills/*` design entries are symlinks up to
- *     `$HOME`, and the walk never follows symlinks) — indexed as origin "company",
- *     `collection: "design"` (a FIXED collection).
+ *   - company/design: WF-12 git-tracked the design skills INTO the workspace at
+ *     `config/skills/`; they are read there as origin "company" and tagged
+ *     `collection: "design"` when their slug is in `config/skills-collections.json`
+ *     (else "core"). No out-of-repo `~/.agents/skills` root.
  *   - plugins: an installed-plugin cache (`~/.claude/plugins/cache`,
  *     `~/.codex/plugins/cache`) — origin "plugins", `collection: null` (derived
  *     per-skill from the path).
@@ -65,8 +66,9 @@ export const skillEntryV1Schema = z.object({
   skillId: z.string().min(1),
   origin: skillOriginSchema,
   /**
-   * Sub-grouping within an origin: for `company`, "design" (from `.agents/skills`)
-   * or "core" (from `config/skills`); for `plugins`, the plugin/marketplace slug.
+   * Sub-grouping within an origin: for `company`, "design" or "core" (both from
+   * `config/skills`, classified via `config/skills-collections.json`); for
+   * `plugins`, the plugin/marketplace slug.
    */
   collection: z.string().min(1),
   /** The read-key the body is fetched against (company repo key or a plugin-root key). */

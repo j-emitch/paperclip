@@ -71,7 +71,8 @@ export interface SkillRootInput {
   readonly key: string;
   /** Absolute directory the key resolves to (containment-checked on read). */
   readonly absPath: string;
-  /** "company" (e.g. `~/.agents/skills` design) or "plugins" (a plugin cache). */
+  /** "company" or "plugins". Post-WF-12 company skills are read from the in-repo
+   *  `config/skills` workspace scan, so a configured root here is a plugin cache. */
   readonly origin: SkillOrigin;
   /** Fixed collection for every skill under this root; null = derive per-skill. */
   readonly collection: string | null;

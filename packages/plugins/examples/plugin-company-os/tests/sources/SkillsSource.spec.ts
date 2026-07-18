@@ -112,7 +112,7 @@ describe("SkillsSource — WF-12 design classification from the tracked manifest
     expect(drift?.code).toBe("not_found");
   });
 
-  it("fails SOFT (all core) with a non-degraded diagnostic when the manifest is absent/malformed", async () => {
+  it("fails SOFT (all core) with a non-degraded not_found diagnostic when the manifest is absent", async () => {
     const files: FixtureFs = {
       company: {
         "config/skills/review-cannons/SKILL.md": { content: SKILL_MD("review-cannons", "x") },
@@ -125,6 +125,22 @@ describe("SkillsSource — WF-12 design classification from the tracked manifest
     expect(found.map((s) => s.collection).sort()).toEqual(["core", "core"]); // no design → all core, no crash
     const company = batch.repoFreshness.find((r) => r.repo === "company");
     expect(company?.freshness).toBe("live"); // non-degraded fallback
+    expect((company?.errors ?? []).some((e) => e.code === "not_found")).toBe(true);
+  });
+
+  it("surfaces a diagnostic when the manifest is valid JSON but the wrong shape", async () => {
+    const files: FixtureFs = {
+      company: {
+        ...COMPANY_MANIFEST_FILES.company,
+        "config/skills-collections.json": { content: JSON.stringify({ design: "animate" }) }, // string, not an array
+      },
+    };
+    const ctx = makeFixtureContext({ files });
+    const batch = await skillsSource.collect(ctx);
+    // valid-but-wrong-shape must NOT silently classify everything core with no warning.
+    expect(skills(batch.signals).every((s) => s.collection === "core")).toBe(true);
+    const company = batch.repoFreshness.find((r) => r.repo === "company");
+    expect(company?.freshness).toBe("live");
     expect((company?.errors ?? []).some((e) => e.code === "parse_error")).toBe(true);
   });
 });
