@@ -37,15 +37,13 @@ export type SkillOrigin = (typeof SKILL_ORIGINS)[number];
 export const skillOriginSchema = z.enum(SKILL_ORIGINS);
 
 /**
- * An extra contained read-root the `SkillsSource` scans, beyond the `company`
- * repo's own `config/skills`. Two shapes:
- *   - company/design: WF-12 git-tracked the design skills INTO the workspace at
- *     `config/skills/`; they are read there as origin "company" and tagged
- *     `collection: "design"` when their slug is in `config/skills-collections.json`
- *     (else "core"). No out-of-repo `~/.agents/skills` root.
- *   - plugins: an installed-plugin cache (`~/.claude/plugins/cache`,
- *     `~/.codex/plugins/cache`) — origin "plugins", `collection: null` (derived
- *     per-skill from the path).
+ * An extra contained read-root the `SkillsSource` scans, OUTSIDE the `company`
+ * repo's own `config/skills`. Post-WF-12 this is only installed-plugin caches
+ * (`~/.claude/plugins/cache`, `~/.codex/plugins/cache`) — origin "plugins",
+ * `collection: null` (derived per-skill from the path). The company design skills
+ * are NOT an extra root: WF-12 git-tracked them into `config/skills`, so they are
+ * read in-repo (origin "company") and tagged `collection: "design"` via
+ * `config/skills-collections.json`.
  * `key` is the read-KEY (namespaced so it can't collide with a repo key).
  */
 export interface SkillRootRef {

@@ -65,7 +65,8 @@ const DEFAULTS = {
   ignoreDirs: [".git", "node_modules", "dist", ".next", "coverage", ".turbo", "vendor"],
 } satisfies Required<AdapterOptions>;
 
-/** An extra, out-of-workspace read-root scanned for skills (design skills or a plugin cache). */
+/** An extra, out-of-workspace read-root scanned for skills — post-WF-12 a plugin cache
+ *  (company design skills are read in-repo from `config/skills`, not via a root). */
 export interface SkillRootInput {
   /** Stable read-KEY (namespaced to avoid colliding with a repo key). */
   readonly key: string;

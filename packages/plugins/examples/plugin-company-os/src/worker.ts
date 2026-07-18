@@ -153,7 +153,15 @@ const plugin = definePlugin({
         } catch {
           continue;
         }
-        if (agentsSkillsCanonical !== null && canonical === agentsSkillsCanonical) continue; // never re-add the removed company design root
+        // Never re-add the removed company design root — reject exact, an ancestor
+        // (e.g. a configured `~/.agents` recurses into `~/.agents/skills`), or a descendant.
+        if (
+          agentsSkillsCanonical !== null &&
+          (canonical === agentsSkillsCanonical ||
+            agentsSkillsCanonical.startsWith(canonical + path.sep) ||
+            canonical.startsWith(agentsSkillsCanonical + path.sep))
+        )
+          continue;
         const base = path.basename(canonical) || spec.origin;
         const digest = createHash("sha256").update(canonical).digest("hex").slice(0, 16);
         const key = `skillroot:${spec.origin}:${base}-${digest}`;
