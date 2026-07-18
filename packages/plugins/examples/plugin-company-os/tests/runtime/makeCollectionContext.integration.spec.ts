@@ -110,6 +110,50 @@ describe("makeCollectionContext (real fs + git)", () => {
     expect(entries.map((e) => e.prefix)).toEqual(["COS"]);
   });
 
+  it("surfaces a RegistryLoadError.detail (the parse reason) instead of the generic message", async () => {
+    const root = path.join(await mkdtemp(path.join(tmpdir(), "cos-reg-detail-")), "company");
+    await mkdir(path.join(root, "config", "lib"), { recursive: true });
+    await execFileAsync("git", ["init", "-q"], { cwd: root });
+    await writeFile(path.join(root, "config", "prefix-registry.json"), "[]");
+    await writeFile(
+      path.join(root, "config", "lib", "prefix-registry.mjs"),
+      `export function loadRegistry() { const e = new Error("prefix-registry: bad (path)"); e.name = "RegistryLoadError"; e.detail = "invalid JSON: Unexpected token }"; throw e; }\n`,
+    );
+    const ctx = await makeCollectionContext({ repoRoots: [root], scopeRepo: null, logger: silentLogger });
+    const { entries, errors } = await ctx.registry.load();
+    expect(entries).toEqual([]);
+    expect(errors[0]?.code).toBe("parse_error");
+    expect(errors[0]?.message).toBe("invalid JSON: Unexpected token }");
+  });
+
+  it("falls back to the generic message for a plain (non-RegistryLoadError) throw", async () => {
+    const root = path.join(await mkdtemp(path.join(tmpdir(), "cos-reg-plain-")), "company");
+    await mkdir(path.join(root, "config", "lib"), { recursive: true });
+    await execFileAsync("git", ["init", "-q"], { cwd: root });
+    await writeFile(path.join(root, "config", "prefix-registry.json"), "[]");
+    await writeFile(path.join(root, "config", "lib", "prefix-registry.mjs"), `export function loadRegistry() { throw new Error("boom"); }\n`);
+    const ctx = await makeCollectionContext({ repoRoots: [root], scopeRepo: null, logger: silentLogger });
+    const { errors } = await ctx.registry.load();
+    expect(errors[0]?.message).toBe("registry load failed (see logs)");
+  });
+
+  it("does NOT surface a foreign error's .detail — brand-check blocks a host-path leak", async () => {
+    const root = path.join(await mkdtemp(path.join(tmpdir(), "cos-reg-foreign-")), "company");
+    await mkdir(path.join(root, "config", "lib"), { recursive: true });
+    await execFileAsync("git", ["init", "-q"], { cwd: root });
+    await writeFile(path.join(root, "config", "prefix-registry.json"), "[]");
+    // A pg-style error exposes an UNREDACTED `.detail` but is NOT our RegistryLoadError;
+    // it must never reach the UI (only RegistryLoadError.detail is redaction-guaranteed).
+    await writeFile(
+      path.join(root, "config", "lib", "prefix-registry.mjs"),
+      `export function loadRegistry() { const e = new Error("pg failed"); e.name = "error"; e.detail = "Key (id)=(/Users/joe/secret) exists"; throw e; }\n`,
+    );
+    const ctx = await makeCollectionContext({ repoRoots: [root], scopeRepo: null, logger: silentLogger });
+    const { errors } = await ctx.registry.load();
+    expect(errors[0]?.message).toBe("registry load failed (see logs)");
+    expect(errors[0]?.message).not.toContain("/Users/");
+  });
+
   it("loads the lineage graph through the canonical parser module", async () => {
     const ctx = await makeCollectionContext({ repoRoots: [companyRoot], scopeRepo: null, logger: silentLogger });
     const { data, errors } = await ctx.lineage.load();

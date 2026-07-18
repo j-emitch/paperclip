@@ -73,13 +73,18 @@ const plugin = definePlugin({
     };
 
     // The COS-1h skill read-roots: contained dirs OUTSIDE the workspace that
-    // `SkillsSource` scans. Two kinds:
-    //   • DESIGN (origin company): `~/.agents/skills` — the company design skills'
-    //     REAL location (their `config/skills/*` entries are symlinks up to $HOME the
-    //     walk skips), collection fixed to "design".
-    //   • PLUGINS (origin plugins): from `config.skillRoots` when set, else the
-    //     Claude + Codex plugin caches when present. An EXPLICIT `skillRoots: []`
-    //     DISABLES the plugin fallback (only an ABSENT key defaults). Collection derived.
+    // `SkillsSource` scans for PLUGIN skills — from `config.skillRoots` when set,
+    // else the Claude + Codex plugin caches when present. An EXPLICIT `skillRoots: []`
+    // DISABLES the plugin fallback (only an ABSENT key defaults). Collection derived
+    // from the plugin path.
+    //
+    // Company DESIGN skills are NO LONGER read here: WF-12 (2026-07-18) git-tracked
+    // them into `config/skills`, so `SkillsSource` reads them in-repo as company
+    // skills and classifies them via `config/skills-collections.json`. The old
+    // out-of-repo `~/.agents/skills` company root is dropped — post-materialization
+    // it DUPLICATED every design skill (real in-repo copy + out-of-repo copy, minted
+    // under different skillIds) and was wrong on a fresh Mac where `~/.agents` is absent.
+    //
     // Every root is required to be a REAL directory (a symlinked root is rejected —
     // its target could escape the intended tree). Keys are namespaced
     // (`skillroot:<basename>`) so they can never shadow a repo/worktree key.
@@ -107,9 +112,21 @@ const plugin = definePlugin({
       }
 
       const specs: Array<{ absPath: string; origin: "company" | "plugins"; collection: string | null }> = [
-        { absPath: path.join(homedir(), ".agents", "skills"), origin: "company", collection: "design" },
         ...pluginPaths.map((absPath) => ({ absPath, origin: "plugins" as const, collection: null })),
       ];
+
+      // Guard: never let a configured skillRoot re-add the company design root
+      // (~/.agents/skills). WF-12 reads the 21 design skills in-repo via SkillsSource +
+      // config/skills-collections.json; scanning ~/.agents here too would re-mint each
+      // under a plugin skillId and re-create the double-index this fix removed (codex
+      // re-review P1). Best-effort canonical; null (absent on a fresh Mac) disables it.
+      const agentsSkillsCanonical = ((): string | null => {
+        try {
+          return realpathSync.native(path.join(homedir(), ".agents", "skills"));
+        } catch {
+          return null;
+        }
+      })();
 
       const seen = new Set<string>();
       const out: SkillRootInput[] = [];
@@ -136,6 +153,15 @@ const plugin = definePlugin({
         } catch {
           continue;
         }
+        // Never re-add the removed company design root — reject exact, an ancestor
+        // (e.g. a configured `~/.agents` recurses into `~/.agents/skills`), or a descendant.
+        if (
+          agentsSkillsCanonical !== null &&
+          (canonical === agentsSkillsCanonical ||
+            agentsSkillsCanonical.startsWith(canonical + path.sep) ||
+            canonical.startsWith(agentsSkillsCanonical + path.sep))
+        )
+          continue;
         const base = path.basename(canonical) || spec.origin;
         const digest = createHash("sha256").update(canonical).digest("hex").slice(0, 16);
         const key = `skillroot:${spec.origin}:${base}-${digest}`;

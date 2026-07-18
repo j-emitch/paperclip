@@ -65,13 +65,15 @@ const DEFAULTS = {
   ignoreDirs: [".git", "node_modules", "dist", ".next", "coverage", ".turbo", "vendor"],
 } satisfies Required<AdapterOptions>;
 
-/** An extra, out-of-workspace read-root scanned for skills (design skills or a plugin cache). */
+/** An extra, out-of-workspace read-root scanned for skills — post-WF-12 a plugin cache
+ *  (company design skills are read in-repo from `config/skills`, not via a root). */
 export interface SkillRootInput {
   /** Stable read-KEY (namespaced to avoid colliding with a repo key). */
   readonly key: string;
   /** Absolute directory the key resolves to (containment-checked on read). */
   readonly absPath: string;
-  /** "company" (e.g. `~/.agents/skills` design) or "plugins" (a plugin cache). */
+  /** "company" or "plugins". Post-WF-12 company skills are read from the in-repo
+   *  `config/skills` workspace scan, so a configured root here is a plugin cache. */
   readonly origin: SkillOrigin;
   /** Fixed collection for every skill under this root; null = derive per-skill. */
   readonly collection: string | null;
@@ -428,6 +430,23 @@ interface PrefixRegistryModule {
   loadRegistry?: (jsonPath?: string) => RegistryEntry[] | Promise<RegistryEntry[]>;
 }
 
+/**
+ * The host-path-free `detail` a prefix-registry `RegistryLoadError` carries, if
+ * present. Brand-gated on the error identity (`instanceof Error` + `name ===
+ * "RegistryLoadError"`) — ONLY our own error's `.detail` is trusted, because its
+ * constructor runs `.detail` through `redactHomePaths` while the absolute path
+ * stays in `.message`/logs. A foreign throw that happens to expose an unredacted
+ * `.detail` (e.g. a `pg` error) must NOT reach the UI, so anything else falls back
+ * to the generic message.
+ */
+function registryErrorDetail(e: unknown): string {
+  if (e instanceof Error && e.name === "RegistryLoadError" && "detail" in e) {
+    const detail = (e as { detail: unknown }).detail;
+    if (typeof detail === "string" && detail.length > 0) return detail;
+  }
+  return "registry load failed (see logs)";
+}
+
 function makeRegistryLoader(absByKey: Map<string, string>, logger: SignalLogger): RegistryLoader {
   return {
     async load(): Promise<RegistryLoadResult> {
@@ -451,7 +470,7 @@ function makeRegistryLoader(absByKey: Map<string, string>, logger: SignalLogger)
         // Keep the absolute parserPath + raw error in the logs only — the
         // UI-facing signal stays host-path-free.
         logger.warn("registry load failed", { parserPath, error: String(e) });
-        return { entries: [], errors: [err("parse_error", "registry load failed (see logs)")] };
+        return { entries: [], errors: [err("parse_error", registryErrorDetail(e))] };
       }
     },
   };
