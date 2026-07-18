@@ -428,6 +428,21 @@ interface PrefixRegistryModule {
   loadRegistry?: (jsonPath?: string) => RegistryEntry[] | Promise<RegistryEntry[]>;
 }
 
+/**
+ * The host-path-free `detail` a prefix-registry `RegistryLoadError` carries, if
+ * present. `prefix-registry.mjs` deliberately keeps the absolute path in
+ * `.message`/logs only and runs `.detail` through `redactHomePaths`, so this is
+ * safe to surface in the UI. Falls back to the generic message for any other
+ * throw (plain Error, string, etc.).
+ */
+function registryErrorDetail(e: unknown): string {
+  if (e !== null && typeof e === "object" && "detail" in e) {
+    const detail = (e as { detail: unknown }).detail;
+    if (typeof detail === "string" && detail.length > 0) return detail;
+  }
+  return "registry load failed (see logs)";
+}
+
 function makeRegistryLoader(absByKey: Map<string, string>, logger: SignalLogger): RegistryLoader {
   return {
     async load(): Promise<RegistryLoadResult> {
@@ -451,7 +466,7 @@ function makeRegistryLoader(absByKey: Map<string, string>, logger: SignalLogger)
         // Keep the absolute parserPath + raw error in the logs only — the
         // UI-facing signal stays host-path-free.
         logger.warn("registry load failed", { parserPath, error: String(e) });
-        return { entries: [], errors: [err("parse_error", "registry load failed (see logs)")] };
+        return { entries: [], errors: [err("parse_error", registryErrorDetail(e))] };
       }
     },
   };
