@@ -5,6 +5,7 @@
  * the reader can render the full SKILL.md. Pure + SSR-faithful, mirroring `DocTree`.
  */
 
+import { useEffect, useRef } from "react";
 import type { SkillsCatalogV1, SkillEntryV1, SkillOriginSectionV1 } from "../../contracts/index.js";
 import { tokens } from "../tokens.js";
 import { Dot } from "../shared/badges.js";
@@ -134,8 +135,16 @@ function SkillRow({
   selected: boolean;
   onSelect: (selection: SkillSelection) => void;
 }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  // Focus follows selection so keyboard up/down carries the focus ring with the
+  // choice (and scrolls the row into view). Selection starts null, so this never
+  // steals focus on mount -- only once the user has picked a row.
+  useEffect(() => {
+    if (selected) ref.current?.focus();
+  }, [selected]);
   return (
     <button
+      ref={ref}
       type="button"
       className="cos-fx-row"
       aria-current={selected ? "true" : undefined}
@@ -143,8 +152,8 @@ function SkillRow({
       title={skill.summary ?? skill.name}
       style={{
         display: "flex",
-        flexDirection: "column",
-        gap: 3,
+        alignItems: "center",
+        gap: 10,
         padding: "9px 11px",
         width: "100%",
         minWidth: 0,
@@ -157,35 +166,55 @@ function SkillRow({
         cursor: "pointer",
       }}
     >
-      <span
-        style={{
-          fontSize: 13,
-          fontWeight: selected ? 700 : 600,
-          fontFamily: tokens.mono,
-          color: selected ? tokens.fg : tokens.fg,
-          letterSpacing: -0.2,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {skill.name}
-      </span>
-      {skill.summary ? (
+      <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, flex: "1 1 auto" }}>
         <span
           style={{
-            fontSize: 11.5,
-            color: tokens.muted,
-            lineHeight: 1.4,
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
+            fontSize: 13,
+            fontWeight: selected ? 700 : 600,
+            fontFamily: tokens.mono,
+            // Selected uses the signature accent, matching the arrow, so the skill in the
+            // reader reads at a glance (was a dead fg/fg ternary that never changed color).
+            color: selected ? tokens.accent : tokens.fg,
+            letterSpacing: -0.2,
             overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
           }}
         >
-          {skill.summary}
+          {skill.name}
         </span>
-      ) : null}
+        {skill.summary ? (
+          <span
+            style={{
+              fontSize: 11.5,
+              color: tokens.muted,
+              lineHeight: 1.4,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {skill.summary}
+          </span>
+        ) : null}
+      </span>
+      {/* Reveal-arrow - the cockpit's row "open" affordance (cos-fx-row-go): hidden until
+          hover/focus, persistent + accent once selected (this is the skill loaded in the
+          reader). Under reduced-motion the shared stylesheet keeps it forced-visible. */}
+      <span
+        aria-hidden="true"
+        className={selected ? undefined : "cos-fx-row-go"}
+        style={{
+          color: selected ? tokens.accent : tokens.muted,
+          fontSize: 15,
+          lineHeight: 1,
+          flex: "0 0 auto",
+          opacity: selected ? 1 : undefined,
+        }}
+      >
+        →
+      </span>
     </button>
   );
 }

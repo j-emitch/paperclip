@@ -44,6 +44,22 @@ export function collectionTone(origin: SkillOrigin, collection: string): string 
   return COLLECTION_TONES[h % COLLECTION_TONES.length]!;
 }
 
+/**
+ * Flatten a (already filtered) catalog into render-order skill entries: origins ->
+ * collections -> skills, exactly as the tree paints them. Powers keyboard up/down
+ * nav -- the caller finds the selected entry's index and steps it. Pure; empty in,
+ * empty out.
+ */
+export function flattenVisible(catalog: SkillsCatalogV1): SkillEntryV1[] {
+  const out: SkillEntryV1[] = [];
+  for (const origin of catalog.origins) {
+    for (const collection of origin.collections) {
+      for (const skill of collection.skills) out.push(skill);
+    }
+  }
+  return out;
+}
+
 /** True when a skill matches a lowercased query across name/summary/slug/collection/origin. */
 function skillMatches(skill: SkillEntryV1, q: string): boolean {
   return (
