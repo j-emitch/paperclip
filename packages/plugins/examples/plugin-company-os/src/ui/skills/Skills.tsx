@@ -9,7 +9,7 @@
  * fires for an empty selection. Selection + search reset when the company changes.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { MarkdownBlock } from "@paperclipai/plugin-sdk/ui";
 import type { SkillsCatalogV1 } from "../../contracts/index.js";
 import { SkillsIcon } from "../icons.js";
@@ -21,7 +21,7 @@ import { useNow } from "../hooks/useNow.js";
 import { DocumentViewerPanel } from "../shared/DocumentViewerPanel.js";
 import { SkillsView } from "./SkillsView.js";
 import { type SkillSelection } from "./SkillTree.js";
-import { filterCatalog } from "./skills-view-model.js";
+import { filterCatalog, flattenVisible, stepIndex } from "./skills-view-model.js";
 
 /** Production markdown slot — host renderer, wikilinks on, raw HTML inert (react-markdown). */
 function renderHostMarkdown(markdown: string) {
@@ -34,6 +34,7 @@ export function Skills({ companyId }: { companyId: string | null }) {
   const { catalog, loading, error, refresh } = useSkillsCatalog(companyId);
   const [selected, setSelected] = useState<SkillSelection | null>(null);
   const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // Reset selection + search when the active company changes.
   useEffect(() => {
@@ -53,6 +54,31 @@ export function Skills({ companyId }: { companyId: string | null }) {
       setSelected(null);
     }
   }, [filtered, selected]);
+
+  // Flattened visible list (render order) + keyboard nav for the surface: "/" focuses
+  // the search box; ArrowUp/Down steps the selection through the list and the reader
+  // follows. Skips while typing in an input/textarea/reader so it never hijacks text
+  // entry or page scroll there.
+  const flat = useMemo(() => (filtered ? flattenVisible(filtered) : []), [filtered]);
+  const onKeyNav = useCallback(
+    (e: KeyboardEvent<HTMLDivElement>) => {
+      const el = e.target as HTMLElement | null;
+      const typing = !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      if (e.key === "/") {
+        if (typing) return;
+        e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
+      if (typing || (e.key !== "ArrowDown" && e.key !== "ArrowUp") || flat.length === 0) return;
+      e.preventDefault();
+      const cur = selected ? flat.findIndex((s) => s.skillId === selected.entry.skillId) : -1;
+      const next = stepIndex(cur, flat.length, e.key === "ArrowDown" ? 1 : -1);
+      const entry = next >= 0 ? flat[next] : undefined;
+      if (entry) setSelected({ entry });
+    },
+    [flat, selected],
+  );
 
   if (loading && !catalog) return <SurfaceLoading label="Loading the skills catalog…" />;
   if (error && !catalog) return <SurfaceError message={error.message} onRetry={refresh} />;
@@ -100,6 +126,8 @@ export function Skills({ companyId }: { companyId: string | null }) {
       now={now}
       isMobile={isMobile}
       viewer={viewer}
+      searchRef={searchRef}
+      onKeyDown={onKeyNav}
     />
   );
 }

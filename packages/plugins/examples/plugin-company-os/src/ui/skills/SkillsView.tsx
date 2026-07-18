@@ -7,7 +7,7 @@
  * the tree until a skill is selected, then the reader full-width.
  */
 
-import { useState, type ReactNode } from "react";
+import { useState, type ReactNode, type RefObject, type KeyboardEvent } from "react";
 import type { SkillsCatalogV1 } from "../../contracts/index.js";
 import { tokens } from "../tokens.js";
 import { CockpitSurfaceStyles } from "../shared/surface-styles.js";
@@ -29,6 +29,12 @@ export interface SkillsViewProps {
   isMobile?: boolean;
   /** The reader pane — connected viewer (live) or a pure one (harness). */
   viewer: ReactNode;
+  /** Ref to the search input, so the surface "/" shortcut can focus it. */
+  searchRef?: RefObject<HTMLInputElement | null>;
+  /** Keydown handler for the search + tree column only (kbd nav + "/"). Deliberately
+      NOT wired to the reader, so arrows never hijack reader scroll and the mobile
+      viewer-only view (tree unmounted) can't swap the read skill. */
+  onKeyDown?: (e: KeyboardEvent<HTMLDivElement>) => void;
 }
 
 export function SkillsView({
@@ -41,6 +47,8 @@ export function SkillsView({
   now,
   isMobile = false,
   viewer,
+  searchRef,
+  onKeyDown,
 }: SkillsViewProps) {
   const total = catalog.total;
   const searching = query.trim() !== "";
@@ -69,15 +77,15 @@ export function SkillsView({
         showViewerOnly ? (
           <div style={{ minWidth: 0 }}>{viewer}</div>
         ) : (
-          <>
-            <SearchBox query={query} onQueryChange={onQueryChange} />
+          <div onKeyDown={onKeyDown} style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+            <SearchBox query={query} onQueryChange={onQueryChange} inputRef={searchRef} />
             <SkillTree catalog={catalog} selectedSkillId={selectedSkillId} onSelect={onSelect} searching={searching} />
-          </>
+          </div>
         )
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "minmax(280px, 400px) minmax(0, 1fr)", gap: 18, alignItems: "start", minWidth: 0 }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-            <SearchBox query={query} onQueryChange={onQueryChange} />
+          <div onKeyDown={onKeyDown} style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+            <SearchBox query={query} onQueryChange={onQueryChange} inputRef={searchRef} />
             <SkillTree catalog={catalog} selectedSkillId={selectedSkillId} onSelect={onSelect} searching={searching} />
           </div>
           <div style={{ minWidth: 0, padding: 18, background: tokens.bg, border: `1px solid ${tokens.border}`, borderRadius: tokens.radius }}>
@@ -89,16 +97,28 @@ export function SkillsView({
   );
 }
 
-function SearchBox({ query, onQueryChange }: { query: string; onQueryChange: (next: string) => void }) {
-  // Keyboard focus must stay visible (a11y) — we suppress the native outline but
+function SearchBox({
+  query,
+  onQueryChange,
+  inputRef,
+}: {
+  query: string;
+  onQueryChange: (next: string) => void;
+  inputRef?: RefObject<HTMLInputElement | null>;
+}) {
+  // Keyboard focus must stay visible (a11y): we suppress the native outline but
   // draw our own accent focus ring so the input is never a focus black hole.
   const [focused, setFocused] = useState(false);
+  // The "/" kbd hint only shows when the field is idle + empty, so it never
+  // collides with typed text or the native search clear affordance.
+  const showHint = !focused && query === "";
   return (
     <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
       <span aria-hidden="true" style={{ position: "absolute", left: 10, display: "inline-flex", color: tokens.muted, pointerEvents: "none" }}>
         <SearchIcon size={14} />
       </span>
       <input
+        ref={inputRef}
         type="search"
         value={query}
         onChange={(e) => onQueryChange(e.target.value)}
@@ -120,6 +140,26 @@ function SearchBox({ query, onQueryChange }: { query: string; onQueryChange: (ne
           transition: "border-color 160ms ease, box-shadow 160ms ease",
         }}
       />
+      {showHint ? (
+        <kbd
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            right: 9,
+            fontSize: 11,
+            fontFamily: tokens.mono,
+            color: tokens.muted,
+            background: tokens.bg,
+            border: `1px solid ${tokens.border}`,
+            borderRadius: 5,
+            padding: "0px 6px",
+            lineHeight: 1.6,
+            pointerEvents: "none",
+          }}
+        >
+          /
+        </kbd>
+      ) : null}
     </div>
   );
 }
