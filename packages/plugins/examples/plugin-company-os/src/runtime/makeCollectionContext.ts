@@ -430,13 +430,15 @@ interface PrefixRegistryModule {
 
 /**
  * The host-path-free `detail` a prefix-registry `RegistryLoadError` carries, if
- * present. `prefix-registry.mjs` deliberately keeps the absolute path in
- * `.message`/logs only and runs `.detail` through `redactHomePaths`, so this is
- * safe to surface in the UI. Falls back to the generic message for any other
- * throw (plain Error, string, etc.).
+ * present. Brand-gated on the error identity (`instanceof Error` + `name ===
+ * "RegistryLoadError"`) — ONLY our own error's `.detail` is trusted, because its
+ * constructor runs `.detail` through `redactHomePaths` while the absolute path
+ * stays in `.message`/logs. A foreign throw that happens to expose an unredacted
+ * `.detail` (e.g. a `pg` error) must NOT reach the UI, so anything else falls back
+ * to the generic message.
  */
 function registryErrorDetail(e: unknown): string {
-  if (e !== null && typeof e === "object" && "detail" in e) {
+  if (e instanceof Error && e.name === "RegistryLoadError" && "detail" in e) {
     const detail = (e as { detail: unknown }).detail;
     if (typeof detail === "string" && detail.length > 0) return detail;
   }
