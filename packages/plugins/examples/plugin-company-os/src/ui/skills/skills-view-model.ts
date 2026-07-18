@@ -60,6 +60,22 @@ export function flattenVisible(catalog: SkillsCatalogV1): SkillEntryV1[] {
   return out;
 }
 
+/**
+ * Next selection index for keyboard up/down nav. `cur` is the current index (or -1
+ * when nothing is selected / the selection was filtered out), `len` the visible-list
+ * length, `dir` +1 (down) or -1 (up). Clamps at both ends (no wrap); from no
+ * selection, down picks the first row and up the last. Returns -1 for an empty list.
+ * Pure + total, so the bounds math is unit-tested away from the event handler.
+ */
+export function stepIndex(cur: number, len: number, dir: 1 | -1): number {
+  if (len <= 0) return -1;
+  if (cur < 0) return dir === 1 ? 0 : len - 1;
+  const next = cur + dir;
+  if (next < 0) return 0;
+  if (next >= len) return len - 1;
+  return next;
+}
+
 /** True when a skill matches a lowercased query across name/summary/slug/collection/origin. */
 function skillMatches(skill: SkillEntryV1, q: string): boolean {
   return (

@@ -7,7 +7,7 @@
  * the tree until a skill is selected, then the reader full-width.
  */
 
-import { useState, type ReactNode, type RefObject } from "react";
+import { useState, type ReactNode, type RefObject, type KeyboardEvent } from "react";
 import type { SkillsCatalogV1 } from "../../contracts/index.js";
 import { tokens } from "../tokens.js";
 import { CockpitSurfaceStyles } from "../shared/surface-styles.js";
@@ -31,6 +31,10 @@ export interface SkillsViewProps {
   viewer: ReactNode;
   /** Ref to the search input, so the surface "/" shortcut can focus it. */
   searchRef?: RefObject<HTMLInputElement | null>;
+  /** Keydown handler for the search + tree column only (kbd nav + "/"). Deliberately
+      NOT wired to the reader, so arrows never hijack reader scroll and the mobile
+      viewer-only view (tree unmounted) can't swap the read skill. */
+  onKeyDown?: (e: KeyboardEvent<HTMLDivElement>) => void;
 }
 
 export function SkillsView({
@@ -44,6 +48,7 @@ export function SkillsView({
   isMobile = false,
   viewer,
   searchRef,
+  onKeyDown,
 }: SkillsViewProps) {
   const total = catalog.total;
   const searching = query.trim() !== "";
@@ -72,14 +77,14 @@ export function SkillsView({
         showViewerOnly ? (
           <div style={{ minWidth: 0 }}>{viewer}</div>
         ) : (
-          <>
+          <div onKeyDown={onKeyDown} style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
             <SearchBox query={query} onQueryChange={onQueryChange} inputRef={searchRef} />
             <SkillTree catalog={catalog} selectedSkillId={selectedSkillId} onSelect={onSelect} searching={searching} />
-          </>
+          </div>
         )
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "minmax(280px, 400px) minmax(0, 1fr)", gap: 18, alignItems: "start", minWidth: 0 }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+          <div onKeyDown={onKeyDown} style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
             <SearchBox query={query} onQueryChange={onQueryChange} inputRef={searchRef} />
             <SkillTree catalog={catalog} selectedSkillId={selectedSkillId} onSelect={onSelect} searching={searching} />
           </div>

@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { SkillsView } from "../../src/ui/skills/SkillsView.js";
-import { flattenVisible } from "../../src/ui/skills/skills-view-model.js";
+import { flattenVisible, stepIndex } from "../../src/ui/skills/skills-view-model.js";
 import type { SkillEntryV1, SkillsCatalogV1 } from "../../src/contracts/index.js";
 
 const NOW = Date.parse("2026-07-02T00:00:00.000Z");
@@ -129,14 +129,31 @@ describe("Skills surface -- keyboard nav + row affordances", () => {
     expect(renderView(catalogWith())).toContain("<kbd");
   });
 
-  it("gives each skill row the cockpit reveal-arrow affordance (cos-fx-row-go)", () => {
+  it("renders the reveal-arrow glyph on a row (not the always-present cos-fx CSS string)", () => {
     const html = renderView(catalogWith(skill({ slug: "review-cannons" })));
     expect(html).toContain("review-cannons");
-    expect(html).toContain("cos-fx-row-go");
+    // Assert the actual arrow glyph, which only a rendered SkillRow emits. The class
+    // name "cos-fx-row-go" lives in CockpitMotionStyles' CSS regardless, so matching
+    // it would be tautological (present even for an empty catalog).
+    expect(html).toContain("→");
+  });
+
+  it("emits no reveal-arrow glyph for an empty catalog (negative guard)", () => {
+    expect(renderView(catalogWith())).not.toContain("→");
   });
 
   it("marks the selected skill row with aria-current", () => {
     const s = skill({ slug: "review-cannons" });
     expect(renderView(catalogWith(s), s.skillId)).toContain('aria-current="true"');
+  });
+
+  it("stepIndex clamps both ends and picks first/last from no selection", () => {
+    expect(stepIndex(-1, 3, 1)).toBe(0); // no selection, down -> first
+    expect(stepIndex(-1, 3, -1)).toBe(2); // no selection, up -> last
+    expect(stepIndex(0, 3, 1)).toBe(1); // step down
+    expect(stepIndex(2, 3, 1)).toBe(2); // clamp at bottom (no wrap)
+    expect(stepIndex(0, 3, -1)).toBe(0); // clamp at top (no wrap)
+    expect(stepIndex(1, 3, -1)).toBe(0); // step up
+    expect(stepIndex(0, 0, 1)).toBe(-1); // empty list
   });
 });

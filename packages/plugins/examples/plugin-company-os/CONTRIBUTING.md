@@ -44,10 +44,18 @@ plugin so the loop is fast:
 | build (plugin, esbuild) | the artifact the cockpit actually loads compiles |
 | `--full` (opt-in) | workspace `typecheck:build-gaps` + full vitest run |
 
-**Not covered** (release-time only, run in CI when publishing): `e2e.yml`,
-`docker.yml`, `release.yml` / release-smoke. CompanyOS changes are plugin-internal
-and don't need those per-PR. If you ever change release wiring, use the normal PR +
-CI path for that change instead.
+**Not covered — use the normal PR + CI path for these:**
+
+- `pr.yml`'s `policy` job — lockfile integrity, `release-package-map check`,
+  `check-docker-deps-stage`. Runs on **every** PR in CI, and matters when a change
+  touches `package.json` / dependencies. The local gate does **not** reproduce it.
+- release-time jobs: `e2e.yml`, `docker.yml`, `release.yml` / release-smoke.
+
+The `check:tokens` step above is an **extra** local guard (a pre-publish check), not
+itself a `pr.yml` gate — it's here because a leaked home path is exactly the kind of
+thing a solo local-to-main flow should catch. CompanyOS changes are plugin-internal
+UI / logic and don't need the policy or release jobs per-PR; if you touch deps or
+release wiring, take that change through PR + CI instead.
 
 ## UI quality bar
 

@@ -21,7 +21,7 @@ import { useNow } from "../hooks/useNow.js";
 import { DocumentViewerPanel } from "../shared/DocumentViewerPanel.js";
 import { SkillsView } from "./SkillsView.js";
 import { type SkillSelection } from "./SkillTree.js";
-import { filterCatalog, flattenVisible } from "./skills-view-model.js";
+import { filterCatalog, flattenVisible, stepIndex } from "./skills-view-model.js";
 
 /** Production markdown slot — host renderer, wikilinks on, raw HTML inert (react-markdown). */
 function renderHostMarkdown(markdown: string) {
@@ -73,15 +73,8 @@ export function Skills({ companyId }: { companyId: string | null }) {
       if (typing || (e.key !== "ArrowDown" && e.key !== "ArrowUp") || flat.length === 0) return;
       e.preventDefault();
       const cur = selected ? flat.findIndex((s) => s.skillId === selected.entry.skillId) : -1;
-      const next =
-        e.key === "ArrowDown"
-          ? cur < 0
-            ? 0
-            : Math.min(cur + 1, flat.length - 1)
-          : cur < 0
-            ? flat.length - 1
-            : Math.max(cur - 1, 0);
-      const entry = flat[next];
+      const next = stepIndex(cur, flat.length, e.key === "ArrowDown" ? 1 : -1);
+      const entry = next >= 0 ? flat[next] : undefined;
       if (entry) setSelected({ entry });
     },
     [flat, selected],
@@ -123,20 +116,19 @@ export function Skills({ companyId }: { companyId: string | null }) {
   );
 
   return (
-    <div onKeyDown={onKeyNav} style={{ minWidth: 0 }}>
-      <SkillsView
-        catalog={filtered}
-        totalUnfiltered={catalog.total}
-        selectedSkillId={selected ? selected.entry.skillId : null}
-        onSelect={onSelect}
-        query={query}
-        onQueryChange={setQuery}
-        now={now}
-        isMobile={isMobile}
-        viewer={viewer}
-        searchRef={searchRef}
-      />
-    </div>
+    <SkillsView
+      catalog={filtered}
+      totalUnfiltered={catalog.total}
+      selectedSkillId={selected ? selected.entry.skillId : null}
+      onSelect={onSelect}
+      query={query}
+      onQueryChange={setQuery}
+      now={now}
+      isMobile={isMobile}
+      viewer={viewer}
+      searchRef={searchRef}
+      onKeyDown={onKeyNav}
+    />
   );
 }
 

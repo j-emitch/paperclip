@@ -5,14 +5,21 @@
 # CompanyOS is a solo, internal surface. To hold it to the SAME code + UI standard
 # as the other products without burning GitHub Actions minutes, its changes ship
 # via a numbered PR + admin-merge to `lycaon` (the branch the cockpit runs from),
-# gated LOCALLY by this script instead of by pr.yml. It mirrors the *code* gates
-# pr.yml enforces - typecheck, tests, build - scoped to the plugin so the loop is
-# fast, plus the cheap shared policy checks.
+# gated LOCALLY by this script instead of by pr.yml. It mirrors the plugin-relevant
+# *code* gates pr.yml enforces - typecheck, tests, build - scoped to the plugin so
+# the loop is fast, and adds a home-path token scan.
+#
+# NOT mirrored (deliberately): pr.yml's `policy` job (lockfile integrity,
+# release-package-map, docker-deps-stage) and the release-time e2e/docker/release
+# jobs. Those matter for dependency / manifest / release changes, not plugin-internal
+# UI work - if you touch package.json / deps or release wiring, use the normal
+# PR + CI path for that change instead. (The token scan is an extra local check,
+# not itself a pr.yml gate.)
 #
 # UI-touching changes ALSO require the visual-excellence three-way browser verify
 # (desktop + mobile + reduced-motion, screenshot evidence). This script cannot run
 # a browser, so it PROMPTS for that evidence rather than pretending to check it -
-# see docs/companyos-local-to-main.md for the full contract.
+# see packages/plugins/examples/plugin-company-os/CONTRIBUTING.md for the full contract.
 #
 # Usage:
 #   scripts/companyos-local-ci.sh          # plugin-scoped code gates (fast, default)
@@ -24,6 +31,11 @@ set -uo pipefail
 PLUGIN="@paperclipai/plugin-company-os"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || { echo "cannot cd to repo root"; exit 2; }
+
+# Per-run temp log (mktemp, not a fixed /tmp name) so concurrent runs never clobber
+# and there is no predictable-name symlink footgun. Cleaned on exit.
+STEP_LOG="$(mktemp -t companyos-ci-step.XXXXXX)" || { echo "mktemp failed"; exit 2; }
+trap 'rm -f "$STEP_LOG"' EXIT
 
 FULL=0
 case "${1:-}" in
@@ -40,11 +52,11 @@ bad()  { printf '    [FAIL] %s\n' "$1"; fail=1; }
 run() { # run <label> <cmd...>
   local label="$1"; shift
   step "$label"
-  if "$@" > /tmp/companyos-ci-step.log 2>&1; then
+  if "$@" > "$STEP_LOG" 2>&1; then
     ok "$label"
   else
     bad "$label"
-    tail -25 /tmp/companyos-ci-step.log | sed 's/^/      /'
+    tail -25 "$STEP_LOG" | sed 's/^/      /'
   fi
 }
 
