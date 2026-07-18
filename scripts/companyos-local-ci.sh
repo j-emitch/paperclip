@@ -34,7 +34,7 @@ cd "$ROOT" || { echo "cannot cd to repo root"; exit 2; }
 
 # Per-run temp log (mktemp, not a fixed /tmp name) so concurrent runs never clobber
 # and there is no predictable-name symlink footgun. Cleaned on exit.
-STEP_LOG="$(mktemp -t companyos-ci-step.XXXXXX)" || { echo "mktemp failed"; exit 2; }
+STEP_LOG="$(mktemp "${TMPDIR:-/tmp}/companyos-ci-step.XXXXXX")" || { echo "mktemp failed"; exit 2; }
 trap 'rm -f "$STEP_LOG"' EXIT
 
 FULL=0
