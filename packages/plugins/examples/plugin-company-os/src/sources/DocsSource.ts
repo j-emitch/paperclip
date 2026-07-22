@@ -43,6 +43,12 @@ const DOC_GLOBS = [
   // Decision docs (company/decisions, per-repo decisions/) — the ratification
   // surface class; a cos-link to an omnibus decision must resolve in the index.
   "decisions/**/*.md",
+  // Reference topics (per-repo docs/reference/**) — canonical domain references
+  // (e.g. juice-bar's VZ/VZW order-lifecycle doc, the ARC report diagnostics
+  // brief). These are the "read this before touching X" surface: they were
+  // reachable by cos-link but resolved to `not_indexed`, because no glob covered
+  // them (2026-07-22). Added so a link to a canonical reference resolves.
+  "docs/reference/**/*.md",
 ] as const;
 
 /**
