@@ -1,6 +1,6 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { goals } from "@paperclipai/db";
+import { goals, issues, routines } from "@paperclipai/db";
 
 type GoalReader = Pick<Db, "select">;
 
@@ -54,6 +54,42 @@ export function goalService(db: Db) {
         .then((rows) => rows[0] ?? null),
 
     getDefaultCompanyGoal: (companyId: string) => getDefaultCompanyGoal(db, companyId),
+
+    /**
+     * The operational activity deliberately stays inside Paperclip: native
+     * issues and routines directly linked to this goal. Company OS artifacts
+     * (specs, plans, and Atlas records) are intentionally not included.
+     */
+    getActivity: async (goalId: string) => {
+      const [linkedIssues, linkedRoutines] = await Promise.all([
+        db
+          .select({
+            id: issues.id,
+            identifier: issues.identifier,
+            title: issues.title,
+            status: issues.status,
+            priority: issues.priority,
+            updatedAt: issues.updatedAt,
+          })
+          .from(issues)
+          .where(eq(issues.goalId, goalId))
+          .orderBy(desc(issues.updatedAt)),
+        db
+          .select({
+            id: routines.id,
+            title: routines.title,
+            status: routines.status,
+            priority: routines.priority,
+            lastTriggeredAt: routines.lastTriggeredAt,
+            updatedAt: routines.updatedAt,
+          })
+          .from(routines)
+          .where(eq(routines.goalId, goalId))
+          .orderBy(desc(routines.updatedAt)),
+      ]);
+
+      return { issues: linkedIssues, routines: linkedRoutines };
+    },
 
     create: (companyId: string, data: Omit<typeof goals.$inferInsert, "companyId">) =>
       db
