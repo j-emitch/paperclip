@@ -8,6 +8,8 @@ import { companiesApi } from "../api/companies";
 import { goalsApi } from "../api/goals";
 import { agentsApi } from "../api/agents";
 import { approvalsApi } from "../api/approvals";
+import { issuesApi } from "../api/issues";
+import { projectsApi } from "../api/projects";
 import { queryKeys } from "../lib/queryKeys";
 import { Dialog, DialogPortal } from "@/components/ui/dialog";
 import {
@@ -30,6 +32,12 @@ import { getAdapterDisplay } from "../adapters/adapter-display-registry";
 import { defaultCreateValues } from "./agent-config-defaults";
 import { parseOnboardingGoalInput } from "../lib/onboarding-goal";
 import { composeCeoInstructions } from "../lib/ceo-instructions";
+import {
+  buildOnboardingIssuePayload,
+  buildOnboardingProjectPayload,
+  selectDefaultCompanyGoalId,
+  selectReusableOnboardingProject,
+} from "../lib/onboarding-launch";
 import { buildNewAgentRuntimeConfig } from "../lib/new-agent-runtime-config";
 import { DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX } from "@paperclipai/adapter-codex-local";
 import { DEFAULT_CURSOR_LOCAL_MODEL } from "@paperclipai/adapter-cursor-local";
@@ -39,6 +47,7 @@ import { resolveRouteOnboardingOptions } from "../lib/onboarding-route";
 import { AsciiArtAnimation } from "./AsciiArtAnimation";
 import { FrontDoor } from "./FrontDoor";
 import { AgentCapsule } from "./AgentCapsule";
+import { Badge } from "@/components/ui/badge";
 import {
   Building2,
   Bot,
@@ -73,6 +82,36 @@ function buildMissionFromQuestionnaire(q1: string, q2: string, q3: string, q4: s
 }
 
 const ONBOARDING_STORAGE_KEY = "paperclip-onboarding-state";
+const DEFAULT_TASK_TITLE = "Paperclip onboarding";
+const DEFAULT_TASK_DESCRIPTION = `You are the Paperclip agent. This is your first task. Your job here is to
+understand what the user wants and turn it into a concrete plan — not to
+start building yet.
+
+A greeting has already been posted to the user on your behalf, so don't
+re-introduce yourself — go straight to the questions.
+
+This is a user-facing chat. Everything you post here is read by the user, so
+keep your messages terse and written for them. Only surface things meant for
+the user: the questions, the plan, the team, next-step options, and short
+status ("Got your answers — here's the plan."). Never narrate how you work.
+Don't post your internal steps or thinking into the chat — no "let me probe
+the schema", "schema learned", "building the questions payload", "orienting
+myself with the API", or similar play-by-play of your API/tool calls. Do that
+work silently and post only the result.
+
+Work in this order:
+
+1. Ask a few focused, clarifying questions. Use an ask_user_questions interaction to settle on one concrete goal to tackle first— scope, priorities, constraints, and what "done" looks like. Don't guess; ask.
+
+2. Propose one plan. Once you understand the goal, write a short approach plan to the \`plan\` document. At the bottom, list the agents you'd hire (with their roles) and any follow-up tasks you'd create. Then present the whole thing as a SINGLE request_checkbox_confirmation that targets the \`plan\` document, with each proposed hire and follow-up task as its own checkable option, checked by default. Give each option a stable id you can act on later. Do NOT use suggest_tasks or a separate request_confirmation — one checkbox card is the plan and its approval. In the card's message keep the summary to a line or two and point the user to the full write-up in the plan on the right sidebar (it opens to the Plan there automatically) — don't paste the whole plan into the card, and never say the write-up is "above" or "in the plan doc above"; it lives in the right sidebar.
+
+3. Wait for approval. Don't hire anyone or create work until the user approves the plan. They can uncheck anything they don't want before approving, and unchecking simply drops it. If they ask for changes, revise the plan document and re-confirm.
+
+4. On approval, execute only what they kept. Create exactly the checked options — hire the checked agents and create + delegate the checked follow-up tasks, each in its own task. Skip anything the user unchecked.
+
+Propose, don't decide. Keep it conversational.`;
+const INCOMPLETE_ONBOARDING_STATE_MESSAGE =
+  "Onboarding state is incomplete. Please restart onboarding and try again.";
 
 function loadSavedState(): Record<string, unknown> | null {
   try {
@@ -97,9 +136,6 @@ export function OnboardingWizard() {
   const location = useLocation();
   const { companyPrefix } = useParams<{ companyPrefix?: string }>();
 
-  // Sync disabled adapter types from server so the adapter grid filters them out.
-  const disabledTypes = useDisabledAdaptersSync();
-
   // Support opening the wizard from a route (e.g. /onboarding or an existing
   // company's "add agent" entry point) in addition to the dialog context.
   const routeOnboardingOptions =
@@ -115,6 +151,11 @@ export function OnboardingWizard() {
   const effectiveOnboardingOptions = onboardingOpen
     ? onboardingOptions
     : routeOnboardingOptions ?? {};
+
+  // Sync disabled adapter types only when the wizard is visible. The wizard is
+  // mounted globally, including on /auth, where protected adapter routes are
+  // expected to reject signed-out browsers.
+  const disabledTypes = useDisabledAdaptersSync({ enabled: effectiveOnboardingOpen });
 
   const initialStep = effectiveOnboardingOptions.initialStep ?? 0;
   const existingCompanyId = effectiveOnboardingOptions.companyId;
@@ -170,6 +211,15 @@ export function OnboardingWizard() {
     string | null
   >((saved?.createdCompanyPrefix as string) ?? null);
   const [createdAgentId, setCreatedAgentId] = useState<string | null>((saved?.createdAgentId as string) ?? null);
+  const [createdCompanyGoalId, setCreatedCompanyGoalId] = useState<string | null>(
+    (saved?.createdCompanyGoalId as string) ?? null
+  );
+  const [createdProjectId, setCreatedProjectId] = useState<string | null>(
+    (saved?.createdProjectId as string) ?? null
+  );
+  const [createdIssueRef, setCreatedIssueRef] = useState<string | null>(
+    (saved?.createdIssueRef as string) ?? null
+  );
 
   // Reset the route-dismissed flag when navigating to a different path.
   useEffect(() => {
@@ -208,6 +258,7 @@ export function OnboardingWizard() {
       step, companyName, companyGoal, missionPath, missionConfirmed,
       q1, q2, q3, q4, agentName, adapterType, cwd, model, command, args, url,
       createdCompanyId, createdCompanyPrefix, createdAgentId,
+      createdCompanyGoalId, createdProjectId, createdIssueRef,
       onboardingPath, growWorkflows, growPainPoints, growAutomate,
     };
     localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(state));
@@ -215,6 +266,7 @@ export function OnboardingWizard() {
     effectiveOnboardingOpen, step, companyName, companyGoal, missionPath, missionConfirmed,
     q1, q2, q3, q4, agentName, adapterType, cwd, model, command, args, url,
     createdCompanyId, createdCompanyPrefix, createdAgentId,
+    createdCompanyGoalId, createdProjectId, createdIssueRef,
     onboardingPath, growWorkflows, growPainPoints, growAutomate,
   ]);
 
@@ -244,7 +296,6 @@ export function OnboardingWizard() {
     adapterType === "claude_local" ||
     adapterType === "codex_local" ||
     adapterType === "gemini_local" ||
-    adapterType === "hermes_local" ||
     adapterType === "opencode_local" ||
     adapterType === "pi_local" ||
     adapterType === "cursor";
@@ -271,7 +322,6 @@ export function OnboardingWizard() {
     claude_local: "claude",
     codex_local: "codex",
     gemini_local: "gemini",
-    hermes_local: "hermes",
     pi_local: "pi",
     cursor: "agent",
     opencode_local: "opencode",
@@ -363,6 +413,9 @@ export function OnboardingWizard() {
     setCreatedCompanyId(null);
     setCreatedCompanyPrefix(null);
     setCreatedAgentId(null);
+    setCreatedCompanyGoalId(null);
+    setCreatedProjectId(null);
+    setCreatedIssueRef(null);
   }
 
   function handleClose() {
@@ -375,11 +428,75 @@ export function OnboardingWizard() {
     setRouteDismissed(true);
   }
 
-  function handleLaunchToChat() {
-    const prefix = createdCompanyPrefix;
-    reset();
-    closeOnboarding();
-    navigate(prefix ? `/${prefix}/board-chat` : "/dashboard");
+  async function handleLaunchToDashboard() {
+    if (!createdCompanyId || !createdAgentId) {
+      setError(INCOMPLETE_ONBOARDING_STATE_MESSAGE);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      let goalId = createdCompanyGoalId;
+      if (!goalId) {
+        const goals = await goalsApi.list(createdCompanyId);
+        goalId = selectDefaultCompanyGoalId(goals);
+        setCreatedCompanyGoalId(goalId);
+      }
+
+      let projectId = createdProjectId;
+      if (!projectId) {
+        const projects = await projectsApi.list(createdCompanyId);
+        const existingOnboardingProject = selectReusableOnboardingProject(projects);
+        if (existingOnboardingProject) {
+          projectId = existingOnboardingProject.id;
+        } else {
+          const project = await projectsApi.create(
+            createdCompanyId,
+            buildOnboardingProjectPayload(goalId)
+          );
+          projectId = project.id;
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.projects.list(createdCompanyId)
+          });
+        }
+        setCreatedProjectId(projectId);
+      }
+
+      let issueRef = createdIssueRef;
+      if (!issueRef) {
+        const issue = await issuesApi.create(
+          createdCompanyId,
+          buildOnboardingIssuePayload({
+            title: DEFAULT_TASK_TITLE,
+            description: DEFAULT_TASK_DESCRIPTION,
+            assigneeAgentId: createdAgentId,
+            projectId,
+            goalId
+          })
+        );
+        issueRef = issue.identifier ?? issue.id;
+        setCreatedIssueRef(issueRef);
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.issues.list(createdCompanyId)
+        });
+      }
+
+      const prefix = createdCompanyPrefix;
+      // Select the new company as a route sync, not a manual switch: the
+      // explicit navigate below is the intended destination, so page-memory's
+      // "restore last page" (which falls back to /dashboard) must not fire and
+      // clobber the first-task URL. See PAP-404.
+      setSelectedCompanyId(createdCompanyId, { source: "route_sync" });
+      reset();
+      closeOnboarding();
+      // Drop the user straight into the first task's detail page (not the
+      // dashboard) so they land on the conversation the agent will start in.
+      navigate(prefix ? `/${prefix}/issues/${issueRef}` : `/issues/${issueRef}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to launch first task");
+    } finally {
+      setLoading(false);
+    }
   }
 
   function buildAdapterConfig(): Record<string, unknown> {
@@ -467,7 +584,7 @@ export function OnboardingWizard() {
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
 
       const parsedGoal = parseOnboardingGoalInput(companyGoal);
-      await goalsApi.create(company.id, {
+      const goal = await goalsApi.create(company.id, {
         title: parsedGoal.title,
         ...(parsedGoal.description
           ? { description: parsedGoal.description }
@@ -475,6 +592,7 @@ export function OnboardingWizard() {
         level: "company",
         status: "active"
       });
+      setCreatedCompanyGoalId(goal.id);
       queryClient.invalidateQueries({
         queryKey: queryKeys.goals.list(company.id)
       });
@@ -651,11 +769,14 @@ export function OnboardingWizard() {
       else if (step === 2 && companyName.trim() && companyGoal.trim()) handleConfirmMission();
       else if (step === 3 && agentName.trim()) setStep(4);
       else if (step === 4 && agentName.trim()) handleGiveHeartbeat();
-      else if (step === 5) handleLaunchToChat();
+      else if (step === 5) handleLaunchToDashboard();
     }
   }
 
   if (!effectiveOnboardingOpen) return null;
+
+  const launchStateIncomplete = step === 5 && (!createdCompanyId || !createdAgentId);
+  const visibleError = error ?? (launchStateIncomplete ? INCOMPLETE_ONBOARDING_STATE_MESSAGE : null);
 
   return (
     <Dialog
@@ -695,7 +816,7 @@ export function OnboardingWizard() {
           {step !== 0 && (
           <div
             className={cn(
-              "w-full flex flex-col overflow-y-auto transition-[width] duration-500 ease-in-out",
+              "w-full flex flex-col overflow-y-auto transition-(--tp-width) duration-500 ease-in-out",
               step === 1 || step === 2 ? "md:w-1/2" : "md:w-full"
             )}
           >
@@ -729,7 +850,7 @@ export function OnboardingWizard() {
                   morph reads as one capsule coming to life — dashed slot →
                   solid (configured) → liquid fill + blue glow (online). */}
               {step >= 3 && step <= 5 && (
-                <div className="space-y-4 mb-6">
+                <div className="mb-6 space-y-4">
                   <div className="flex items-center gap-3 mb-1">
                     <div className="bg-muted/50 p-2">
                       {step === 5 ? (
@@ -741,7 +862,7 @@ export function OnboardingWizard() {
                     <div>
                       <h3 className="font-medium">
                         {step === 3
-                          ? "Create your team lead"
+                          ? "Create your first agent"
                           : step === 4
                             ? "Connect a model"
                             : "Review"}
@@ -749,40 +870,47 @@ export function OnboardingWizard() {
                       <p className="text-xs text-muted-foreground">
                         {step === 3 ? (
                           <>
-                            Name your lead. They'll help drive{" "}
+                            They'll help drive{" "}
                             <span className="font-medium text-foreground">{companyName}</span>{" "}
                             toward its mission. We default to{" "}
-                            <span className="font-medium text-foreground">Chief of staff</span> —
-                            rename it to anything you like.
+                            <span className="font-medium text-foreground">Chief of staff</span>.
+                            Rename it to anything you like.
                           </>
                         ) : step === 4 ? (
                           <>Pick the adapter and model your lead will run on, then check the environment.</>
                         ) : (
-                          <>Everything's set up — your team lead is online and ready to work.</>
+                          <>Your first agent is online and ready to work.</>
                         )}
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex flex-col items-center gap-1.5 py-1 text-center">
+                  <div
+                    className={cn(
+                      "flex flex-col items-center py-1 text-center",
+                      step === 5 ? "mt-8 gap-2.5" : "gap-1.5"
+                    )}
+                  >
                     <AgentCapsule
                       state={step === 3 ? "slot" : step === 4 ? "configured" : "online"}
                       gradient={5}
                       glow="blue"
                       size="md"
                     />
-                    <p className="text-[11px] text-muted-foreground">
-                      {step === 3 ? (
-                        "an empty slot for an agent"
-                      ) : step === 4 ? (
-                        "your team lead, taking shape"
-                      ) : (
-                        <>
-                          <span className="font-medium text-foreground">{agentName}</span>{" "}
-                          is online and ready to work!
-                        </>
-                      )}
-                    </p>
+                    {step !== 3 && (
+                      <p
+                        className={cn(
+                          "text-muted-foreground",
+                          step === 5 ? "text-sm" : "text-(length:--text-micro)"
+                        )}
+                      >
+                        {step === 4 ? (
+                          "your team lead, taking shape"
+                        ) : (
+                          <span className="font-medium text-foreground">{agentName}</span>
+                        )}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -813,7 +941,7 @@ export function OnboardingWizard() {
                   <div className="group">
                     <label className="text-xs text-muted-foreground mb-1 block">What are your current workflows?</label>
                     <textarea
-                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-[60px]"
+                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-(--sz-60px)"
                       placeholder="e.g. Manual content creation, spreadsheet tracking, email outreach"
                       value={growWorkflows}
                       onChange={(e) => setGrowWorkflows(e.target.value)}
@@ -822,7 +950,7 @@ export function OnboardingWizard() {
                   <div className="group">
                     <label className="text-xs text-muted-foreground mb-1 block">What pain points would you solve with AI?</label>
                     <textarea
-                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-[60px]"
+                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-(--sz-60px)"
                       placeholder="e.g. Can't produce content fast enough, no time for social media"
                       value={growPainPoints}
                       onChange={(e) => setGrowPainPoints(e.target.value)}
@@ -857,7 +985,7 @@ export function OnboardingWizard() {
                         <div className="group">
                           <label className="text-xs text-foreground mb-1 block">Generated mission — edit however you like:</label>
                           <textarea
-                            className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-[60px]"
+                            className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-(--sz-60px)"
                             value={companyGoal}
                             onChange={(e) => setCompanyGoal(e.target.value)}
                           />
@@ -866,7 +994,7 @@ export function OnboardingWizard() {
                     </>
                   )}
                   <button
-                    className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                    className="text-(length:--text-micro) text-muted-foreground hover:text-foreground transition-colors"
                     onClick={() => { setOnboardingPath(null); setStep(0); }}
                   >
                     ← Back to start
@@ -874,7 +1002,7 @@ export function OnboardingWizard() {
                 </div>
               )}
 
-              {/* Step 1: Name your team (both paths) */}
+              {/* Step 1: Name your company (both paths) */}
               {step === 1 && (
                 <div className="space-y-5">
                   <div className="flex items-center gap-3 mb-1">
@@ -882,9 +1010,9 @@ export function OnboardingWizard() {
                       <Building2 className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <div>
-                      <h3 className="font-medium">Name your team</h3>
+                      <h3 className="font-medium">Name your organization</h3>
                       <p className="text-xs text-muted-foreground">
-                        What should we call your team?
+                        What should we call your team or company?
                       </p>
                     </div>
                   </div>
@@ -897,7 +1025,7 @@ export function OnboardingWizard() {
                           : "text-muted-foreground group-focus-within:text-foreground"
                       )}
                     >
-                      Team name
+                      Name
                     </label>
                     <input
                       className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
@@ -915,7 +1043,7 @@ export function OnboardingWizard() {
                     />
                   </div>
                   <button
-                    className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                    className="text-(length:--text-micro) text-muted-foreground hover:text-foreground transition-colors"
                     onClick={() => { setOnboardingPath(null); setStep(0); }}
                   >
                     ← Back to start
@@ -939,7 +1067,7 @@ export function OnboardingWizard() {
                   </div>
 
                   {/* Mission path selector */}
-                  <div className="space-y-3">
+                  <div className="space-y-3 pt-3">
                     <label className="text-xs text-foreground block">
                       How would you like to define your mission?
                     </label>
@@ -955,7 +1083,7 @@ export function OnboardingWizard() {
                       >
                         <Sparkles className="h-4 w-4" />
                         <span className="font-medium">I know my mission</span>
-                        <span className="text-muted-foreground text-[10px]">
+                        <span className="text-muted-foreground text-(length:--text-nano)">
                           Type it directly
                         </span>
                       </button>
@@ -970,7 +1098,7 @@ export function OnboardingWizard() {
                       >
                         <ListTodo className="h-4 w-4" />
                         <span className="font-medium">Help me figure it out</span>
-                        <span className="text-muted-foreground text-[10px]">
+                        <span className="text-muted-foreground text-(length:--text-nano)">
                           Answer a few questions
                         </span>
                       </button>
@@ -992,7 +1120,7 @@ export function OnboardingWizard() {
                           Mission
                         </label>
                         <textarea
-                          className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-[60px]"
+                          className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-(--sz-60px)"
                           placeholder="What is your team trying to achieve?"
                           value={companyGoal}
                           onChange={(e) => setCompanyGoal(e.target.value)}
@@ -1005,7 +1133,7 @@ export function OnboardingWizard() {
                           <button
                             key={chip}
                             className={cn(
-                              "rounded-full border px-2.5 py-1 text-[11px] transition-colors",
+                              "rounded-full border px-2.5 py-1 text-(length:--text-micro) transition-colors",
                               companyGoal === chip
                                 ? "border-foreground bg-accent text-foreground"
                                 : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/50"
@@ -1090,14 +1218,14 @@ export function OnboardingWizard() {
                           Here's your draft mission — edit it however you like:
                         </label>
                         <textarea
-                          className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-[80px]"
+                          className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-(--sz-80px)"
                           value={companyGoal}
                           onChange={(e) => setCompanyGoal(e.target.value)}
                           autoFocus
                         />
                       </div>
                       <button
-                        className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                        className="text-(length:--text-micro) text-muted-foreground hover:text-foreground transition-colors"
                         onClick={() => { setMissionConfirmed(false); setCompanyGoal(""); }}
                       >
                         ← Back to questions
@@ -1107,17 +1235,10 @@ export function OnboardingWizard() {
 
                   {/* Confirm mission note */}
                   {companyGoal.trim() && (
-                    <p className="text-[11px] text-muted-foreground italic">
+                    <p className="text-(length:--text-micro) text-muted-foreground italic">
                       You can always change your mission later in settings.
                     </p>
                   )}
-
-                  <button
-                    className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                    onClick={() => setStep(1)}
-                  >
-                    ← Change team name
-                  </button>
                 </div>
               )}
 
@@ -1177,13 +1298,13 @@ export function OnboardingWizard() {
                           }}
                         >
                           {opt.recommended && (
-                            <span className="absolute -top-1.5 right-1.5 bg-green-500 text-white text-[9px] font-semibold px-1.5 py-0.5 rounded-full leading-none">
+                            <Badge variant="ghost" className="absolute -top-1.5 right-1.5 bg-green-500 text-white text-(length:--text-nano) font-semibold px-1.5 leading-none">
                               Recommended
-                            </span>
+                            </Badge>
                           )}
                           <opt.icon className="h-4 w-4" />
                           <span className="font-medium">{opt.label}</span>
-                          <span className="text-muted-foreground text-[10px]">
+                          <span className="text-muted-foreground text-(length:--text-nano)">
                             {opt.description}
                           </span>
                         </button>
@@ -1238,7 +1359,7 @@ export function OnboardingWizard() {
                           >
                             <opt.icon className="h-4 w-4" />
                             <span className="font-medium">{opt.label}</span>
-                            <span className="text-muted-foreground text-[10px]">
+                            <span className="text-muted-foreground text-(length:--text-nano)">
                               {opt.comingSoon
                                 ? opt.disabledLabel ?? "Coming soon"
                                 : opt.description}
@@ -1281,7 +1402,7 @@ export function OnboardingWizard() {
                             </button>
                           </PopoverTrigger>
                           <PopoverContent
-                            className="w-[var(--radix-popover-trigger-width)] p-1"
+                            className="w-(--radix-popover-trigger-width) p-1"
                             align="start"
                           >
                             <input
@@ -1305,14 +1426,14 @@ export function OnboardingWizard() {
                                 Default
                               </button>
                             )}
-                            <div className="max-h-[240px] overflow-y-auto">
+                            <div className="max-h-(--sz-240px) overflow-y-auto">
                               {groupedModels.map((group) => (
                                 <div
                                   key={group.provider}
                                   className="mb-1 last:mb-0"
                                 >
                                   {adapterType === "opencode_local" && (
-                                    <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                                    <div className="px-2 py-1 text-(length:--text-nano) uppercase tracking-wide text-muted-foreground">
                                       {group.provider} ({group.entries.length})
                                     </div>
                                   )}
@@ -1359,7 +1480,7 @@ export function OnboardingWizard() {
                           <p className="text-xs font-medium">
                             Adapter environment check
                           </p>
-                          <p className="text-[11px] text-muted-foreground">
+                          <p className="text-(length:--text-micro) text-muted-foreground">
                             Runs a live probe that asks the adapter CLI to
                             respond with hello.
                           </p>
@@ -1376,7 +1497,7 @@ export function OnboardingWizard() {
                       </div>
 
                       {adapterEnvError && (
-                        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-2 text-[11px] text-destructive">
+                        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-2 text-(length:--text-micro) text-destructive">
                           {adapterEnvError}
                         </div>
                       )}
@@ -1393,7 +1514,7 @@ export function OnboardingWizard() {
 
                       {shouldSuggestUnsetAnthropicApiKey && (
                         <div className="rounded-md border border-amber-300/60 bg-amber-50/40 px-2.5 py-2 space-y-2">
-                          <p className="text-[11px] text-amber-900/90 leading-relaxed">
+                          <p className="text-(length:--text-micro) text-amber-900/90 leading-relaxed">
                             Claude failed while{" "}
                             <span className="font-mono">ANTHROPIC_API_KEY</span>{" "}
                             is set. You can clear it in this adapter config
@@ -1416,7 +1537,7 @@ export function OnboardingWizard() {
                       )}
 
                       {adapterEnvResult && adapterEnvResult.status === "fail" && (
-                        <div className="rounded-md border border-border/70 bg-muted/20 px-2.5 py-2 text-[11px] space-y-1.5">
+                        <div className="rounded-md border border-border/70 bg-muted/20 px-2.5 py-2 text-(length:--text-micro) space-y-1.5">
                           <p className="font-medium">Manual debug</p>
                           <p className="text-muted-foreground font-mono break-all">
                             {adapterType === "cursor"
@@ -1499,7 +1620,7 @@ export function OnboardingWizard() {
                   {/* Review checklist — everything that's now set up */}
                   <div className="space-y-1.5">
                     {[
-                      { label: "Team name", done: Boolean(companyName.trim()) },
+                      { label: "Organization name", done: Boolean(companyName.trim()) },
                       { label: "Mission", done: Boolean(companyGoal.trim()) },
                       { label: "Agent created", done: Boolean(createdAgentId) },
                       { label: "Model connected", done: Boolean(createdAgentId) },
@@ -1521,22 +1642,13 @@ export function OnboardingWizard() {
                       </div>
                     ))}
                   </div>
-
-                  {companyGoal.trim() && (
-                    <p className="text-sm text-muted-foreground italic text-center">
-                      "{companyGoal}"
-                    </p>
-                  )}
-                  <p className="text-xs text-muted-foreground text-center">
-                    Start a conversation with {agentName} to discuss strategy and plan who to bring on.
-                  </p>
                 </div>
               )}
 
               {/* Error */}
-              {error && (
+              {visibleError && (
                 <div className="mt-3">
-                  <p className="text-xs text-destructive">{error}</p>
+                  <p className="text-xs text-destructive">{visibleError}</p>
                 </div>
               )}
 
@@ -1604,13 +1716,21 @@ export function OnboardingWizard() {
                       ) : (
                         <ArrowRight className="h-3.5 w-3.5 mr-1" />
                       )}
-                      {loading ? "Bringing to life..." : "Give it a heartbeat"}
+                      {loading ? "Connecting..." : "Connect"}
                     </Button>
                   )}
                   {step === 5 && (
-                    <Button size="sm" onClick={handleLaunchToChat}>
-                      <ArrowRight className="h-3.5 w-3.5 mr-1" />
-                      Get started
+                    <Button
+                      size="sm"
+                      onClick={handleLaunchToDashboard}
+                      disabled={loading || launchStateIncomplete}
+                    >
+                      {loading ? (
+                        <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                      ) : (
+                        <ArrowRight className="h-3.5 w-3.5 mr-1" />
+                      )}
+                      {loading ? "Launching..." : "Get started"}
                     </Button>
                   )}
                 </div>
@@ -1623,7 +1743,7 @@ export function OnboardingWizard() {
               name + mission steps) */}
           <div
             className={cn(
-              "hidden md:block overflow-hidden bg-[#1d1d1d] transition-[width,opacity] duration-500 ease-in-out",
+              "hidden md:block overflow-hidden bg-(--hex-1d1d1d) transition-(--tp-width-opacity) duration-500 ease-in-out",
               step === 1 || step === 2 ? "w-1/2 opacity-100" : "w-0 opacity-0"
             )}
           >
@@ -1654,7 +1774,7 @@ function AdapterEnvironmentResult({
       : "text-red-700 dark:text-red-300 border-red-300 dark:border-red-500/40 bg-red-50 dark:bg-red-500/10";
 
   return (
-    <div className={`rounded-md border px-2.5 py-2 text-[11px] ${statusClass}`}>
+    <div className={`rounded-md border px-2.5 py-2 text-(length:--text-micro) ${statusClass}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="font-medium">{statusLabel}</span>
         <span className="opacity-80">
