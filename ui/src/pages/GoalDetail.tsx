@@ -15,7 +15,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { InlineEditor } from "../components/InlineEditor";
 import { EntityRow } from "../components/EntityRow";
 import { PageSkeleton } from "../components/PageSkeleton";
-import { cn, projectUrl } from "../lib/utils";
+import { cn, issueUrl, projectUrl } from "../lib/utils";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, SlidersHorizontal } from "lucide-react";
@@ -75,6 +75,12 @@ export function GoalDetail() {
     queryKey: queryKeys.projects.list(resolvedCompanyId!, { includeArchived: true }),
     queryFn: () => projectsApi.list(resolvedCompanyId!, { includeArchived: true }),
     enabled: !!resolvedCompanyId
+  });
+
+  const { data: activity } = useQuery({
+    queryKey: ["goals", goalId, "activity"],
+    queryFn: () => goalsApi.activity(goalId!),
+    enabled: !!goalId,
   });
 
   useEffect(() => {
@@ -184,6 +190,12 @@ export function GoalDetail() {
           <TabsTrigger value="projects">
             Projects ({linkedProjects.length})
           </TabsTrigger>
+          <TabsTrigger value="tasks">
+            Tasks ({activity?.issues.length ?? 0})
+          </TabsTrigger>
+          <TabsTrigger value="routines">
+            Routines ({activity?.routines.length ?? 0})
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="children" className="mt-4 space-y-3">
@@ -216,6 +228,42 @@ export function GoalDetail() {
                   subtitle={project.description ?? undefined}
                   to={projectUrl(project)}
                   trailing={<StatusBadge status={project.status} />}
+                />
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="tasks" className="mt-4">
+          {(activity?.issues.length ?? 0) === 0 ? (
+            <p className="text-sm text-muted-foreground">No linked tasks.</p>
+          ) : (
+            <div className="border border-border">
+              {activity!.issues.map((issue) => (
+                <EntityRow
+                  key={issue.id}
+                  title={issue.title}
+                  subtitle={issue.identifier ?? undefined}
+                  to={issueUrl(issue)}
+                  trailing={<StatusBadge status={issue.status} />}
+                />
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="routines" className="mt-4">
+          {(activity?.routines.length ?? 0) === 0 ? (
+            <p className="text-sm text-muted-foreground">No linked routines.</p>
+          ) : (
+            <div className="border border-border">
+              {activity!.routines.map((routine) => (
+                <EntityRow
+                  key={routine.id}
+                  title={routine.title}
+                  subtitle={routine.lastTriggeredAt ? "Previously triggered" : "Not yet triggered"}
+                  to={`/routines/${routine.id}`}
+                  trailing={<StatusBadge status={routine.status} />}
                 />
               ))}
             </div>

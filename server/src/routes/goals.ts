@@ -25,6 +25,13 @@ export function goalRoutes(db: Db) {
     res.json(goal);
   });
 
+  router.get("/goals/:id/activity", async (req, res) => {
+    const id = req.params.id as string;
+    const goal = await getAccessibleResource(req, res, svc.getById(id), "Goal not found");
+    if (!goal) return;
+    res.json(await svc.getActivity(goal.id));
+  });
+
   router.post("/companies/:companyId/goals", validate(createGoalSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
