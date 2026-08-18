@@ -34,8 +34,14 @@ export type DeriveTrigger = "schedule" | "hook" | "manual";
 
 export interface DeriveDeps {
   readonly db: DbClient;
-  /** Build a CollectionContext for the given scope (null = full sweep). */
-  readonly makeContext: (scopeRepo: string | null) => Promise<CollectionContext>;
+  /**
+   * Build a CollectionContext for the given scope (null = full sweep) for the
+   * company being derived. `companyId` MUST reach the worker's `ctx.config.get`:
+   * the scheduled `derive-board` tick runs outside a host-issued company
+   * invocation, and the host's company-scoped config gate (upstream #10103 /
+   * #10113) rejects an unscoped read with "company context is required".
+   */
+  readonly makeContext: (scopeRepo: string | null, companyId: string) => Promise<CollectionContext>;
   /** Wall clock (epoch ms) — injected so the derive's `derivedAt` is controllable. */
   readonly now: () => number;
   readonly logger: SignalLogger;
@@ -44,9 +50,10 @@ export interface DeriveDeps {
    * a worker-provided thunk (PF-5/v6). Keeps `derive.ts` config-read-free: it
    * never touches `ctx.config`, just awaits this. Resolving from raw repoRoots
    * (not `ctx.repos`, already basename-collapsed) preserves the dup-basename
-   * diagnostic (PF-7).
+   * diagnostic (PF-7). Receives the company being derived for the same
+   * config-scope reason as `makeContext`.
    */
-  readonly resolveTaxonomy: () => Promise<ProjectTaxonomyV1>;
+  readonly resolveTaxonomy: (companyId: string) => Promise<ProjectTaxonomyV1>;
   /** Lock lease; a derive that crashes mid-flight is reclaimable after this. */
   readonly leaseMs?: number;
 }
@@ -79,7 +86,7 @@ export async function deriveForCompany(
   }
 
   try {
-    const baseCtx = await deps.makeContext(scopeRepo);
+    const baseCtx = await deps.makeContext(scopeRepo, companyId);
     // Thread the PREVIOUS payload's rollup cache to the stateless sources
     // (COS-11.gh-fields rate contract): read-only, absent on first derive.
     const priorGitState = await readGitState(db, companyId).catch(() => null);
@@ -95,7 +102,7 @@ export async function deriveForCompany(
 
     // Resolve the taxonomy fresh from config (the worker thunk), once, then thread
     // it as the project-grouping lens to the three COS-1 projections (PF-5).
-    const taxonomy = await deps.resolveTaxonomy();
+    const taxonomy = await deps.resolveTaxonomy(companyId);
     // Prior gates state feeds the row-8 last-good merge (COS-11); null on first
     // derive. A READ error is warned, never silent — with no prior, row-8 cannot
     // carry a missing target this derive (codex COS-11 P1 observability note).

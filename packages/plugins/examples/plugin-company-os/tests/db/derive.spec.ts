@@ -116,4 +116,31 @@ describe("deriveForCompany", () => {
     const gitState = await readGitState(db, CO);
     expect(gitState?.taxonomy.diagnostics.some((d) => d.code === "duplicate_basename")).toBe(true);
   });
+
+  // --- P0 hot-fix (2026-08-18): the scheduled `derive-board` job runs OUTSIDE a
+  //     host-issued company invocation, so upstream's company-scoped config gate
+  //     (paperclip #10103/#10113) rejects an unscoped `ctx.config.get()` with
+  //     "company context is required". The derive must hand the company being
+  //     derived to BOTH config-reading thunks so the worker can call
+  //     `ctx.config.get(companyId)` and resolve via the proactive company scope.
+  it("passes the derived companyId to makeContext AND resolveTaxonomy (schedule path config scope)", async () => {
+    const db = new FakeDb();
+    const seenContext: Array<{ scopeRepo: string | null; companyId: string }> = [];
+    const seenTaxonomy: string[] = [];
+    const deps: DeriveDeps = {
+      ...depsFor(db),
+      makeContext: async (scopeRepo, companyId) => {
+        seenContext.push({ scopeRepo, companyId });
+        return ctxFor(scopeRepo);
+      },
+      resolveTaxonomy: async (companyId) => {
+        seenTaxonomy.push(companyId);
+        return taxonomyFixture();
+      },
+    };
+    const result = await deriveForCompany(deps, CO, "schedule", null, "owner-scope");
+    expect(result).toMatchObject({ ok: true, skipped: false });
+    expect(seenContext).toEqual([{ scopeRepo: null, companyId: CO }]);
+    expect(seenTaxonomy).toEqual([CO]);
+  });
 });
