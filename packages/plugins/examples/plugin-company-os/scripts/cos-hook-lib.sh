@@ -57,3 +57,14 @@ cos_sha256() {
 }
 
 cos_iso_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+# cos_git_tracked <path>: 0 iff <path> resolves (through symlinked parents) to a
+# file tracked by a git repo. Used so install/uninstall never overwrite or delete
+# a dispatcher that a repo owns (e.g. company/config/hooks behind ~/.claude/hooks).
+cos_git_tracked() {
+  local p="$1" dir base
+  [ -e "$p" ] || return 1
+  dir="$(cd "$(dirname "$p")" 2>/dev/null && pwd -P)" || return 1
+  base="$(basename "$p")"
+  git -C "$dir" ls-files --error-unmatch -- "$base" >/dev/null 2>&1
+}

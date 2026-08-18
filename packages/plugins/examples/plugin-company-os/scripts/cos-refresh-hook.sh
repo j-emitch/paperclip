@@ -17,9 +17,14 @@
 #   * Resolves the refresh scope from the MAIN checkout of the firing repo
 #     (worktree-safe via --git-common-dir), so a juice-bar commit re-scopes only
 #     juice-bar; an unresolved scope degrades to a (correct) full sweep.
-#   * Fires cos-refresh.mjs fully BACKGROUNDED under a non-blocking flock + a
-#     hard `timeout` (when available), so git never waits and a hung host can
-#     never wedge the hook. The .mjs also self-bounds via an AbortController.
+#   * Fires cos-refresh.mjs fully BACKGROUNDED under a non-blocking `mkdir`
+#     lock + a sleep/kill watchdog (stock macOS ships neither `flock` nor
+#     `timeout`), so git never waits and a hung host can never wedge the hook.
+#     The .mjs also self-bounds via an AbortController.
+#   * Passes COS_HOST / COS_PLUGIN_KEY from config.env to the child EXPLICITLY
+#     (`--host` / `--plugin`): the sourced assignments are not exported, so a
+#     custom host or plugin key would otherwise silently fall back to the .mjs
+#     defaults (cannons 2026-08-18 codex P1).
 #   * Never fails the hook: every path returns 0.
 #
 # Usage (from a hook): cos-refresh-hook.sh <post-commit|post-merge|manual>
@@ -47,6 +52,8 @@ esac
 
 COMPANY_ID="${COS_COMPANY_ID:-}"
 REFRESH_SCRIPT="${COS_REFRESH_SCRIPT:-}"
+HOST_URL="${COS_HOST:-}"
+PLUGIN_KEY="${COS_PLUGIN_KEY:-}"
 NODE_BIN="${COS_NODE_BIN:-node}"
 LOG_FILE="${COS_LOG_FILE:-$HOME/.config/cos-company-os/refresh.log}"
 
@@ -85,11 +92,19 @@ WATCHDOG_SECS="${COS_REFRESH_WATCHDOG_SECS:-25}"
 
   SCOPE_ARGS=()
   [ -n "$SCOPE_REPO" ] && SCOPE_ARGS=(--scope "$SCOPE_REPO")
+  # Configured host / plugin key travel as explicit args (see header); absent →
+  # the .mjs defaults apply exactly as before.
+  HOST_ARGS=()
+  [ -n "$HOST_URL" ] && HOST_ARGS=(--host "$HOST_URL")
+  PLUGIN_ARGS=()
+  [ -n "$PLUGIN_KEY" ] && PLUGIN_ARGS=(--plugin "$PLUGIN_KEY")
 
   # `${arr[@]+...}` guards the empty-array expansion under `set -u` on bash 3.2.
   "$NODE_BIN" "$REFRESH_SCRIPT" \
     --company "$COMPANY_ID" \
     ${SCOPE_ARGS[@]+"${SCOPE_ARGS[@]}"} \
+    ${HOST_ARGS[@]+"${HOST_ARGS[@]}"} \
+    ${PLUGIN_ARGS[@]+"${PLUGIN_ARGS[@]}"} \
     --quiet \
     >>"$LOG_FILE" 2>&1 &
   CHILD=$!

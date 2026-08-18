@@ -227,6 +227,88 @@ describe("non-fatal commit integration", () => {
   });
 });
 
+describe("git-tracked dispatcher is owned by git (cannons 2026-08-18 codex P1)", () => {
+  // ~/.claude/hooks may be a symlink into a TRACKED hooks dir (company/config/hooks).
+  // A reinstall must not overwrite it and an uninstall must not delete it.
+  function trackedHome(): { home: string; dest: string; hooksRepo: string } {
+    const home = tmp("cos-tracked-home-");
+    const hooksRepo = initRepo(); // stands in for company/ (config/hooks tracked)
+    mkdirSync(join(hooksRepo, "config", "hooks"), { recursive: true });
+    const dest = join(hooksRepo, "config", "hooks", "cos-refresh-hook.sh");
+    writeFileSync(dest, "#!/usr/bin/env bash\n# TRACKED SENTINEL — owned by git\nexit 0\n");
+    chmodSync(dest, 0o755);
+    const env = { ...process.env, HOME: home };
+    execFileSync("git", ["-C", hooksRepo, "add", "config/hooks/cos-refresh-hook.sh"], { env });
+    execFileSync("git", ["-C", hooksRepo, "commit", "-q", "-m", "track dispatcher"], { env });
+    mkdirSync(join(home, ".claude"), { recursive: true });
+    symlinkSync(join(hooksRepo, "config", "hooks"), join(home, ".claude", "hooks"));
+    return { home, dest, hooksRepo };
+  }
+
+  it("install leaves a git-tracked (differing) dispatcher untouched and says so", () => {
+    const { home, dest, hooksRepo } = trackedHome();
+    const repo = initRepo();
+    const r = sh(INSTALL, ["--company", COMPANY, "--repo", repo, "--node", NODE_BIN], { HOME: home });
+    expect(r.code).toBe(0);
+    expect(readFileSync(dest, "utf8")).toContain("TRACKED SENTINEL");
+    expect(r.out).toMatch(/git-tracked/);
+    // The tracked repo stays clean — no dirt from a reinstall.
+    const status = execFileSync("git", ["-C", hooksRepo, "status", "--porcelain", "--", "config/hooks"], { encoding: "utf8" });
+    expect(status.trim()).toBe("");
+  });
+
+  it("uninstall keeps a git-tracked dispatcher (removes only its own config/manifest)", () => {
+    const { home, dest, hooksRepo } = trackedHome();
+    const repo = initRepo();
+    sh(INSTALL, ["--company", COMPANY, "--repo", repo, "--node", NODE_BIN], { HOME: home });
+    const r = sh(UNINSTALL, [], { HOME: home });
+    expect(r.code).toBe(0);
+    expect(existsSync(dest)).toBe(true);
+    expect(existsSync(join(home, ".config", "cos-company-os", "config.env"))).toBe(false);
+    const status = execFileSync("git", ["-C", hooksRepo, "status", "--porcelain", "--", "config/hooks"], { encoding: "utf8" });
+    expect(status.trim()).toBe("");
+  });
+
+  it("an UNtracked dispatcher is still installed/removed as before", () => {
+    const home = tmp("cos-untracked-home-");
+    const repo = initRepo();
+    sh(INSTALL, ["--company", COMPANY, "--repo", repo, "--node", NODE_BIN], { HOME: home });
+    const dest = join(home, ".claude", "hooks", "cos-refresh-hook.sh");
+    expect(existsSync(dest)).toBe(true);
+    sh(UNINSTALL, [], { HOME: home });
+    expect(existsSync(dest)).toBe(false);
+  });
+});
+
+describe("cos-refresh-hook.sh passes configured host + plugin to the child (cannons 2026-08-18 codex P1)", () => {
+  it("--host / --plugin from config.env reach the refresh script argv", () => {
+    const home = tmp("cos-argv-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const argvFile = join(home, "ARGV");
+    // Shim records its argv, one per line.
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, `#!/usr/bin/env bash\nprintf '%s\\n' "$@" > "${argvFile}"\n`);
+    chmodSync(shim, 0o755);
+    writeFileSync(
+      join(cfgDir, "config.env"),
+      `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\nCOS_HOST="http://127.0.0.1:4242"\nCOS_PLUGIN_KEY="acme.cockpit"\n`,
+    );
+    const repo = initRepo();
+    execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], {
+      env: { ...process.env, HOME: home, TMPDIR: home },
+    });
+    const end = Date.now() + 10_000;
+    while (!existsSync(argvFile) && Date.now() < end) execFileSync("sleep", ["0.05"]);
+    const argv = readFileSync(argvFile, "utf8").split("\n");
+    expect(argv).toContain("--host");
+    expect(argv[argv.indexOf("--host") + 1]).toBe("http://127.0.0.1:4242");
+    expect(argv).toContain("--plugin");
+    expect(argv[argv.indexOf("--plugin") + 1]).toBe("acme.cockpit");
+    expect(argv).toContain("--company");
+  });
+});
+
 describe("cos-refresh-hook.sh dispatcher kill-switch", () => {
   // Point the dispatcher at a marker-touching shim instead of the real CLI, so we
   // can deterministically observe whether it dispatched.

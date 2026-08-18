@@ -107,6 +107,9 @@ done
 if [ "$KEEP_CONFIG" = "0" ]; then
   for f in "$WRAPPER_DEST" "$CONFIG_FILE" "$MANIFEST_FILE" "$MANIFEST_TSV"; do
     if [ -e "$f" ]; then
+      # A git-tracked dispatcher is owned by its repo, not by this installer:
+      # removing it would just stage a deletion in canonical source. Leave it.
+      if cos_git_tracked "$f"; then say "kept $f (git-tracked — remove via that repo's PR)"; continue; fi
       if [ "$DRY_RUN" = "1" ]; then say "would remove $f"; else rm -f "$f"; say "removed $f"; fi
     fi
   done
