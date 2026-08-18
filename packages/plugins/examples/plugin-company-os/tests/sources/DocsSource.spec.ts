@@ -80,6 +80,29 @@ describe("DocsSource", () => {
     expect(wtSpec.branch).toBe("docs/COS-1");
   });
 
+  it("indexes the CompanyOS canon docs (docs/company-os/**) — cos-link targets that used to be 'still not indexed'", async () => {
+    // GLOSSARY / Horizon / docs 00-19 live under company/docs/company-os. No glob
+    // covered them (2026-08-18: 0 of 25 in the live index), so every cos-link to a
+    // canon doc dead-ended in the Docs tab. Same precedent as docs/reference (07-22):
+    // DocsSource owns them (worktree-aware, keeps the frontmatter head), NOT
+    // ArtifactSource (main-only, and its doc-index fold re-types every non-report
+    // artifact as "spec" — adding plans/decisions there would regress their type).
+    const files = fixtureFiles();
+    files.company["docs/company-os/GLOSSARY.md"] = { content: "---\ntitle: Glossary\nstatus: living\n---\n# Glossary" };
+    files.company["docs/company-os/19-horizon.md"] = { content: "---\ntitle: Horizon\nstatus: draft\n---\n# Horizon" };
+    files.company["docs/company-os/archive/old.md"] = { content: "# archived canon" };
+    files["company::wt::aaa"]["docs/company-os/GLOSSARY.md"] = { content: "---\ntitle: Glossary (wt)\n---\n# Glossary" };
+    const { collect } = run(files);
+    const docs = (await collect()).signals.filter(isDocSignal) as DocSignal[];
+    const canon = docs.filter((d) => d.checkoutId === "main" && d.relPath.startsWith("docs/company-os/"));
+    expect(canon.map((d) => d.relPath).sort()).toEqual(["docs/company-os/19-horizon.md", "docs/company-os/GLOSSARY.md"]);
+    expect(canon.find((d) => d.relPath.endsWith("GLOSSARY.md"))?.title).toBe("Glossary");
+    // Falls to the "spec" bucket like docs/reference does today (no dedicated canon type yet).
+    expect(canon.every((d) => d.docType === "spec")).toBe(true);
+    // Worktree scans get them too (a canon doc edited in a worktree resolves with ck=).
+    expect(docs.some((d) => d.checkoutId === "worktree:aaa" && d.relPath === "docs/company-os/GLOSSARY.md")).toBe(true);
+  });
+
   it("indexes the OUT-of-root worktree", async () => {
     const { collect } = run(fixtureFiles());
     const docs = (await collect()).signals.filter(isDocSignal) as DocSignal[];

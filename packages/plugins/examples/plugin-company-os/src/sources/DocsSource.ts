@@ -49,6 +49,13 @@ const DOC_GLOBS = [
   // reachable by cos-link but resolved to `not_indexed`, because no glob covered
   // them (2026-07-22). Added so a link to a canonical reference resolves.
   "docs/reference/**/*.md",
+  // CompanyOS canon docs (company/docs/company-os/** — GLOSSARY, Horizon, docs
+  // 00-19). Same class + same precedent as docs/reference: reachable by cos-link
+  // (WF3 omnibus 5.13), yet NO source indexed them (2026-08-18: 0 of 25 in the
+  // live doc index), so every canon-doc link dead-ended in "still not indexed".
+  // Owned HERE (worktree-aware, frontmatter head kept), not by ArtifactSource:
+  // that fold is main-only and re-types every non-report artifact as "spec".
+  "docs/company-os/**/*.md",
 ] as const;
 
 /**
