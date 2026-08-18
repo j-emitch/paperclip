@@ -386,6 +386,48 @@ describe("cos-refresh-hook.sh passes configured host + plugin to the child (cann
     }
   });
 
+  it("config.env runs ONCE, in a subshell: `set -x` cannot leak to stderr, a trailing false still dispatches, side effects run once", () => {
+    const home = tmp("cos-cfgonce-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const marker = join(home, "MARKER");
+    const counter = join(home, "COUNT");
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, `#!/usr/bin/env bash\ntouch "${marker}"\n`);
+    chmodSync(shim, 0o755);
+    writeFileSync(
+      join(cfgDir, "config.env"),
+      `set -x\nCOS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\necho x >> "${counter}"\n[ -n "\${NOPE:-}" ] && COS_HOST=http://127.0.0.1:1\n`,
+    );
+    const repo = initRepo();
+    const out = execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit 2>&1; echo "rc=$?"`], {
+      env: { ...process.env, HOME: home, TMPDIR: home },
+      encoding: "utf8",
+    });
+    expect(out.trim()).toBe("rc=0"); // no `set -x` trace on stderr, no error
+    const end = Date.now() + 10_000;
+    while (!existsSync(marker) && Date.now() < end) execFileSync("sleep", ["0.05"]);
+    expect(existsSync(marker)).toBe(true); // trailing-false config still dispatches
+    expect(readFileSync(counter, "utf8").split("\n").filter(Boolean).length).toBe(1); // executed once
+  });
+
+  it("an unwritable log path loses the log line, never the dispatch", () => {
+    const home = tmp("cos-nolog-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const marker = join(home, "MARKER");
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, `#!/usr/bin/env bash\ntouch "${marker}"\n`);
+    chmodSync(shim, 0o755);
+    const ro = join(home, "ro"); mkdirSync(ro); chmodSync(ro, 0o500);
+    writeFileSync(join(cfgDir, "config.env"), `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\nCOS_LOG_FILE="${join(ro, "refresh.log")}"\n`);
+    const repo = initRepo();
+    execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], { env: { ...process.env, HOME: home, TMPDIR: home } });
+    const end = Date.now() + 10_000;
+    while (!existsSync(marker) && Date.now() < end) execFileSync("sleep", ["0.05"]);
+    expect(existsSync(marker)).toBe(true);
+  });
+
   it("cancelling the watchdog reaps its sleep (no orphan per dispatch)", () => {
     const home = tmp("cos-orphan-home-");
     const cfgDir = join(home, ".config", "cos-company-os");

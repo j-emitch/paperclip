@@ -21,9 +21,10 @@
 #     lock + a sleep/kill watchdog (stock macOS ships neither `flock` nor
 #     `timeout`), so git never waits and a hung host can never wedge the hook.
 #     The .mjs also self-bounds via an AbortController.
-#   * config.env is validated (bash -n + a throwaway subshell source) BEFORE it
-#     is sourced with `set -a` (exported to the child, so the .mjs env knobs
-#     COS_ALLOW_NONLOOPBACK / COS_REFRESH_TIMEOUT_MS work). COS_HOST /
+#   * config.env is `bash -n`-checked, then executed ONCE in a subshell and only
+#     the known COS_* keys are imported as exports (so the .mjs env knobs
+#     COS_ALLOW_NONLOOPBACK / COS_REFRESH_TIMEOUT_MS work, and nothing else in
+#     the file — options, scope, side effects on this shell — can leak). COS_HOST /
 #     COS_PLUGIN_KEY also travel as explicit `--host` / `--plugin` args so the
 #     wire contract is visible in `ps` and independent of the export path.
 #     COS_SCOPE_REPO is UNSET after sourcing: scope comes from the firing repo
@@ -60,20 +61,27 @@ esac
 [ -n "${HOME:-}" ] || exit 0
 COS_CONFIG_FILE="${COS_CONFIG_FILE:-$HOME/.config/cos-company-os/config.env}"
 if [ -r "$COS_CONFIG_FILE" ]; then
-  # Validate BEFORE sourcing into this shell: a hand-edited config with a syntax
-  # error or a stray `exit 1` must not error the hook or print into git's
-  # output (cannons 2026-08-18 claude P2). Broken config → silent no-op.
+  # Import config through a SUBSHELL, once, whitelisted (cannons 2026-08-18
+  # claude P2 x4): the file is executed exactly one time, in a child shell —
+  # so a `set -x`/`set -e`, a trailing non-zero command, or a stray `exit` can
+  # neither leak options into this hook nor error it — and ONLY the known
+  # COS_* keys are imported (as exports, so the .mjs env knobs work). Anything
+  # else the file sets (COS_SCOPE_REPO included) never reaches this shell.
+  # `bash -n` first so a syntax error is a silent no-op, not stderr into git.
   bash -n "$COS_CONFIG_FILE" >/dev/null 2>&1 || exit 0
-  # shellcheck disable=SC1090
-  ( . "$COS_CONFIG_FILE" ) >/dev/null 2>&1 || exit 0
-  # `set -a`: EXPORT every config assignment so the child sees the env-only
-  # knobs cos-refresh.mjs reads directly (COS_ALLOW_NONLOOPBACK,
-  # COS_REFRESH_TIMEOUT_MS) — a plain source left them shell-local and the
-  # documented escape hatch was inert (cannons 2026-08-18 codex P2).
-  set -a
-  # shellcheck disable=SC1090
-  . "$COS_CONFIG_FILE" >/dev/null 2>&1
-  set +a
+  cos_import="$(
+    {
+      # shellcheck disable=SC1090
+      . "$COS_CONFIG_FILE" >/dev/null 2>&1
+      set +exv   # options the file may have flipped stay in THIS subshell and are cleared before export
+      for v in COS_COMPANY_ID COS_REFRESH_SCRIPT COS_HOST COS_PLUGIN_KEY COS_NODE_BIN \
+               COS_LOG_FILE COS_HOOKS_DISABLED COS_ALLOW_NONLOOPBACK \
+               COS_REFRESH_TIMEOUT_MS COS_REFRESH_WATCHDOG_SECS; do
+        if [ -n "${!v+x}" ]; then printf 'export %s=%q\n' "$v" "${!v}"; fi
+      done
+    } 2>/dev/null
+  )" || cos_import=""
+  eval "$cos_import"
 fi
 # Scope is derived from the FIRING repo below — never from config OR ambient
 # env (cos-refresh.mjs falls back to env.COS_SCOPE_REPO when --scope is absent),
@@ -110,9 +118,15 @@ fi
 
 # --- non-blocking, watchdog-bounded, backgrounded dispatch -------------------
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
+# Logging is best-effort: an unwritable log path must lose the log line, never
+# the dispatch (the child's `>>` redirect would otherwise abort the command).
+if ! ( : >>"$LOG_FILE" ) 2>/dev/null; then LOG_FILE=/dev/null; fi
 # Sanitize the lock key (defensive — the installer already constrains the id).
 LOCK_KEY="$(printf '%s' "$COMPANY_ID" | tr -c 'A-Za-z0-9._-' '_')"
-LOCK_DIR="${TMPDIR:-/tmp}/cos-refresh-${LOCK_KEY}.lock"
+# Per-user lock dir (NOT /tmp: a shared sticky /tmp lets another local user
+# pre-create the lock and silently disable the hook — cannons 2026-08-18).
+# COS_LOCK_DIR overrides (tests).
+LOCK_DIR="${COS_LOCK_DIR:-$HOME/.config/cos-company-os/cos-refresh-${LOCK_KEY}.lock}"
 WATCHDOG_SECS="${COS_REFRESH_WATCHDOG_SECS:-25}"
 # Validate: positive integer, else the 25s default (a garbage value must not
 # disable the watchdog or make `sleep` fail).
@@ -149,7 +163,7 @@ STALE_MIN=$(( (WATCHDOG_SECS + 60 + 59) / 60 ))
 
   # Bound the log: keep the newest ~200 lines once it passes 256 KiB (no
   # newsyslog/logrotate covers this path — cannons 2026-08-18 claude P2).
-  if [ -f "$LOG_FILE" ] && [ "$(wc -c <"$LOG_FILE" 2>/dev/null || echo 0)" -gt 262144 ]; then
+  if [ "$LOG_FILE" != /dev/null ] && [ -f "$LOG_FILE" ] && [ "$(wc -c <"$LOG_FILE" 2>/dev/null || echo 0)" -gt 262144 ]; then
     tail -n 200 "$LOG_FILE" >"$LOG_FILE.tmp" 2>/dev/null && mv -f "$LOG_FILE.tmp" "$LOG_FILE" 2>/dev/null || true
   fi
   # One line per dispatch so refresh.log answers "did the hook fire, for what":
@@ -168,14 +182,20 @@ STALE_MIN=$(( (WATCHDOG_SECS + 60 + 59) / 60 ))
 
   # Watchdog: bound a wedged Node even where `timeout` is absent. The .mjs
   # AbortController is the primary ~8s bound; this is the hard backstop.
-  ( sleep "$WATCHDOG_SECS"; kill -TERM "$CHILD" 2>/dev/null; sleep 2; kill -KILL "$CHILD" 2>/dev/null ) &
+  # The guard traps TERM: cancelling it kills ITS sleep and exits WITHOUT
+  # entering the kill body (a bare kill orphaned the sleep; killing the sleep
+  # alone made the guard fall through and TERM a reaped pid — cannons
+  # 2026-08-18 claude/codex P2).
+  (
+    trap 'kill "$SLP" 2>/dev/null; exit 0' TERM
+    sleep "$WATCHDOG_SECS" & SLP=$!
+    wait "$SLP" 2>/dev/null || exit 0
+    kill -TERM "$CHILD" 2>/dev/null; sleep 2; kill -KILL "$CHILD" 2>/dev/null
+  ) &
   GUARD=$!
 
   wait "$CHILD" 2>/dev/null || true
-  # Child finished first → cancel the watchdog AND its `sleep` (killing only the
-  # subshell orphaned one sleep per dispatch — cannons 2026-08-18 claude/codex P2).
-  pkill -TERM -P "$GUARD" 2>/dev/null || true
-  kill "$GUARD" 2>/dev/null || true
+  kill -TERM "$GUARD" 2>/dev/null || true   # child finished first → cancel the watchdog (+ its sleep)
   wait "$GUARD" 2>/dev/null || true
 ) >/dev/null 2>&1 &
 
