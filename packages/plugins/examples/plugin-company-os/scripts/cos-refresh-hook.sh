@@ -38,9 +38,13 @@
 #     refresh, and a second repo's commit in that window waits for the next
 #     scheduled sweep; stale-lock reclaim is check-then-rm without ownership.
 #     Bounded by the watchdog + the server-side per-company derive lock; a
-#     queued/owned lock is follow-up work. Callers: company .githooks
-#     post-commit + post-merge; juice-bar .githooks post-commit only (no
-#     post-merge hook exists there).
+#     queued/owned lock is follow-up work. Callers (tracked .githooks guards):
+#     company post-commit + post-merge; juice-bar, arc-scraper, viacava-arts
+#     post-commit (no post-merge hook exists in those three).
+#   * config.env is the INSTALLER-written key=value file (%q-quoted). It is
+#     read defensively (see below) but not adversarially: a file that `exit`s,
+#     `set -e`s over a failing command, or otherwise ends the import subshell
+#     early yields a silent no-op dispatch (rc 0) — by design, not a bug.
 #
 # Usage (from a hook): cos-refresh-hook.sh <post-commit|post-merge|manual>
 
@@ -81,6 +85,10 @@ if [ -r "$COS_CONFIG_FILE" ]; then
       done
     } 2>/dev/null
   )" || cos_import=""
+  # Only well-formed `export COS_X=<%q value>` lines are eval'd: anything else
+  # the subshell emitted (a config EXIT trap's echo, stray stdout) is dropped,
+  # never executed or leaked to git's stderr (cannons 2026-08-18 claude P1).
+  cos_import="$(printf '%s\n' "$cos_import" | grep -E '^export COS_[A-Z_]+=' || true)"
   eval "$cos_import"
 fi
 # Scope is derived from the FIRING repo below — never from config OR ambient
@@ -124,9 +132,13 @@ if ! ( : >>"$LOG_FILE" ) 2>/dev/null; then LOG_FILE=/dev/null; fi
 # Sanitize the lock key (defensive — the installer already constrains the id).
 LOCK_KEY="$(printf '%s' "$COMPANY_ID" | tr -c 'A-Za-z0-9._-' '_')"
 # Per-user lock dir (NOT /tmp: a shared sticky /tmp lets another local user
-# pre-create the lock and silently disable the hook — cannons 2026-08-18).
-# COS_LOCK_DIR overrides (tests).
-LOCK_DIR="${COS_LOCK_DIR:-$HOME/.config/cos-company-os/cos-refresh-${LOCK_KEY}.lock}"
+# pre-create the lock and silently disable the hook — cannons 2026-08-18). The
+# path is FIXED under $HOME (no override: an ambient override would be rm -rf'd
+# by reclaim/cleanup — codex P1); tests isolate via HOME. Parent created here —
+# `mkdir` (non-recursive) below must never fail on a missing parent (claude P1).
+LOCK_PARENT="$HOME/.config/cos-company-os"
+mkdir -p "$LOCK_PARENT" 2>/dev/null || exit 0
+LOCK_DIR="$LOCK_PARENT/cos-refresh-${LOCK_KEY}.lock"
 WATCHDOG_SECS="${COS_REFRESH_WATCHDOG_SECS:-25}"
 # Validate: positive integer, else the 25s default (a garbage value must not
 # disable the watchdog or make `sleep` fail).
@@ -187,8 +199,11 @@ STALE_MIN=$(( (WATCHDOG_SECS + 60 + 59) / 60 ))
   # alone made the guard fall through and TERM a reaped pid — cannons
   # 2026-08-18 claude/codex P2).
   (
-    trap 'kill "$SLP" 2>/dev/null; exit 0' TERM
+    SLP=""
+    trap 'kill "${SLP:-}" 2>/dev/null; exit 0' TERM
     sleep "$WATCHDOG_SECS" & SLP=$!
+    # A TERM that landed before SLP was set could not kill the sleep; re-check
+    # so a fast child never leaves a stray sleep behind (claude P2 race).
     wait "$SLP" 2>/dev/null || exit 0
     kill -TERM "$CHILD" 2>/dev/null; sleep 2; kill -KILL "$CHILD" 2>/dev/null
   ) &

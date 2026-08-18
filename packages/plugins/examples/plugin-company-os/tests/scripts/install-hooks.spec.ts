@@ -411,6 +411,31 @@ describe("cos-refresh-hook.sh passes configured host + plugin to the child (cann
     expect(readFileSync(counter, "utf8").split("\n").filter(Boolean).length).toBe(1); // executed once
   });
 
+  it("a config EXIT trap's output is neither eval'd nor leaked; lock parent dir is created even when the log lives elsewhere", () => {
+    const home = tmp("cos-trap-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const marker = join(home, "MARKER");
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, `#!/usr/bin/env bash\ntouch "${marker}"\n`);
+    chmodSync(shim, 0o755);
+    const elsewhere = join(home, "elsewhere"); mkdirSync(elsewhere);
+    // Config points the log OUTSIDE ~/.config/cos-company-os, then we delete that
+    // dir: the lock parent must still be created by the dispatcher itself.
+    writeFileSync(join(cfgDir, "config.env"), `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\nCOS_LOG_FILE="${join(elsewhere, "r.log")}"\ntrap "echo cleaning-up-temp-files" EXIT\n`);
+    const cfgCopy = join(home, "config.copy"); writeFileSync(cfgCopy, readFileSync(join(cfgDir, "config.env")));
+    rmSync(cfgDir, { recursive: true, force: true });
+    const repo = initRepo();
+    const out = execFileSync("bash", ["-c", `cd "${repo}" && COS_CONFIG_FILE="${cfgCopy}" bash "${DISPATCHER}" post-commit 2>&1; echo "rc=$?"`], {
+      env: { ...process.env, HOME: home, TMPDIR: home },
+      encoding: "utf8",
+    });
+    expect(out.trim()).toBe("rc=0"); // no "cleaning-up-temp-files" on stderr/stdout
+    const end = Date.now() + 10_000;
+    while (!existsSync(marker) && Date.now() < end) execFileSync("sleep", ["0.05"]);
+    expect(existsSync(marker)).toBe(true); // dispatched despite missing lock parent + relocated log
+  });
+
   it("an unwritable log path loses the log line, never the dispatch", () => {
     const home = tmp("cos-nolog-home-");
     const cfgDir = join(home, ".config", "cos-company-os");
