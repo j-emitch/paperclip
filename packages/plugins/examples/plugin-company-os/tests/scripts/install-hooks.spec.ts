@@ -30,7 +30,7 @@ import {
   lstatSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 const SCRIPTS_DIR = fileURLToPath(new URL("../../scripts/", import.meta.url));
 const INSTALL = join(SCRIPTS_DIR, "install-cos-hooks.sh");
@@ -224,6 +224,298 @@ describe("non-fatal commit integration", () => {
     const env = { ...process.env, HOME };
     execFileSync("git", ["-C", repo, "add", "b.txt"], { env });
     expect(() => execFileSync("git", ["-C", repo, "commit", "-q", "-m", "b"], { env })).not.toThrow();
+  });
+});
+
+describe("git-tracked dispatcher is owned by git (cannons 2026-08-18 codex P1)", () => {
+  // ~/.claude/hooks may be a symlink into a TRACKED hooks dir (company/config/hooks).
+  // A reinstall must not overwrite it and an uninstall must not delete it.
+  function trackedHome(): { home: string; dest: string; hooksRepo: string } {
+    const home = tmp("cos-tracked-home-");
+    const hooksRepo = initRepo(); // stands in for company/ (config/hooks tracked)
+    mkdirSync(join(hooksRepo, "config", "hooks"), { recursive: true });
+    const dest = join(hooksRepo, "config", "hooks", "cos-refresh-hook.sh");
+    writeFileSync(dest, "#!/usr/bin/env bash\n# TRACKED SENTINEL — owned by git\nexit 0\n");
+    chmodSync(dest, 0o755);
+    const env = { ...process.env, HOME: home };
+    execFileSync("git", ["-C", hooksRepo, "add", "config/hooks/cos-refresh-hook.sh"], { env });
+    execFileSync("git", ["-C", hooksRepo, "commit", "-q", "-m", "track dispatcher"], { env });
+    mkdirSync(join(home, ".claude"), { recursive: true });
+    symlinkSync(join(hooksRepo, "config", "hooks"), join(home, ".claude", "hooks"));
+    return { home, dest, hooksRepo };
+  }
+
+  it("install leaves a git-tracked (differing) dispatcher untouched and says so", () => {
+    const { home, dest, hooksRepo } = trackedHome();
+    const repo = initRepo();
+    const r = sh(INSTALL, ["--company", COMPANY, "--repo", repo, "--node", NODE_BIN], { HOME: home });
+    expect(r.code).toBe(0);
+    expect(readFileSync(dest, "utf8")).toContain("TRACKED SENTINEL");
+    expect(r.out).toMatch(/git-tracked/);
+    // The tracked repo stays clean — no dirt from a reinstall.
+    const status = execFileSync("git", ["-C", hooksRepo, "status", "--porcelain", "--", "config/hooks"], { encoding: "utf8" });
+    expect(status.trim()).toBe("");
+  });
+
+  it("uninstall keeps a git-tracked dispatcher (removes only its own config/manifest)", () => {
+    const { home, dest, hooksRepo } = trackedHome();
+    const repo = initRepo();
+    sh(INSTALL, ["--company", COMPANY, "--repo", repo, "--node", NODE_BIN], { HOME: home });
+    const r = sh(UNINSTALL, [], { HOME: home });
+    expect(r.code).toBe(0);
+    expect(existsSync(dest)).toBe(true);
+    expect(existsSync(join(home, ".config", "cos-company-os", "config.env"))).toBe(false);
+    const status = execFileSync("git", ["-C", hooksRepo, "status", "--porcelain", "--", "config/hooks"], { encoding: "utf8" });
+    expect(status.trim()).toBe("");
+  });
+
+  it("an UNtracked dispatcher is still installed/removed as before", () => {
+    const home = tmp("cos-untracked-home-");
+    const repo = initRepo();
+    sh(INSTALL, ["--company", COMPANY, "--repo", repo, "--node", NODE_BIN], { HOME: home });
+    const dest = join(home, ".claude", "hooks", "cos-refresh-hook.sh");
+    expect(existsSync(dest)).toBe(true);
+    sh(UNINSTALL, [], { HOME: home });
+    expect(existsSync(dest)).toBe(false);
+  });
+});
+
+describe("cos-refresh-hook.sh passes configured host + plugin to the child (cannons 2026-08-18 codex P1)", () => {
+  it("--host / --plugin from config.env reach the refresh script argv", () => {
+    const home = tmp("cos-argv-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const argvFile = join(home, "ARGV");
+    // Shim records its argv, one per line.
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, `#!/usr/bin/env bash\nprintf '%s\\n' "$@" > "${argvFile}"\n`);
+    chmodSync(shim, 0o755);
+    writeFileSync(
+      join(cfgDir, "config.env"),
+      `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\nCOS_HOST="http://127.0.0.1:4242"\nCOS_PLUGIN_KEY="acme.cockpit"\n`,
+    );
+    const repo = initRepo();
+    execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], {
+      env: { ...process.env, HOME: home, TMPDIR: home },
+    });
+    const end = Date.now() + 10_000;
+    while (!existsSync(argvFile) && Date.now() < end) execFileSync("sleep", ["0.05"]);
+    const argv = readFileSync(argvFile, "utf8").split("\n");
+    expect(argv).toContain("--host");
+    expect(argv[argv.indexOf("--host") + 1]).toBe("http://127.0.0.1:4242");
+    expect(argv).toContain("--plugin");
+    expect(argv[argv.indexOf("--plugin") + 1]).toBe("acme.cockpit");
+    expect(argv).toContain("--company");
+  });
+
+  it("config.env assignments are EXPORTED to the child (env-only knobs like COS_ALLOW_NONLOOPBACK)", () => {
+    const home = tmp("cos-env-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const envFile = join(home, "ENV");
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, `#!/usr/bin/env bash\nprintf '%s\\n' "NONLOOP=\${COS_ALLOW_NONLOOPBACK:-unset}" "TMO=\${COS_REFRESH_TIMEOUT_MS:-unset}" > "${envFile}"\n`);
+    chmodSync(shim, 0o755);
+    writeFileSync(
+      join(cfgDir, "config.env"),
+      `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\nCOS_ALLOW_NONLOOPBACK=1\nCOS_REFRESH_TIMEOUT_MS=1234\nCOS_REFRESH_WATCHDOG_SECS=garbage\n`,
+    );
+    const repo = initRepo();
+    // COS_REFRESH_WATCHDOG_SECS=garbage must be tolerated (falls back to 25s), not break the dispatch.
+    execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], {
+      env: { ...process.env, HOME: home, TMPDIR: home },
+    });
+    const end = Date.now() + 10_000;
+    while (!existsSync(envFile) && Date.now() < end) execFileSync("sleep", ["0.05"]);
+    const lines = readFileSync(envFile, "utf8").split("\n");
+    expect(lines).toContain("NONLOOP=1");
+    expect(lines).toContain("TMO=1234");
+  });
+
+  it("refresh.log records the dispatch line + the child's outcome (no --quiet); COS_SCOPE_REPO in config is ignored; '08' watchdog tolerated", () => {
+    const home = tmp("cos-log-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const argvFile = join(home, "ARGV");
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, `#!/usr/bin/env bash\nprintf '%s\\n' "$@" > "${argvFile}"\necho '{"outcome":"probe-ok"}'\n`);
+    chmodSync(shim, 0o755);
+    writeFileSync(
+      join(cfgDir, "config.env"),
+      `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\nCOS_SCOPE_REPO="evil-scope"\nCOS_REFRESH_WATCHDOG_SECS=08\n`,
+    );
+    const repo = initRepo();
+    const out = execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit 2>&1; echo "rc=$?"`], {
+      env: { ...process.env, HOME: home, TMPDIR: home },
+      encoding: "utf8",
+    });
+    expect(out.trim().endsWith("rc=0")).toBe(true);
+    expect(out).not.toMatch(/value too great|octal/); // the 08 octal trap is closed
+    const end = Date.now() + 10_000;
+    while (!existsSync(argvFile) && Date.now() < end) execFileSync("sleep", ["0.05"]);
+    const argv = readFileSync(argvFile, "utf8").split("\n");
+    expect(argv).not.toContain("--quiet");
+    // scope comes from the firing repo (its main-checkout basename), never from config
+    expect(argv[argv.indexOf("--scope") + 1]).toBe(basename(repo));
+    const logFile = join(cfgDir, "refresh.log");
+    const logEnd = Date.now() + 10_000;
+    while ((!existsSync(logFile) || !readFileSync(logFile, "utf8").includes("probe-ok")) && Date.now() < logEnd) execFileSync("sleep", ["0.05"]);
+    const log = readFileSync(logFile, "utf8");
+    expect(log).toMatch(/Z event=post-commit scope=/);
+    expect(log).toContain('{"outcome":"probe-ok"}');
+  });
+
+  it("a broken config.env (syntax error / exit 1) → rc 0, no dispatch, nothing on stderr", () => {
+    for (const bad of ["COS_COMPANY_ID=\"unterminated\n", "exit 1\n"]) {
+      const home = tmp("cos-badcfg-home-");
+      const cfgDir = join(home, ".config", "cos-company-os");
+      mkdirSync(cfgDir, { recursive: true });
+      const marker = join(home, "MARKER");
+      const shim = join(home, "shim.sh");
+      writeFileSync(shim, `#!/usr/bin/env bash\ntouch "${marker}"\n`);
+      chmodSync(shim, 0o755);
+      writeFileSync(join(cfgDir, "config.env"), `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\n${bad}`);
+      const repo = initRepo();
+      const out = execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit 2>&1; echo "rc=$?"`], {
+        env: { ...process.env, HOME: home, TMPDIR: home },
+        encoding: "utf8",
+      });
+      expect(out.trim()).toBe("rc=0");
+      execFileSync("sleep", ["0.3"]);
+      expect(existsSync(marker)).toBe(false);
+    }
+  });
+
+  it("config.env runs ONCE, in a subshell: `set -x` cannot leak to stderr, a trailing false still dispatches, side effects run once", () => {
+    const home = tmp("cos-cfgonce-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const marker = join(home, "MARKER");
+    const counter = join(home, "COUNT");
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, `#!/usr/bin/env bash\ntouch "${marker}"\n`);
+    chmodSync(shim, 0o755);
+    writeFileSync(
+      join(cfgDir, "config.env"),
+      `set -x\nCOS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\necho x >> "${counter}"\n[ -n "\${NOPE:-}" ] && COS_HOST=http://127.0.0.1:1\n`,
+    );
+    const repo = initRepo();
+    const out = execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit 2>&1; echo "rc=$?"`], {
+      env: { ...process.env, HOME: home, TMPDIR: home },
+      encoding: "utf8",
+    });
+    expect(out.trim()).toBe("rc=0"); // no `set -x` trace on stderr, no error
+    const end = Date.now() + 10_000;
+    while (!existsSync(marker) && Date.now() < end) execFileSync("sleep", ["0.05"]);
+    expect(existsSync(marker)).toBe(true); // trailing-false config still dispatches
+    expect(readFileSync(counter, "utf8").split("\n").filter(Boolean).length).toBe(1); // executed once
+  });
+
+  it("a config EXIT trap's output is neither eval'd nor leaked; lock parent dir is created even when the log lives elsewhere", () => {
+    const home = tmp("cos-trap-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const marker = join(home, "MARKER");
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, `#!/usr/bin/env bash\ntouch "${marker}"\n`);
+    chmodSync(shim, 0o755);
+    const elsewhere = join(home, "elsewhere"); mkdirSync(elsewhere);
+    // Config points the log OUTSIDE ~/.config/cos-company-os, then we delete that
+    // dir: the lock parent must still be created by the dispatcher itself.
+    writeFileSync(join(cfgDir, "config.env"), `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\nCOS_LOG_FILE="${join(elsewhere, "r.log")}"\ntrap "echo cleaning-up-temp-files" EXIT\n`);
+    const cfgCopy = join(home, "config.copy"); writeFileSync(cfgCopy, readFileSync(join(cfgDir, "config.env")));
+    rmSync(cfgDir, { recursive: true, force: true });
+    const repo = initRepo();
+    const out = execFileSync("bash", ["-c", `cd "${repo}" && COS_CONFIG_FILE="${cfgCopy}" bash "${DISPATCHER}" post-commit 2>&1; echo "rc=$?"`], {
+      env: { ...process.env, HOME: home, TMPDIR: home },
+      encoding: "utf8",
+    });
+    expect(out.trim()).toBe("rc=0"); // no "cleaning-up-temp-files" on stderr/stdout
+    const end = Date.now() + 10_000;
+    while (!existsSync(marker) && Date.now() < end) execFileSync("sleep", ["0.05"]);
+    expect(existsSync(marker)).toBe(true); // dispatched despite missing lock parent + relocated log
+  });
+
+  it("an unwritable log path loses the log line, never the dispatch", () => {
+    const home = tmp("cos-nolog-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const marker = join(home, "MARKER");
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, `#!/usr/bin/env bash\ntouch "${marker}"\n`);
+    chmodSync(shim, 0o755);
+    const ro = join(home, "ro"); mkdirSync(ro); chmodSync(ro, 0o500);
+    writeFileSync(join(cfgDir, "config.env"), `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\nCOS_LOG_FILE="${join(ro, "refresh.log")}"\n`);
+    const repo = initRepo();
+    execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], { env: { ...process.env, HOME: home, TMPDIR: home } });
+    const end = Date.now() + 10_000;
+    while (!existsSync(marker) && Date.now() < end) execFileSync("sleep", ["0.05"]);
+    expect(existsSync(marker)).toBe(true);
+  });
+
+  it("the watchdog actually terminates a wedged child (perl alarm path)", () => {
+    const home = tmp("cos-wedge-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const done = join(home, "DONE");
+    const tag = `cos-wedge-${process.pid}`;
+    const shim = join(home, "shim.sh");
+    // A child that would run 40s; the watchdog (5s) must kill it long before.
+    writeFileSync(shim, `#!/usr/bin/env bash\nexec -a ${tag} sleep 40\ntouch "${done}"\n`);
+    chmodSync(shim, 0o755);
+    writeFileSync(join(cfgDir, "config.env"), `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\nCOS_REFRESH_WATCHDOG_SECS=5\n`);
+    const repo = initRepo();
+    execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], { env: { ...process.env, HOME: home, TMPDIR: home } });
+    execFileSync("sleep", ["1"]);
+    const before = execFileSync("ps", ["-axo", "command"], { encoding: "utf8" });
+    expect(before.includes(tag)).toBe(true); // it started
+    execFileSync("sleep", ["7"]);
+    const after = execFileSync("ps", ["-axo", "command"], { encoding: "utf8" });
+    expect(after.includes(tag)).toBe(false); // watchdog killed it
+    expect(existsSync(done)).toBe(false);
+  }, 20_000);
+
+  it("cancelling the watchdog reaps its sleep (no orphan per dispatch)", () => {
+    const home = tmp("cos-orphan-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, "#!/usr/bin/env bash\nexit 0\n");
+    chmodSync(shim, 0o755);
+    // A distinctive watchdog length so the orphan (if any) is identifiable in ps.
+    writeFileSync(join(cfgDir, "config.env"), `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\nCOS_REFRESH_WATCHDOG_SECS=577\n`);
+    const repo = initRepo();
+    execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], { env: { ...process.env, HOME: home, TMPDIR: home } });
+    execFileSync("sleep", ["1"]);
+    const ps = execFileSync("ps", ["-axo", "command"], { encoding: "utf8" });
+    expect(ps.split("\n").filter((l) => /^sleep 577$/.test(l.trim())).length).toBe(0);
+  });
+
+  it("ambient COS_SCOPE_REPO never reaches the child even with NO config file (env-provided essentials)", () => {
+    const home = tmp("cos-ambient-home-");
+    const envFile = join(home, "ENV");
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, `#!/usr/bin/env bash\nprintf '%s\\n' "SCOPE=\${COS_SCOPE_REPO:-unset}" > "${envFile}"\n`);
+    chmodSync(shim, 0o755);
+    const repo = initRepo();
+    execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], {
+      env: { ...process.env, HOME: home, TMPDIR: home, COS_COMPANY_ID: COMPANY, COS_REFRESH_SCRIPT: shim, COS_NODE_BIN: "bash", COS_SCOPE_REPO: "evil-scope" },
+    });
+    const end = Date.now() + 10_000;
+    while (!existsSync(envFile) && Date.now() < end) execFileSync("sleep", ["0.05"]);
+    expect(readFileSync(envFile, "utf8").trim()).toBe("SCOPE=unset");
+  });
+
+  it("no HOME + no COS_CONFIG_FILE → exits 0 silently (set -u safe)", () => {
+    const repo = initRepo();
+    const env = { ...process.env } as Record<string, string | undefined>;
+    delete env.HOME;
+    delete env.COS_CONFIG_FILE;
+    const r = execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit; echo "rc=$?"`], {
+      env: env as NodeJS.ProcessEnv,
+      encoding: "utf8",
+    });
+    expect(r.trim()).toBe("rc=0");
   });
 });
 

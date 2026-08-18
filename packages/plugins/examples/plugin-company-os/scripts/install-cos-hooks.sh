@@ -153,12 +153,24 @@ echo "  refresh:   $REFRESH_SCRIPT"
 [ "$DRY_RUN" = "1" ] && echo "  (dry-run — no files will be written)"
 
 # --- 1. machine-local dispatcher ---
-if [ "$DRY_RUN" = "0" ]; then
-  mkdir -p "$(dirname "$WRAPPER_DEST")"
-  cp "$WRAPPER_SRC" "$WRAPPER_DEST"
-  chmod +x "$WRAPPER_DEST"
+# If the destination is already a GIT-TRACKED file (e.g. ~/.claude/hooks is a
+# symlink into a tracked hooks dir such as company/config/hooks), git owns it:
+# never overwrite it here (a reinstall must not dirty canonical source; cannons
+# 2026-08-18 codex P1). Report drift instead so it is fixed via that repo's PR.
+if cos_git_tracked "$WRAPPER_DEST"; then
+  if cmp -s "$WRAPPER_SRC" "$WRAPPER_DEST"; then
+    say "dispatcher → $WRAPPER_DEST (git-tracked, identical — left to git)"
+  else
+    say "dispatcher → $WRAPPER_DEST is git-tracked and DIFFERS from $WRAPPER_SRC — NOT overwritten; update it via that repo's PR"
+  fi
+else
+  if [ "$DRY_RUN" = "0" ]; then
+    mkdir -p "$(dirname "$WRAPPER_DEST")"
+    cp "$WRAPPER_SRC" "$WRAPPER_DEST"
+    chmod +x "$WRAPPER_DEST"
+  fi
+  say "dispatcher → $WRAPPER_DEST"
 fi
-say "dispatcher → $WRAPPER_DEST"
 
 # --- 2. machine config (shell-quoted via %q so the sourced file can't inject) ---
 if [ "$DRY_RUN" = "0" ]; then
