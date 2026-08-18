@@ -18,13 +18,16 @@
 #     (worktree-safe via --git-common-dir), so a juice-bar commit re-scopes only
 #     juice-bar; an unresolved scope degrades to a (correct) full sweep.
 #   * Fires cos-refresh.mjs fully BACKGROUNDED under a non-blocking `mkdir`
-#     lock + a sleep/kill watchdog (stock macOS ships neither `flock` nor
-#     `timeout`), so git never waits and a hung host can never wedge the hook.
+#     lock + a `perl alarm` watchdog (stock macOS ships neither `flock` nor
+#     `timeout`; trap-guard fallback without perl), so git never waits and a
+#     hung host can never wedge the hook.
 #     The .mjs also self-bounds via an AbortController.
-#   * config.env is `bash -n`-checked, then executed ONCE in a subshell and only
-#     the known COS_* keys are imported as exports (so the .mjs env knobs
-#     COS_ALLOW_NONLOOPBACK / COS_REFRESH_TIMEOUT_MS work, and nothing else in
-#     the file — options, scope, side effects on this shell — can leak). COS_HOST /
+#   * config.env is `bash -n`-checked, then executed ONCE in a subshell; only
+#     the known COS_* keys come back, as NUL-delimited name/value pairs read
+#     with `read -d ''` and exported (no eval, no parsing of values as shell),
+#     so the .mjs env knobs COS_ALLOW_NONLOOPBACK / COS_REFRESH_TIMEOUT_MS work
+#     and nothing else in the file (options, scope, output, side effects on
+#     this shell) can leak. COS_HOST /
 #     COS_PLUGIN_KEY also travel as explicit `--host` / `--plugin` args so the
 #     wire contract is visible in `ps` and independent of the export path.
 #     COS_SCOPE_REPO is UNSET after sourcing: scope comes from the firing repo
@@ -73,23 +76,29 @@ if [ -r "$COS_CONFIG_FILE" ]; then
   # else the file sets (COS_SCOPE_REPO included) never reaches this shell.
   # `bash -n` first so a syntax error is a silent no-op, not stderr into git.
   bash -n "$COS_CONFIG_FILE" >/dev/null 2>&1 || exit 0
-  cos_import="$(
+  # NO eval anywhere: the subshell emits NUL-delimited name/value pairs via
+  # `builtin printf` (a config cannot shadow a builtin), and the parent imports
+  # them with `read -d ''` + `export "$name=$value"` — values are never parsed
+  # as shell, so a config EXIT trap's echo, a shadowed printf, or a hostile
+  # value can neither execute nor leak (cannons 2026-08-18 claude P1/P2).
+  while IFS= read -r -d '' cos_name && IFS= read -r -d '' cos_value; do
+    case "$cos_name" in
+      COS_COMPANY_ID|COS_REFRESH_SCRIPT|COS_HOST|COS_PLUGIN_KEY|COS_NODE_BIN|COS_LOG_FILE|COS_HOOKS_DISABLED|COS_ALLOW_NONLOOPBACK|COS_REFRESH_TIMEOUT_MS|COS_REFRESH_WATCHDOG_SECS)
+        export "$cos_name=$cos_value" ;;
+    esac
+  done < <(
     {
       # shellcheck disable=SC1090
       . "$COS_CONFIG_FILE" >/dev/null 2>&1
-      set +exv   # options the file may have flipped stay in THIS subshell and are cleared before export
+      set +exv   # options the file may have flipped stay in THIS subshell
       for v in COS_COMPANY_ID COS_REFRESH_SCRIPT COS_HOST COS_PLUGIN_KEY COS_NODE_BIN \
                COS_LOG_FILE COS_HOOKS_DISABLED COS_ALLOW_NONLOOPBACK \
                COS_REFRESH_TIMEOUT_MS COS_REFRESH_WATCHDOG_SECS; do
-        if [ -n "${!v+x}" ]; then printf 'export %s=%q\n' "$v" "${!v}"; fi
+        case "${!v+x}" in (x) builtin printf '%s\0%s\0' "$v" "${!v}" ;; esac
       done
     } 2>/dev/null
-  )" || cos_import=""
-  # Only well-formed `export COS_X=<%q value>` lines are eval'd: anything else
-  # the subshell emitted (a config EXIT trap's echo, stray stdout) is dropped,
-  # never executed or leaked to git's stderr (cannons 2026-08-18 claude P1).
-  cos_import="$(printf '%s\n' "$cos_import" | grep -E '^export COS_[A-Z_]+=' || true)"
-  eval "$cos_import"
+  )
+  unset cos_name cos_value
 fi
 # Scope is derived from the FIRING repo below — never from config OR ambient
 # env (cos-refresh.mjs falls back to env.COS_SCOPE_REPO when --scope is absent),
@@ -184,34 +193,45 @@ STALE_MIN=$(( (WATCHDOG_SECS + 60 + 59) / 60 ))
   printf '%s event=%s scope=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HOOK_EVENT" "${SCOPE_REPO:-<full>}" >>"$LOG_FILE" 2>/dev/null || true
 
   # `${arr[@]+...}` guards the empty-array expansion under `set -u` on bash 3.2.
-  "$NODE_BIN" "$REFRESH_SCRIPT" \
-    --company "$COMPANY_ID" \
-    ${SCOPE_ARGS[@]+"${SCOPE_ARGS[@]}"} \
-    ${HOST_ARGS[@]+"${HOST_ARGS[@]}"} \
-    ${PLUGIN_ARGS[@]+"${PLUGIN_ARGS[@]}"} \
-    >>"$LOG_FILE" 2>&1 &
-  CHILD=$!
-
-  # Watchdog: bound a wedged Node even where `timeout` is absent. The .mjs
-  # AbortController is the primary ~8s bound; this is the hard backstop.
-  # The guard traps TERM: cancelling it kills ITS sleep and exits WITHOUT
-  # entering the kill body (a bare kill orphaned the sleep; killing the sleep
-  # alone made the guard fall through and TERM a reaped pid — cannons
-  # 2026-08-18 claude/codex P2).
-  (
-    SLP=""
-    trap 'kill "${SLP:-}" 2>/dev/null; exit 0' TERM
-    sleep "$WATCHDOG_SECS" & SLP=$!
-    # A TERM that landed before SLP was set could not kill the sleep; re-check
-    # so a fast child never leaves a stray sleep behind (claude P2 race).
-    wait "$SLP" 2>/dev/null || exit 0
-    kill -TERM "$CHILD" 2>/dev/null; sleep 2; kill -KILL "$CHILD" 2>/dev/null
-  ) &
-  GUARD=$!
+  # Watchdog: bound a wedged Node even where `timeout` is absent. Preferred:
+  # `perl -e 'alarm N; exec ...'` — the alarm survives exec, so the CHILD gets
+  # SIGALRM after N s and dies; no guard subshell, no sleep, nothing to orphan
+  # (perl ships on macOS + every Linux base). Fallback (no perl): a trap-based
+  # guard whose TERM handler kills its own sleep before exiting.
+  # (cannons 2026-08-18: every earlier guard shape leaked or fired a sleep.)
+  GUARD=""
+  if command -v perl >/dev/null 2>&1; then
+    perl -e 'alarm shift @ARGV; exec @ARGV' "$WATCHDOG_SECS" \
+      "$NODE_BIN" "$REFRESH_SCRIPT" \
+      --company "$COMPANY_ID" \
+      ${SCOPE_ARGS[@]+"${SCOPE_ARGS[@]}"} \
+      ${HOST_ARGS[@]+"${HOST_ARGS[@]}"} \
+      ${PLUGIN_ARGS[@]+"${PLUGIN_ARGS[@]}"} \
+      >>"$LOG_FILE" 2>&1 &
+    CHILD=$!
+  else
+    "$NODE_BIN" "$REFRESH_SCRIPT" \
+      --company "$COMPANY_ID" \
+      ${SCOPE_ARGS[@]+"${SCOPE_ARGS[@]}"} \
+      ${HOST_ARGS[@]+"${HOST_ARGS[@]}"} \
+      ${PLUGIN_ARGS[@]+"${PLUGIN_ARGS[@]}"} \
+      >>"$LOG_FILE" 2>&1 &
+    CHILD=$!
+    (
+      SLP=""
+      trap 'kill "${SLP:-}" 2>/dev/null; exit 0' TERM
+      sleep "$WATCHDOG_SECS" & SLP=$!
+      wait "$SLP" 2>/dev/null || exit 0
+      kill -TERM "$CHILD" 2>/dev/null; sleep 2; kill -KILL "$CHILD" 2>/dev/null
+    ) &
+    GUARD=$!
+  fi
 
   wait "$CHILD" 2>/dev/null || true
-  kill -TERM "$GUARD" 2>/dev/null || true   # child finished first → cancel the watchdog (+ its sleep)
-  wait "$GUARD" 2>/dev/null || true
+  if [ -n "$GUARD" ]; then
+    kill -TERM "$GUARD" 2>/dev/null || true   # fallback guard only: cancel it (+ its sleep)
+    wait "$GUARD" 2>/dev/null || true
+  fi
 ) >/dev/null 2>&1 &
 
 # Detach so git's hook wait returns immediately regardless of the refresh.

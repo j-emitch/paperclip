@@ -453,6 +453,28 @@ describe("cos-refresh-hook.sh passes configured host + plugin to the child (cann
     expect(existsSync(marker)).toBe(true);
   });
 
+  it("the watchdog actually terminates a wedged child (perl alarm path)", () => {
+    const home = tmp("cos-wedge-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const done = join(home, "DONE");
+    const tag = `cos-wedge-${process.pid}`;
+    const shim = join(home, "shim.sh");
+    // A child that would run 40s; the watchdog (5s) must kill it long before.
+    writeFileSync(shim, `#!/usr/bin/env bash\nexec -a ${tag} sleep 40\ntouch "${done}"\n`);
+    chmodSync(shim, 0o755);
+    writeFileSync(join(cfgDir, "config.env"), `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\nCOS_REFRESH_WATCHDOG_SECS=5\n`);
+    const repo = initRepo();
+    execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], { env: { ...process.env, HOME: home, TMPDIR: home } });
+    execFileSync("sleep", ["1"]);
+    const before = execFileSync("ps", ["-axo", "command"], { encoding: "utf8" });
+    expect(before.includes(tag)).toBe(true); // it started
+    execFileSync("sleep", ["7"]);
+    const after = execFileSync("ps", ["-axo", "command"], { encoding: "utf8" });
+    expect(after.includes(tag)).toBe(false); // watchdog killed it
+    expect(existsSync(done)).toBe(false);
+  }, 20_000);
+
   it("cancelling the watchdog reaps its sleep (no orphan per dispatch)", () => {
     const home = tmp("cos-orphan-home-");
     const cfgDir = join(home, ".config", "cos-company-os");
