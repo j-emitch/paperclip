@@ -30,7 +30,7 @@ import {
   lstatSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 const SCRIPTS_DIR = fileURLToPath(new URL("../../scripts/", import.meta.url));
 const INSTALL = join(SCRIPTS_DIR, "install-cos-hooks.sh");
@@ -330,6 +330,76 @@ describe("cos-refresh-hook.sh passes configured host + plugin to the child (cann
     const lines = readFileSync(envFile, "utf8").split("\n");
     expect(lines).toContain("NONLOOP=1");
     expect(lines).toContain("TMO=1234");
+  });
+
+  it("refresh.log records the dispatch line + the child's outcome (no --quiet); COS_SCOPE_REPO in config is ignored; '08' watchdog tolerated", () => {
+    const home = tmp("cos-log-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const argvFile = join(home, "ARGV");
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, `#!/usr/bin/env bash\nprintf '%s\\n' "$@" > "${argvFile}"\necho '{"outcome":"probe-ok"}'\n`);
+    chmodSync(shim, 0o755);
+    writeFileSync(
+      join(cfgDir, "config.env"),
+      `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\nCOS_SCOPE_REPO="evil-scope"\nCOS_REFRESH_WATCHDOG_SECS=08\n`,
+    );
+    const repo = initRepo();
+    const out = execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit 2>&1; echo "rc=$?"`], {
+      env: { ...process.env, HOME: home, TMPDIR: home },
+      encoding: "utf8",
+    });
+    expect(out.trim().endsWith("rc=0")).toBe(true);
+    expect(out).not.toMatch(/value too great|octal/); // the 08 octal trap is closed
+    const end = Date.now() + 10_000;
+    while (!existsSync(argvFile) && Date.now() < end) execFileSync("sleep", ["0.05"]);
+    const argv = readFileSync(argvFile, "utf8").split("\n");
+    expect(argv).not.toContain("--quiet");
+    // scope comes from the firing repo (its main-checkout basename), never from config
+    expect(argv[argv.indexOf("--scope") + 1]).toBe(basename(repo));
+    const logFile = join(cfgDir, "refresh.log");
+    const logEnd = Date.now() + 10_000;
+    while ((!existsSync(logFile) || !readFileSync(logFile, "utf8").includes("probe-ok")) && Date.now() < logEnd) execFileSync("sleep", ["0.05"]);
+    const log = readFileSync(logFile, "utf8");
+    expect(log).toMatch(/Z event=post-commit scope=/);
+    expect(log).toContain('{"outcome":"probe-ok"}');
+  });
+
+  it("a broken config.env (syntax error / exit 1) → rc 0, no dispatch, nothing on stderr", () => {
+    for (const bad of ["COS_COMPANY_ID=\"unterminated\n", "exit 1\n"]) {
+      const home = tmp("cos-badcfg-home-");
+      const cfgDir = join(home, ".config", "cos-company-os");
+      mkdirSync(cfgDir, { recursive: true });
+      const marker = join(home, "MARKER");
+      const shim = join(home, "shim.sh");
+      writeFileSync(shim, `#!/usr/bin/env bash\ntouch "${marker}"\n`);
+      chmodSync(shim, 0o755);
+      writeFileSync(join(cfgDir, "config.env"), `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\n${bad}`);
+      const repo = initRepo();
+      const out = execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit 2>&1; echo "rc=$?"`], {
+        env: { ...process.env, HOME: home, TMPDIR: home },
+        encoding: "utf8",
+      });
+      expect(out.trim()).toBe("rc=0");
+      execFileSync("sleep", ["0.3"]);
+      expect(existsSync(marker)).toBe(false);
+    }
+  });
+
+  it("cancelling the watchdog reaps its sleep (no orphan per dispatch)", () => {
+    const home = tmp("cos-orphan-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, "#!/usr/bin/env bash\nexit 0\n");
+    chmodSync(shim, 0o755);
+    // A distinctive watchdog length so the orphan (if any) is identifiable in ps.
+    writeFileSync(join(cfgDir, "config.env"), `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\nCOS_REFRESH_WATCHDOG_SECS=577\n`);
+    const repo = initRepo();
+    execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], { env: { ...process.env, HOME: home, TMPDIR: home } });
+    execFileSync("sleep", ["1"]);
+    const ps = execFileSync("ps", ["-axo", "command"], { encoding: "utf8" });
+    expect(ps.split("\n").filter((l) => /^sleep 577$/.test(l.trim())).length).toBe(0);
   });
 
   it("no HOME + no COS_CONFIG_FILE → exits 0 silently (set -u safe)", () => {

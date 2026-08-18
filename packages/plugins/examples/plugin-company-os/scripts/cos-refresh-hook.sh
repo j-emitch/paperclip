@@ -21,17 +21,25 @@
 #     lock + a sleep/kill watchdog (stock macOS ships neither `flock` nor
 #     `timeout`), so git never waits and a hung host can never wedge the hook.
 #     The .mjs also self-bounds via an AbortController.
-#   * Passes COS_HOST / COS_PLUGIN_KEY from config.env to the child EXPLICITLY
-#     (`--host` / `--plugin`): the sourced assignments are not exported, so a
-#     custom host or plugin key would otherwise silently fall back to the .mjs
-#     defaults (cannons 2026-08-18 codex P1).
+#   * config.env is validated (bash -n + a throwaway subshell source) BEFORE it
+#     is sourced with `set -a` (exported to the child, so the .mjs env knobs
+#     COS_ALLOW_NONLOOPBACK / COS_REFRESH_TIMEOUT_MS work). COS_HOST /
+#     COS_PLUGIN_KEY also travel as explicit `--host` / `--plugin` args so the
+#     wire contract is visible in `ps` and independent of the export path.
+#     COS_SCOPE_REPO is UNSET after sourcing: scope comes from the firing repo
+#     only, never from config (an exported config value would re-scope every
+#     repo's commit). Each dispatch appends `<utc> event=<hook> scope=<repo>` and
+#     the child's one-line JSON outcome to refresh.log (no --quiet).
 #   * Never fails the hook: every path returns 0.
-#   * Known limits (deferred, cannons 2026-08-18 codex P2): the lock is
-#     company-wide while a refresh is repo-scoped, so a second repo's hook that
-#     lands during a live dispatch skips (no queue) and that repo's instant
-#     refresh waits for the next scheduled sweep; and stale-lock reclaim is a
-#     check-then-rm without ownership. Both are bounded by the watchdog + the
-#     server-side per-company derive lock; a queued/owned lock is follow-up work.
+#   * Known limits (deferred, cannons 2026-08-18): the lock is company-wide and
+#     non-queuing, so any hook landing while a dispatch is live (~8s child
+#     budget) is dropped — a burst of commits/rebase/amend in ONE repo yields one
+#     refresh, and a second repo's commit in that window waits for the next
+#     scheduled sweep; stale-lock reclaim is check-then-rm without ownership.
+#     Bounded by the watchdog + the server-side per-company derive lock; a
+#     queued/owned lock is follow-up work. Callers: company .githooks
+#     post-commit + post-merge; juice-bar .githooks post-commit only (no
+#     post-merge hook exists there).
 #
 # Usage (from a hook): cos-refresh-hook.sh <post-commit|post-merge|manual>
 
@@ -50,15 +58,23 @@ esac
 if [ -z "${HOME:-}" ] && [ -z "${COS_CONFIG_FILE:-}" ]; then exit 0; fi
 COS_CONFIG_FILE="${COS_CONFIG_FILE:-${HOME:-}/.config/cos-company-os/config.env}"
 if [ -r "$COS_CONFIG_FILE" ]; then
+  # Validate BEFORE sourcing into this shell: a hand-edited config with a syntax
+  # error or a stray `exit 1` must not error the hook or print into git's
+  # output (cannons 2026-08-18 claude P2). Broken config → silent no-op.
+  bash -n "$COS_CONFIG_FILE" >/dev/null 2>&1 || exit 0
+  # shellcheck disable=SC1090
+  ( . "$COS_CONFIG_FILE" ) >/dev/null 2>&1 || exit 0
   # `set -a`: EXPORT every config assignment so the child sees the env-only
   # knobs cos-refresh.mjs reads directly (COS_ALLOW_NONLOOPBACK,
   # COS_REFRESH_TIMEOUT_MS) — a plain source left them shell-local and the
-  # documented escape hatch was inert (cannons 2026-08-18 codex P2). host /
-  # plugin ALSO travel as explicit args below (belt and braces).
+  # documented escape hatch was inert (cannons 2026-08-18 codex P2).
   set -a
   # shellcheck disable=SC1090
-  . "$COS_CONFIG_FILE"
+  . "$COS_CONFIG_FILE" >/dev/null 2>&1
   set +a
+  # Scope is derived from the FIRING repo below — never from config/ambient env
+  # (cos-refresh.mjs falls back to env.COS_SCOPE_REPO when --scope is absent).
+  unset COS_SCOPE_REPO
 fi
 
 # Re-check the kill-switch after sourcing (config may set it persistently).
@@ -98,8 +114,11 @@ WATCHDOG_SECS="${COS_REFRESH_WATCHDOG_SECS:-25}"
 # Validate: positive integer, else the 25s default (a garbage value must not
 # disable the watchdog or make `sleep` fail).
 case "$WATCHDOG_SECS" in
-  ''|*[!0-9]*|0) WATCHDOG_SECS=25 ;;
+  ''|*[!0-9]*|0*) WATCHDOG_SECS=25 ;;   # empty, non-digit, or leading zero (incl. 0/00/08 → octal trap)
 esac
+# Bound it: 5s..600s (a huge value would keep the stale-lock threshold — and a
+# wedged child — alive for hours). Force base 10 for the comparison.
+if [ "$((10#$WATCHDOG_SECS))" -lt 5 ] || [ "$((10#$WATCHDOG_SECS))" -gt 600 ]; then WATCHDOG_SECS=25; fi
 # Stale-lock threshold DERIVED from the watchdog (never below it): a lock older
 # than watchdog + 60s belongs to a dispatch the watchdog has already killed.
 # `find -mmin` is minute-granular, so round up. (cannons 2026-08-18: the fixed
@@ -125,13 +144,17 @@ STALE_MIN=$(( (WATCHDOG_SECS + 60 + 59) / 60 ))
   PLUGIN_ARGS=()
   [ -n "$PLUGIN_KEY" ] && PLUGIN_ARGS=(--plugin "$PLUGIN_KEY")
 
+  # One line per dispatch so refresh.log answers "did the hook fire, for what":
+  # the child's own one-line JSON outcome follows (no --quiet: with it the log
+  # stayed empty by construction — cannons 2026-08-18 claude P1).
+  printf '%s event=%s scope=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HOOK_EVENT" "${SCOPE_REPO:-<full>}" >>"$LOG_FILE" 2>/dev/null || true
+
   # `${arr[@]+...}` guards the empty-array expansion under `set -u` on bash 3.2.
   "$NODE_BIN" "$REFRESH_SCRIPT" \
     --company "$COMPANY_ID" \
     ${SCOPE_ARGS[@]+"${SCOPE_ARGS[@]}"} \
     ${HOST_ARGS[@]+"${HOST_ARGS[@]}"} \
     ${PLUGIN_ARGS[@]+"${PLUGIN_ARGS[@]}"} \
-    --quiet \
     >>"$LOG_FILE" 2>&1 &
   CHILD=$!
 
@@ -141,7 +164,10 @@ STALE_MIN=$(( (WATCHDOG_SECS + 60 + 59) / 60 ))
   GUARD=$!
 
   wait "$CHILD" 2>/dev/null || true
-  kill "$GUARD" 2>/dev/null || true   # child finished first → cancel the watchdog
+  # Child finished first → cancel the watchdog AND its `sleep` (killing only the
+  # subshell orphaned one sleep per dispatch — cannons 2026-08-18 claude/codex P2).
+  pkill -TERM -P "$GUARD" 2>/dev/null || true
+  kill "$GUARD" 2>/dev/null || true
   wait "$GUARD" 2>/dev/null || true
 ) >/dev/null 2>&1 &
 
