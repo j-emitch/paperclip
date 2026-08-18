@@ -402,6 +402,21 @@ describe("cos-refresh-hook.sh passes configured host + plugin to the child (cann
     expect(ps.split("\n").filter((l) => /^sleep 577$/.test(l.trim())).length).toBe(0);
   });
 
+  it("ambient COS_SCOPE_REPO never reaches the child even with NO config file (env-provided essentials)", () => {
+    const home = tmp("cos-ambient-home-");
+    const envFile = join(home, "ENV");
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, `#!/usr/bin/env bash\nprintf '%s\\n' "SCOPE=\${COS_SCOPE_REPO:-unset}" > "${envFile}"\n`);
+    chmodSync(shim, 0o755);
+    const repo = initRepo();
+    execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], {
+      env: { ...process.env, HOME: home, TMPDIR: home, COS_COMPANY_ID: COMPANY, COS_REFRESH_SCRIPT: shim, COS_NODE_BIN: "bash", COS_SCOPE_REPO: "evil-scope" },
+    });
+    const end = Date.now() + 10_000;
+    while (!existsSync(envFile) && Date.now() < end) execFileSync("sleep", ["0.05"]);
+    expect(readFileSync(envFile, "utf8").trim()).toBe("SCOPE=unset");
+  });
+
   it("no HOME + no COS_CONFIG_FILE → exits 0 silently (set -u safe)", () => {
     const repo = initRepo();
     const env = { ...process.env } as Record<string, string | undefined>;

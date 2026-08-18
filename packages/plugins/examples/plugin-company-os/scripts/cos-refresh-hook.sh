@@ -53,10 +53,12 @@ case "${COS_HOOKS_DISABLED:-}" in
 esac
 
 # --- config ------------------------------------------------------------------
-# `set -u` + a hook fired without HOME (some CI/launchd contexts): with no HOME
-# and no explicit COS_CONFIG_FILE there is nothing to do — exit 0, never error.
-if [ -z "${HOME:-}" ] && [ -z "${COS_CONFIG_FILE:-}" ]; then exit 0; fi
-COS_CONFIG_FILE="${COS_CONFIG_FILE:-${HOME:-}/.config/cos-company-os/config.env}"
+# `set -u` + a hook fired without HOME (some CI/launchd contexts): this is a
+# per-user machine-local dispatcher (config + log live under $HOME) — with no
+# HOME there is nothing safe to do (a /tmp fallback would be world-writable and
+# attacker-predictable — cannons 2026-08-18 claude P2). Exit 0, never error.
+[ -n "${HOME:-}" ] || exit 0
+COS_CONFIG_FILE="${COS_CONFIG_FILE:-$HOME/.config/cos-company-os/config.env}"
 if [ -r "$COS_CONFIG_FILE" ]; then
   # Validate BEFORE sourcing into this shell: a hand-edited config with a syntax
   # error or a stray `exit 1` must not error the hook or print into git's
@@ -72,10 +74,11 @@ if [ -r "$COS_CONFIG_FILE" ]; then
   # shellcheck disable=SC1090
   . "$COS_CONFIG_FILE" >/dev/null 2>&1
   set +a
-  # Scope is derived from the FIRING repo below — never from config/ambient env
-  # (cos-refresh.mjs falls back to env.COS_SCOPE_REPO when --scope is absent).
-  unset COS_SCOPE_REPO
 fi
+# Scope is derived from the FIRING repo below — never from config OR ambient
+# env (cos-refresh.mjs falls back to env.COS_SCOPE_REPO when --scope is absent),
+# so unset it UNCONDITIONALLY, config or no config (cannons 2026-08-18 codex P2).
+unset COS_SCOPE_REPO
 
 # Re-check the kill-switch after sourcing (config may set it persistently).
 case "${COS_HOOKS_DISABLED:-}" in
@@ -87,7 +90,7 @@ REFRESH_SCRIPT="${COS_REFRESH_SCRIPT:-}"
 HOST_URL="${COS_HOST:-}"
 PLUGIN_KEY="${COS_PLUGIN_KEY:-}"
 NODE_BIN="${COS_NODE_BIN:-node}"
-LOG_FILE="${COS_LOG_FILE:-${HOME:-/tmp}/.config/cos-company-os/refresh.log}"
+LOG_FILE="${COS_LOG_FILE:-$HOME/.config/cos-company-os/refresh.log}"
 
 # Nothing to do without the essentials — silent no-op (not an error).
 [ -n "$COMPANY_ID" ] || exit 0
@@ -114,7 +117,7 @@ WATCHDOG_SECS="${COS_REFRESH_WATCHDOG_SECS:-25}"
 # Validate: positive integer, else the 25s default (a garbage value must not
 # disable the watchdog or make `sleep` fail).
 case "$WATCHDOG_SECS" in
-  ''|*[!0-9]*|0*) WATCHDOG_SECS=25 ;;   # empty, non-digit, or leading zero (incl. 0/00/08 → octal trap)
+  ''|*[!0-9]*|0*|?????*) WATCHDOG_SECS=25 ;;   # empty, non-digit, leading zero (0/00/08 → octal trap), or >4 digits (bash 3.2 integer wrap — cannons codex P2)
 esac
 # Bound it: 5s..600s (a huge value would keep the stale-lock threshold — and a
 # wedged child — alive for hours). Force base 10 for the comparison.
@@ -144,6 +147,11 @@ STALE_MIN=$(( (WATCHDOG_SECS + 60 + 59) / 60 ))
   PLUGIN_ARGS=()
   [ -n "$PLUGIN_KEY" ] && PLUGIN_ARGS=(--plugin "$PLUGIN_KEY")
 
+  # Bound the log: keep the newest ~200 lines once it passes 256 KiB (no
+  # newsyslog/logrotate covers this path — cannons 2026-08-18 claude P2).
+  if [ -f "$LOG_FILE" ] && [ "$(wc -c <"$LOG_FILE" 2>/dev/null || echo 0)" -gt 262144 ]; then
+    tail -n 200 "$LOG_FILE" >"$LOG_FILE.tmp" 2>/dev/null && mv -f "$LOG_FILE.tmp" "$LOG_FILE" 2>/dev/null || true
+  fi
   # One line per dispatch so refresh.log answers "did the hook fire, for what":
   # the child's own one-line JSON outcome follows (no --quiet: with it the log
   # stayed empty by construction — cannons 2026-08-18 claude P1).
