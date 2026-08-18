@@ -307,6 +307,42 @@ describe("cos-refresh-hook.sh passes configured host + plugin to the child (cann
     expect(argv[argv.indexOf("--plugin") + 1]).toBe("acme.cockpit");
     expect(argv).toContain("--company");
   });
+
+  it("config.env assignments are EXPORTED to the child (env-only knobs like COS_ALLOW_NONLOOPBACK)", () => {
+    const home = tmp("cos-env-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const envFile = join(home, "ENV");
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, `#!/usr/bin/env bash\nprintf '%s\\n' "NONLOOP=\${COS_ALLOW_NONLOOPBACK:-unset}" "TMO=\${COS_REFRESH_TIMEOUT_MS:-unset}" > "${envFile}"\n`);
+    chmodSync(shim, 0o755);
+    writeFileSync(
+      join(cfgDir, "config.env"),
+      `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\nCOS_ALLOW_NONLOOPBACK=1\nCOS_REFRESH_TIMEOUT_MS=1234\nCOS_REFRESH_WATCHDOG_SECS=garbage\n`,
+    );
+    const repo = initRepo();
+    // COS_REFRESH_WATCHDOG_SECS=garbage must be tolerated (falls back to 25s), not break the dispatch.
+    execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], {
+      env: { ...process.env, HOME: home, TMPDIR: home },
+    });
+    const end = Date.now() + 10_000;
+    while (!existsSync(envFile) && Date.now() < end) execFileSync("sleep", ["0.05"]);
+    const lines = readFileSync(envFile, "utf8").split("\n");
+    expect(lines).toContain("NONLOOP=1");
+    expect(lines).toContain("TMO=1234");
+  });
+
+  it("no HOME + no COS_CONFIG_FILE → exits 0 silently (set -u safe)", () => {
+    const repo = initRepo();
+    const env = { ...process.env } as Record<string, string | undefined>;
+    delete env.HOME;
+    delete env.COS_CONFIG_FILE;
+    const r = execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit; echo "rc=$?"`], {
+      env: env as NodeJS.ProcessEnv,
+      encoding: "utf8",
+    });
+    expect(r.trim()).toBe("rc=0");
+  });
 });
 
 describe("cos-refresh-hook.sh dispatcher kill-switch", () => {
