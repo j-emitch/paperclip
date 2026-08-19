@@ -28,9 +28,8 @@
 #     so the .mjs env knobs COS_ALLOW_NONLOOPBACK / COS_REFRESH_TIMEOUT_MS work
 #     and nothing else in the file (options, scope, output, side effects on
 #     this shell) can leak. COS_HOST /
-#     COS_PLUGIN_KEY also travel as explicit `--host` / `--plugin` args so the
-#     wire contract is visible in `ps` and independent of the export path.
-#     COS_SCOPE_REPO is UNSET after sourcing: scope comes from the firing repo
+#     COS_PLUGIN_KEY reach the child ONLY via that exported env (never argv, so
+#     the key is not in the process table). COS_SCOPE_REPO is UNSET after sourcing: scope comes from the firing repo
 #     only, never from config (an exported config value would re-scope every
 #     repo's commit). Each dispatch appends `<utc> event=<hook> scope=<repo>` and
 #     the child's one-line JSON outcome to refresh.log (no --quiet).
@@ -112,8 +111,6 @@ esac
 
 COMPANY_ID="${COS_COMPANY_ID:-}"
 REFRESH_SCRIPT="${COS_REFRESH_SCRIPT:-}"
-HOST_URL="${COS_HOST:-}"
-PLUGIN_KEY="${COS_PLUGIN_KEY:-}"
 NODE_BIN="${COS_NODE_BIN:-node}"
 LOG_FILE="${COS_LOG_FILE:-$HOME/.config/cos-company-os/refresh.log}"
 
@@ -130,7 +127,7 @@ if [ -n "$GCD" ]; then
     *) GCD="$(pwd)/$GCD" ;;
   esac
   MAIN_ROOT="$(cd "$GCD/.." 2>/dev/null && pwd || true)"
-  [ -n "$MAIN_ROOT" ] && SCOPE_REPO="$(basename "$MAIN_ROOT")"
+  [ -n "$MAIN_ROOT" ] && SCOPE_REPO="$(basename "$MAIN_ROOT" 2>/dev/null)"
 fi
 
 # --- non-blocking, watchdog-bounded, backgrounded dispatch -------------------
@@ -139,7 +136,8 @@ mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
 # the dispatch (the child's `>>` redirect would otherwise abort the command).
 if ! ( : >>"$LOG_FILE" ) 2>/dev/null; then LOG_FILE=/dev/null; fi
 # Sanitize the lock key (defensive — the installer already constrains the id).
-LOCK_KEY="$(printf '%s' "$COMPANY_ID" | tr -c 'A-Za-z0-9._-' '_')"
+LOCK_KEY="$(printf '%s' "$COMPANY_ID" | tr -c 'A-Za-z0-9._-' '_' 2>/dev/null)"
+[ -n "$LOCK_KEY" ] || LOCK_KEY="default"
 # Per-user lock dir (NOT /tmp: a shared sticky /tmp lets another local user
 # pre-create the lock and silently disable the hook — cannons 2026-08-18). The
 # path is FIXED under $HOME (no override: an ambient override would be rm -rf'd
@@ -175,12 +173,9 @@ STALE_MIN=$(( (WATCHDOG_SECS + 60 + 59) / 60 ))
 
   SCOPE_ARGS=()
   [ -n "$SCOPE_REPO" ] && SCOPE_ARGS=(--scope "$SCOPE_REPO")
-  # Configured host / plugin key travel as explicit args (see header); absent →
-  # the .mjs defaults apply exactly as before.
-  HOST_ARGS=()
-  [ -n "$HOST_URL" ] && HOST_ARGS=(--host "$HOST_URL")
-  PLUGIN_ARGS=()
-  [ -n "$PLUGIN_KEY" ] && PLUGIN_ARGS=(--plugin "$PLUGIN_KEY")
+  # COS_HOST / COS_PLUGIN_KEY reach the child via the exported env (whitelisted
+  # import above) — NOT as argv, so the plugin key never sits in the process
+  # table (cannons 2026-08-18 claude P2).
 
   # Bound the log: keep the newest ~200 lines once it passes 256 KiB (no
   # newsyslog/logrotate covers this path — cannons 2026-08-18 claude P2).
@@ -197,7 +192,9 @@ STALE_MIN=$(( (WATCHDOG_SECS + 60 + 59) / 60 ))
   # `perl -e 'alarm N; exec ...'` — the alarm survives exec, so the CHILD gets
   # SIGALRM after N s and dies; no guard subshell, no sleep, nothing to orphan
   # (perl ships on macOS + every Linux base). Fallback (no perl): a trap-based
-  # guard whose TERM handler kills its own sleep before exiting.
+  # guard whose TERM handler kills its own sleep before exiting — with a
+  # microsecond window between `sleep &` and `SLP=$!` in which a TERM can still
+  # orphan that sleep; accepted for the no-perl path only.
   # (cannons 2026-08-18: every earlier guard shape leaked or fired a sleep.)
   GUARD=""
   if command -v perl >/dev/null 2>&1; then
@@ -205,16 +202,12 @@ STALE_MIN=$(( (WATCHDOG_SECS + 60 + 59) / 60 ))
       "$NODE_BIN" "$REFRESH_SCRIPT" \
       --company "$COMPANY_ID" \
       ${SCOPE_ARGS[@]+"${SCOPE_ARGS[@]}"} \
-      ${HOST_ARGS[@]+"${HOST_ARGS[@]}"} \
-      ${PLUGIN_ARGS[@]+"${PLUGIN_ARGS[@]}"} \
       >>"$LOG_FILE" 2>&1 &
     CHILD=$!
   else
     "$NODE_BIN" "$REFRESH_SCRIPT" \
       --company "$COMPANY_ID" \
       ${SCOPE_ARGS[@]+"${SCOPE_ARGS[@]}"} \
-      ${HOST_ARGS[@]+"${HOST_ARGS[@]}"} \
-      ${PLUGIN_ARGS[@]+"${PLUGIN_ARGS[@]}"} \
       >>"$LOG_FILE" 2>&1 &
     CHILD=$!
     (

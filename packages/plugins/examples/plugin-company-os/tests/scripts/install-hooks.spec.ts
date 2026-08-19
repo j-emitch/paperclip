@@ -281,14 +281,14 @@ describe("git-tracked dispatcher is owned by git (cannons 2026-08-18 codex P1)",
 });
 
 describe("cos-refresh-hook.sh passes configured host + plugin to the child (cannons 2026-08-18 codex P1)", () => {
-  it("--host / --plugin from config.env reach the refresh script argv", () => {
+  it("COS_HOST / COS_PLUGIN_KEY reach the child via ENV, never argv (plugin key stays out of the process table)", () => {
     const home = tmp("cos-argv-home-");
     const cfgDir = join(home, ".config", "cos-company-os");
     mkdirSync(cfgDir, { recursive: true });
     const argvFile = join(home, "ARGV");
-    // Shim records its argv, one per line.
+    const envFile = join(home, "ENV");
     const shim = join(home, "shim.sh");
-    writeFileSync(shim, `#!/usr/bin/env bash\nprintf '%s\\n' "$@" > "${argvFile}"\n`);
+    writeFileSync(shim, `#!/usr/bin/env bash\nprintf '%s\\n' "$@" > "${argvFile}"\nprintf '%s\\n' "HOST=\${COS_HOST:-unset}" "KEY=\${COS_PLUGIN_KEY:-unset}" > "${envFile}"\n`);
     chmodSync(shim, 0o755);
     writeFileSync(
       join(cfgDir, "config.env"),
@@ -299,13 +299,15 @@ describe("cos-refresh-hook.sh passes configured host + plugin to the child (cann
       env: { ...process.env, HOME: home, TMPDIR: home },
     });
     const end = Date.now() + 10_000;
-    while (!existsSync(argvFile) && Date.now() < end) execFileSync("sleep", ["0.05"]);
+    while (!(existsSync(argvFile) && existsSync(envFile)) && Date.now() < end) execFileSync("sleep", ["0.05"]);
     const argv = readFileSync(argvFile, "utf8").split("\n");
-    expect(argv).toContain("--host");
-    expect(argv[argv.indexOf("--host") + 1]).toBe("http://127.0.0.1:4242");
-    expect(argv).toContain("--plugin");
-    expect(argv[argv.indexOf("--plugin") + 1]).toBe("acme.cockpit");
     expect(argv).toContain("--company");
+    expect(argv).not.toContain("--host");
+    expect(argv).not.toContain("--plugin");
+    expect(argv.some((a) => a.includes("acme.cockpit"))).toBe(false);
+    const envLines = readFileSync(envFile, "utf8").split("\n");
+    expect(envLines).toContain("HOST=http://127.0.0.1:4242");
+    expect(envLines).toContain("KEY=acme.cockpit");
   });
 
   it("config.env assignments are EXPORTED to the child (env-only knobs like COS_ALLOW_NONLOOPBACK)", () => {
@@ -467,10 +469,10 @@ describe("cos-refresh-hook.sh passes configured host + plugin to the child (cann
     const repo = initRepo();
     execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], { env: { ...process.env, HOME: home, TMPDIR: home } });
     execFileSync("sleep", ["1"]);
-    const before = execFileSync("ps", ["-axo", "command"], { encoding: "utf8" });
+    const before = execFileSync("ps", ["-axo", "command"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
     expect(before.includes(tag)).toBe(true); // it started
     execFileSync("sleep", ["7"]);
-    const after = execFileSync("ps", ["-axo", "command"], { encoding: "utf8" });
+    const after = execFileSync("ps", ["-axo", "command"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
     expect(after.includes(tag)).toBe(false); // watchdog killed it
     expect(existsSync(done)).toBe(false);
   }, 20_000);
@@ -487,7 +489,7 @@ describe("cos-refresh-hook.sh passes configured host + plugin to the child (cann
     const repo = initRepo();
     execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], { env: { ...process.env, HOME: home, TMPDIR: home } });
     execFileSync("sleep", ["1"]);
-    const ps = execFileSync("ps", ["-axo", "command"], { encoding: "utf8" });
+    const ps = execFileSync("ps", ["-axo", "command"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
     expect(ps.split("\n").filter((l) => /^sleep 577$/.test(l.trim())).length).toBe(0);
   });
 
