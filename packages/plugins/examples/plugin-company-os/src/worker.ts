@@ -52,16 +52,24 @@ const plugin = definePlugin({
   async setup(ctx: PluginContext) {
     ctx.logger.info(`${PLUGIN_ID} worker setup (COS-0d derive)`);
 
-    const readRepoRoots = async (): Promise<string[]> => {
-      const config = await ctx.config.get();
+    // Config reads are COMPANY-SCOPED on the host (upstream #10103/#10113):
+    // inside a host-issued company invocation (data reads, refresh-board) the
+    // host derives the company itself, but the scheduled `derive-board` tick
+    // runs OUTSIDE any invocation, and an unscoped `ctx.config.get()` there is
+    // rejected with "company context is required" (live: every tick failed
+    // 2026-08-12 -> 08-18, cockpit frozen). Callers on the derive path pass the
+    // company being derived so the read resolves via the plugin's proactive
+    // company scope; in-invocation callers may omit it (host-derived).
+    const readRepoRoots = async (companyId?: string): Promise<string[]> => {
+      const config = await ctx.config.get(companyId);
       const raw = (config as Record<string, unknown> | undefined)?.repoRoots;
       return Array.isArray(raw) ? raw.filter((r): r is string => typeof r === "string") : [];
     };
 
     // The optional `projects` config → validated ProjectGroupV1[] (undefined when
     // absent or all-invalid → resolveTaxonomy derives the default taxonomy).
-    const readProjects = async (): Promise<ProjectGroupV1[] | undefined> => {
-      const config = await ctx.config.get();
+    const readProjects = async (companyId?: string): Promise<ProjectGroupV1[] | undefined> => {
+      const config = await ctx.config.get(companyId);
       const raw = (config as Record<string, unknown> | undefined)?.projects;
       if (!Array.isArray(raw)) return undefined;
       const groups: ProjectGroupV1[] = [];
@@ -96,8 +104,8 @@ const plugin = definePlugin({
         return false;
       }
     };
-    const readSkillRoots = async (): Promise<SkillRootInput[]> => {
-      const config = await ctx.config.get();
+    const readSkillRoots = async (companyId?: string): Promise<SkillRootInput[]> => {
+      const config = await ctx.config.get(companyId);
       const raw = (config as Record<string, unknown> | undefined)?.skillRoots;
       const configured = Array.isArray(raw);
       const pluginPaths: string[] = configured
@@ -174,10 +182,10 @@ const plugin = definePlugin({
 
     const deps: DeriveDeps = {
       db: ctx.db,
-      makeContext: async (scopeRepo) =>
+      makeContext: async (scopeRepo, companyId) =>
         makeCollectionContext({
-          repoRoots: await readRepoRoots(),
-          skillRoots: await readSkillRoots(),
+          repoRoots: await readRepoRoots(companyId),
+          skillRoots: await readSkillRoots(companyId),
           scopeRepo,
           logger: ctx.logger,
         }),
@@ -185,7 +193,7 @@ const plugin = definePlugin({
       logger: ctx.logger,
       // Resolve the taxonomy FRESH from raw config each derive (PF-5/v6) — raw
       // repoRoots (not ctx.repos) so the dup-basename diagnostic survives (PF-7).
-      resolveTaxonomy: async () => resolveTaxonomy(await readRepoRoots(), await readProjects()),
+      resolveTaxonomy: async (companyId) => resolveTaxonomy(await readRepoRoots(companyId), await readProjects(companyId)),
     };
 
     // --- read-side data handlers (the UI's usePluginData reads these) ---
