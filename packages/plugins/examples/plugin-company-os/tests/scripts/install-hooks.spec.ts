@@ -28,6 +28,7 @@ import {
   chmodSync,
   symlinkSync,
   lstatSync,
+  statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -527,6 +528,38 @@ describe("cos-refresh-hook.sh passes configured host + plugin to the child (cann
     expect(existsSync(marker)).toBe(false);
     const log = readFileSync(join(cfgDir, "refresh.log"), "utf8");
     expect(log).toContain("node binary not found: /nonexistent/node-bin");
+  });
+
+  it("rotation never touches a CUSTOM COS_LOG_FILE (data-loss guard); default path still rotates", () => {
+    const home = tmp("cos-rot-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, "#!/usr/bin/env bash\nexit 0\n");
+    chmodSync(shim, 0o755);
+    // Custom log target: a >256KiB "precious" file must NOT be truncated.
+    const precious = join(home, "precious.log");
+    writeFileSync(precious, "x".repeat(300 * 1024));
+    writeFileSync(join(cfgDir, "config.env"), `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\nCOS_LOG_FILE="${precious}"\n`);
+    const repo = initRepo();
+    execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], { env: { ...process.env, HOME: home, TMPDIR: home } });
+    execFileSync("sleep", ["0.8"]);
+    expect(statSync(precious).size).toBeGreaterThan(300 * 1024 - 1); // grew (log line appended), never truncated
+    // Default path: an oversized refresh.log IS rotated down.
+    const home2 = tmp("cos-rot2-home-");
+    const cfgDir2 = join(home2, ".config", "cos-company-os");
+    mkdirSync(cfgDir2, { recursive: true });
+    const shim2 = join(home2, "shim.sh");
+    writeFileSync(shim2, "#!/usr/bin/env bash\nexit 0\n");
+    chmodSync(shim2, 0o755);
+    writeFileSync(join(cfgDir2, "config.env"), `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim2}"\nCOS_NODE_BIN="bash"\n`);
+    const deflog = join(cfgDir2, "refresh.log");
+    writeFileSync(deflog, Array.from({ length: 5000 }, (_, i) => `line-${i}`).join("\n") + "\n");
+    const repo2 = initRepo();
+    execFileSync("bash", ["-c", `cd "${repo2}" && bash "${DISPATCHER}" post-commit`], { env: { ...process.env, HOME: home2, TMPDIR: home2 } });
+    const end = Date.now() + 10_000;
+    while (statSync(deflog).size > 100 * 1024 && Date.now() < end) execFileSync("sleep", ["0.1"]);
+    expect(statSync(deflog).size).toBeLessThan(100 * 1024);
   });
 
   it("no HOME + no COS_CONFIG_FILE → exits 0 silently (set -u safe)", () => {
