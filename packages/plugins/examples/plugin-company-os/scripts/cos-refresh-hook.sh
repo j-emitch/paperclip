@@ -113,6 +113,14 @@ COMPANY_ID="${COS_COMPANY_ID:-}"
 REFRESH_SCRIPT="${COS_REFRESH_SCRIPT:-}"
 NODE_BIN="${COS_NODE_BIN:-node}"
 LOG_FILE="${COS_LOG_FILE:-$HOME/.config/cos-company-os/refresh.log}"
+# Resolve the node binary NOW: `perl -e 'alarm N; exec @ARGV'` exits 0 with no
+# stderr when the exec target is missing (cannons 2026-08-25 P1 — the
+# silent-death class again). Unresolvable -> one observable log line, then the
+# documented silent-for-git no-op.
+if ! command -v "$NODE_BIN" >/dev/null 2>&1; then
+  { mkdir -p "$(dirname "$LOG_FILE")" && printf '%s node binary not found: %s — dispatch skipped\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$NODE_BIN" >>"$LOG_FILE"; } 2>/dev/null || true
+  exit 0
+fi
 
 # Nothing to do without the essentials — silent no-op (not an error).
 [ -n "$COMPANY_ID" ] || exit 0
