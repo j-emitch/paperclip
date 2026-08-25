@@ -508,6 +508,27 @@ describe("cos-refresh-hook.sh passes configured host + plugin to the child (cann
     expect(readFileSync(envFile, "utf8").trim()).toBe("SCOPE=unset");
   });
 
+  it("an unresolvable node binary → rc 0, no dispatch, one observable log line (perl exec would swallow it)", () => {
+    const home = tmp("cos-nonode-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const marker = join(home, "MARKER");
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, `#!/usr/bin/env bash\ntouch "${marker}"\n`);
+    chmodSync(shim, 0o755);
+    writeFileSync(join(cfgDir, "config.env"), `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="/nonexistent/node-bin"\n`);
+    const repo = initRepo();
+    const out = execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit 2>&1; echo "rc=$?"`], {
+      env: { ...process.env, HOME: home, TMPDIR: home },
+      encoding: "utf8",
+    });
+    expect(out.trim()).toBe("rc=0");
+    execFileSync("sleep", ["0.4"]);
+    expect(existsSync(marker)).toBe(false);
+    const log = readFileSync(join(cfgDir, "refresh.log"), "utf8");
+    expect(log).toContain("node binary not found: /nonexistent/node-bin");
+  });
+
   it("no HOME + no COS_CONFIG_FILE → exits 0 silently (set -u safe)", () => {
     const repo = initRepo();
     const env = { ...process.env } as Record<string, string | undefined>;
