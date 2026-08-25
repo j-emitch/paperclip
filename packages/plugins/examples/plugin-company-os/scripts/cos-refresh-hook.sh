@@ -112,7 +112,8 @@ esac
 COMPANY_ID="${COS_COMPANY_ID:-}"
 REFRESH_SCRIPT="${COS_REFRESH_SCRIPT:-}"
 NODE_BIN="${COS_NODE_BIN:-node}"
-LOG_FILE="${COS_LOG_FILE:-$HOME/.config/cos-company-os/refresh.log}"
+DEFAULT_LOG_FILE="$HOME/.config/cos-company-os/refresh.log"
+LOG_FILE="${COS_LOG_FILE:-$DEFAULT_LOG_FILE}"
 # Resolve the node binary NOW: `perl -e 'alarm N; exec @ARGV'` exits 0 with no
 # stderr when the exec target is missing (cannons 2026-08-25 P1 — the
 # silent-death class again). Unresolvable -> one observable log line, then the
@@ -187,7 +188,11 @@ STALE_MIN=$(( (WATCHDOG_SECS + 60 + 59) / 60 ))
 
   # Bound the log: keep the newest ~200 lines once it passes 256 KiB (no
   # newsyslog/logrotate covers this path — cannons 2026-08-18 claude P2).
-  if [ "$LOG_FILE" != /dev/null ] && [ -f "$LOG_FILE" ] && [ "$(wc -c <"$LOG_FILE" 2>/dev/null || echo 0)" -gt 262144 ]; then
+  # Rotate ONLY the default log path. COS_LOG_FILE is user/config-settable, and
+  # `tail -n 200 > tmp && mv` on an arbitrary redirect target would TRUNCATE
+  # whatever file it points at (cannons 2026-08-25 P1 data-loss class). A custom
+  # log path is the owner's to manage; it just grows.
+  if [ "$LOG_FILE" = "$DEFAULT_LOG_FILE" ] && [ -f "$LOG_FILE" ] && [ "$(wc -c <"$LOG_FILE" 2>/dev/null || echo 0)" -gt 262144 ]; then
     tail -n 200 "$LOG_FILE" >"$LOG_FILE.tmp" 2>/dev/null && mv -f "$LOG_FILE.tmp" "$LOG_FILE" 2>/dev/null || true
   fi
   # One line per dispatch so refresh.log answers "did the hook fire, for what":
