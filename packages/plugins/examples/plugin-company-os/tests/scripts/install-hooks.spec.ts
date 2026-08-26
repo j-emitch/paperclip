@@ -16,7 +16,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
   mkdtempSync,
@@ -71,6 +71,28 @@ function sh(script: string, args: string[], extraEnv: Record<string, string> = {
   } catch (err) {
     const e = err as { status?: number; stdout?: string; stderr?: string };
     return { code: e.status ?? 1, out: `${e.stdout ?? ""}${e.stderr ?? ""}` };
+  }
+}
+
+function waitFor(pred: () => boolean, ms = 10_000): boolean {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (pred()) return true;
+    try {
+      execFileSync("sleep", ["0.05"]);
+    } catch {
+      /* ignore */
+    }
+  }
+  return pred();
+}
+
+function pidIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -439,6 +461,179 @@ describe("cos-refresh-hook.sh passes configured host + plugin to the child (cann
     expect(existsSync(marker)).toBe(true); // dispatched despite missing lock parent + relocated log
   });
 
+  it("[F1] rotates the default log before an unconfigured exit writes its outcome", () => {
+    const home = tmp("cos-pre-gate-rot-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    writeFileSync(join(cfgDir, "config.env"), "COS_NODE_BIN=bash\n");
+    const logFile = join(cfgDir, "refresh.log");
+    writeFileSync(logFile, "old-line\n".repeat(40_000));
+    const repo = initRepo();
+
+    execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], {
+      env: { ...process.env, HOME: home, TMPDIR: home },
+    });
+
+    expect(statSync(logFile).size).toBeLessThan(100 * 1024);
+    expect(readFileSync(logFile, "utf8")).toContain("event=post-commit");
+    expect(readFileSync(logFile, "utf8")).toContain("outcome=unconfigured reason=company-id");
+  });
+
+  it("[F2] logs the configured-gate decision before probing a missing node binary", () => {
+    const home = tmp("cos-gate-order-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    writeFileSync(
+      join(cfgDir, "config.env"),
+      `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${join(home, "missing-refresh.mjs")}"\nCOS_NODE_BIN="/missing/node"\n`,
+    );
+    const repo = initRepo();
+
+    execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-merge`], {
+      env: { ...process.env, HOME: home, TMPDIR: home },
+    });
+
+    const log = readFileSync(join(cfgDir, "refresh.log"), "utf8");
+    expect(log).toContain("event=post-merge");
+    expect(log).toContain("outcome=unconfigured reason=refresh-script");
+    expect(log).not.toContain("node binary not found");
+  });
+
+  it("[F3] removes a plain-file lock wedge and retries acquisition once", () => {
+    const home = tmp("cos-lock-file-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const marker = join(home, "MARKER");
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, `#!/usr/bin/env bash\ntouch "${marker}"\n`);
+    chmodSync(shim, 0o755);
+    writeFileSync(join(cfgDir, "config.env"), `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\n`);
+    writeFileSync(join(cfgDir, `cos-refresh-${COMPANY}.lock`), "wedged\n");
+    const repo = initRepo();
+
+    execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], {
+      env: { ...process.env, HOME: home, TMPDIR: home },
+    });
+
+    expect(waitFor(() => existsSync(marker))).toBe(true);
+    expect(readFileSync(join(cfgDir, "refresh.log"), "utf8")).toContain("outcome=lock-path-file");
+  });
+
+  it("[F4] reclaims a fresh lock owned by a dead PID and records a live holder PID", () => {
+    const home = tmp("cos-lock-owner-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    const lockDir = join(cfgDir, `cos-refresh-${COMPANY}.lock`);
+    mkdirSync(lockDir, { recursive: true });
+    writeFileSync(join(lockDir, "pid"), "99999999\n");
+    const holderFile = join(home, "HOLDER");
+    const shim = join(home, "shim.sh");
+    writeFileSync(
+      shim,
+      `#!/usr/bin/env bash\ncommand cp "${join(lockDir, "pid")}" "${holderFile}"\nsleep 2\n`,
+    );
+    chmodSync(shim, 0o755);
+    writeFileSync(join(cfgDir, "config.env"), `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\n`);
+    const repo = initRepo();
+
+    execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], {
+      env: { ...process.env, HOME: home, TMPDIR: home },
+    });
+
+    expect(waitFor(() => existsSync(holderFile))).toBe(true);
+    const holderPid = Number(readFileSync(holderFile, "utf8").trim());
+    expect(Number.isInteger(holderPid)).toBe(true);
+    expect(pidIsAlive(holderPid)).toBe(true);
+  });
+
+  it("[F7] logs one bounded line when a live lock drops the dispatch", () => {
+    const home = tmp("cos-lock-busy-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    const lockDir = join(cfgDir, `cos-refresh-${COMPANY}.lock`);
+    mkdirSync(lockDir, { recursive: true });
+    writeFileSync(join(lockDir, "pid"), `${process.pid}\n`);
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, "#!/usr/bin/env bash\nexit 0\n");
+    chmodSync(shim, 0o755);
+    writeFileSync(join(cfgDir, "config.env"), `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\n`);
+    const repo = initRepo();
+
+    execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], {
+      env: { ...process.env, HOME: home, TMPDIR: home },
+    });
+
+    const logFile = join(cfgDir, "refresh.log");
+    expect(waitFor(() => existsSync(logFile) && readFileSync(logFile, "utf8").includes("outcome=lock-busy"))).toBe(true);
+    const lines = readFileSync(logFile, "utf8").split("\n").filter((line) => line.includes("outcome=lock-busy"));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("event=post-commit");
+    expect(lines[0]).toContain(`scope=${basename(repo)}`);
+  });
+
+  it("[F8] disables inherited xtrace before importing a config that contains the plugin key", () => {
+    const home = tmp("cos-xtrace-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const marker = join(home, "MARKER");
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, `#!/usr/bin/env bash\ntouch "${marker}"\n`);
+    chmodSync(shim, 0o755);
+    writeFileSync(
+      join(cfgDir, "config.env"),
+      `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\nCOS_PLUGIN_KEY="f8-super-secret"\n`,
+    );
+    const repo = initRepo();
+
+    const result = spawnSync("bash", [DISPATCHER, "post-commit"], {
+      cwd: repo,
+      env: { ...process.env, HOME: home, TMPDIR: home, SHELLOPTS: "xtrace", BASH_XTRACEFD: "2" },
+      encoding: "utf8",
+    });
+
+    expect(result.stderr).not.toContain("f8-super-secret");
+    expect(waitFor(() => existsSync(marker))).toBe(true);
+  });
+
+  it("[F9] bounds a hanging config import and fails closed to unconfigured", () => {
+    const home = tmp("cos-config-timeout-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    writeFileSync(join(cfgDir, "config.env"), `sleep 20\nCOS_COMPANY_ID="${COMPANY}"\n`);
+    const repo = initRepo();
+    const started = Date.now();
+
+    const result = spawnSync("bash", [DISPATCHER, "post-commit"], {
+      cwd: repo,
+      env: { ...process.env, HOME: home, TMPDIR: home },
+      encoding: "utf8",
+      timeout: 8_000,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(Date.now() - started).toBeLessThan(7_000);
+    expect(readFileSync(join(cfgDir, "refresh.log"), "utf8")).toContain("outcome=unconfigured");
+  }, 12_000);
+
+  it("[F10] exported printf functions cannot shadow dispatcher logging", () => {
+    const home = tmp("cos-printf-shadow-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, "#!/usr/bin/env bash\nexit 0\n");
+    chmodSync(shim, 0o755);
+    writeFileSync(join(cfgDir, "config.env"), `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\n`);
+    const repo = initRepo();
+
+    const result = spawnSync("bash", [DISPATCHER, "post-commit"], {
+      cwd: repo,
+      env: { ...process.env, HOME: home, TMPDIR: home, "BASH_FUNC_printf%%": "() { echo PRINTF_SHADOWED; }" },
+      encoding: "utf8",
+    });
+
+    expect(result.stdout).not.toContain("PRINTF_SHADOWED");
+    const logFile = join(cfgDir, "refresh.log");
+    expect(waitFor(() => existsSync(logFile) && readFileSync(logFile, "utf8").includes("event=post-commit"))).toBe(true);
+  });
+
   it("an unwritable log path loses the log line, never the dispatch", () => {
     const home = tmp("cos-nolog-home-");
     const cfgDir = join(home, ".config", "cos-company-os");
@@ -461,37 +656,91 @@ describe("cos-refresh-hook.sh passes configured host + plugin to the child (cann
     const cfgDir = join(home, ".config", "cos-company-os");
     mkdirSync(cfgDir, { recursive: true });
     const done = join(home, "DONE");
-    const tag = `cos-wedge-${process.pid}`;
+    const pidFile = join(home, "PID");
     const shim = join(home, "shim.sh");
     // A child that would run 40s; the watchdog (5s) must kill it long before.
-    writeFileSync(shim, `#!/usr/bin/env bash\nexec -a ${tag} sleep 40\ntouch "${done}"\n`);
+    writeFileSync(shim, `#!/usr/bin/env bash\nprintf '%s\\n' "$$" > "${pidFile}"\nexec sleep 40\ntouch "${done}"\n`);
     chmodSync(shim, 0o755);
     writeFileSync(join(cfgDir, "config.env"), `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\nCOS_REFRESH_WATCHDOG_SECS=5\n`);
     const repo = initRepo();
     execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], { env: { ...process.env, HOME: home, TMPDIR: home } });
-    execFileSync("sleep", ["1"]);
-    const before = execFileSync("ps", ["-axo", "command"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-    expect(before.includes(tag)).toBe(true); // it started
+    expect(waitFor(() => existsSync(pidFile))).toBe(true);
+    const childPid = Number(readFileSync(pidFile, "utf8").trim());
+    expect(pidIsAlive(childPid)).toBe(true);
     execFileSync("sleep", ["7"]);
-    const after = execFileSync("ps", ["-axo", "command"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-    expect(after.includes(tag)).toBe(false); // watchdog killed it
+    expect(pidIsAlive(childPid)).toBe(false); // watchdog killed it
     expect(existsSync(done)).toBe(false);
   }, 20_000);
 
-  it("cancelling the watchdog reaps its sleep (no orphan per dispatch)", () => {
-    const home = tmp("cos-orphan-home-");
+  it("[F5] the watchdog kills a wedged child's grandchild process", () => {
+    const home = tmp("cos-grandchild-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const pidFile = join(home, "GRANDCHILD_PID");
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, `#!/usr/bin/env bash\nsleep 40 &\nchild=$!\nprintf '%s\\n' "$child" > "${pidFile}"\nwait "$child"\n`);
+    chmodSync(shim, 0o755);
+    writeFileSync(join(cfgDir, "config.env"), `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\nCOS_REFRESH_WATCHDOG_SECS=5\n`);
+    const repo = initRepo();
+    execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], { env: { ...process.env, HOME: home, TMPDIR: home } });
+
+    expect(waitFor(() => existsSync(pidFile))).toBe(true);
+    const grandchildPid = Number(readFileSync(pidFile, "utf8").trim());
+    expect(pidIsAlive(grandchildPid)).toBe(true);
+    execFileSync("sleep", ["7"]);
+    const aliveAfterWatchdog = pidIsAlive(grandchildPid);
+    if (aliveAfterWatchdog) process.kill(grandchildPid, "SIGKILL");
+    expect(aliveAfterWatchdog).toBe(false);
+  }, 20_000);
+
+  it("[F6] logs a nonzero exec-time child result", () => {
+    const home = tmp("cos-exec-fail-home-");
     const cfgDir = join(home, ".config", "cos-company-os");
     mkdirSync(cfgDir, { recursive: true });
     const shim = join(home, "shim.sh");
     writeFileSync(shim, "#!/usr/bin/env bash\nexit 0\n");
     chmodSync(shim, 0o755);
-    // A distinctive watchdog length so the orphan (if any) is identifiable in ps.
+    writeFileSync(join(cfgDir, "config.env"), `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="vanishing-node"\n`);
+    const repo = initRepo();
+
+    execFileSync("bash", [DISPATCHER, "post-commit"], {
+      cwd: repo,
+      env: { ...process.env, HOME: home, TMPDIR: home, "BASH_FUNC_vanishing-node%%": "() { :; }" },
+    });
+
+    expect(waitFor(() => existsSync(join(cfgDir, "refresh.log")) && readFileSync(join(cfgDir, "refresh.log"), "utf8").includes("outcome=exec-fail"))).toBe(true);
+    expect(readFileSync(join(cfgDir, "refresh.log"), "utf8")).toMatch(/outcome=exec-fail rc=\d+/);
+  });
+
+  it("cancelling the watchdog reaps its sleep (no orphan per dispatch)", () => {
+    const home = tmp("cos-orphan-home-");
+    const cfgDir = join(home, ".config", "cos-company-os");
+    mkdirSync(cfgDir, { recursive: true });
+    const fakeBin = join(home, "bin");
+    mkdirSync(fakeBin);
+    for (const command of ["bash", "basename", "date", "dirname", "find", "git", "mkdir", "mv", "pgrep", "rm", "sh", "tail", "tr", "wc"]) {
+      const resolved = execFileSync("which", [command], { encoding: "utf8" }).trim();
+      symlinkSync(resolved, join(fakeBin, command));
+    }
+    const sleepPidFile = join(home, "SLEEP_PID");
+    const fakeSleep = join(fakeBin, "sleep");
+    writeFileSync(
+      fakeSleep,
+      `#!/bin/bash\nif [ "\${1:-}" = 577 ]; then command printf '%s\\n' "$$" > "${sleepPidFile}"; fi\nexec /bin/sleep "$@"\n`,
+    );
+    chmodSync(fakeSleep, 0o755);
+    const shim = join(home, "shim.sh");
+    writeFileSync(shim, "#!/usr/bin/env bash\n/bin/sleep 0.5\nexit 0\n");
+    chmodSync(shim, 0o755);
+    // A distinctive watchdog length lets the fake sleep record only the guard.
     writeFileSync(join(cfgDir, "config.env"), `COS_COMPANY_ID="${COMPANY}"\nCOS_REFRESH_SCRIPT="${shim}"\nCOS_NODE_BIN="bash"\nCOS_REFRESH_WATCHDOG_SECS=577\n`);
     const repo = initRepo();
-    execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], { env: { ...process.env, HOME: home, TMPDIR: home } });
-    execFileSync("sleep", ["1"]);
-    const ps = execFileSync("ps", ["-axo", "command"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-    expect(ps.split("\n").filter((l) => /^sleep 577$/.test(l.trim())).length).toBe(0);
+    execFileSync("bash", ["-c", `cd "${repo}" && bash "${DISPATCHER}" post-commit`], {
+      env: { ...process.env, HOME: home, TMPDIR: home, PATH: fakeBin },
+    });
+    expect(waitFor(() => existsSync(sleepPidFile))).toBe(true);
+    const sleepPid = Number(readFileSync(sleepPidFile, "utf8").trim());
+    expect(waitFor(() => !pidIsAlive(sleepPid), 3_000)).toBe(true);
   });
 
   it("ambient COS_SCOPE_REPO never reaches the child even with NO config file (env-provided essentials)", () => {
@@ -592,23 +841,6 @@ describe("cos-refresh-hook.sh dispatcher kill-switch", () => {
     );
     return { home, marker };
   }
-
-  // 10s ceiling: the dispatcher backgrounds the shim behind an mkdir-lock, and under
-  // full-suite parallel load the 2s budget flaked (seen at COS activation 2026-07-06).
-  // The poll returns as soon as the marker lands, so the ceiling costs nothing when healthy.
-  const waitFor = (pred: () => boolean, ms = 10_000): boolean => {
-    const end = Date.now() + ms;
-    // Busy-wait via execFileSync sleep so the backgrounded dispatch can land.
-    while (Date.now() < end) {
-      if (pred()) return true;
-      try {
-        execFileSync("sleep", ["0.05"]);
-      } catch {
-        /* ignore */
-      }
-    }
-    return pred();
-  };
 
   it("dispatches (touches the marker) when enabled", () => {
     const { home, marker } = dispatcherHome();
